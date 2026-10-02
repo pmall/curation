@@ -1,0 +1,25 @@
+[project]
+name = "curation"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.2.4",
+]
+
+[dependency-groups]
+dev = [
+    "mdformat>=1.0.0",
+    "mdformat-gfm>=1.0.0",
+    "pyright>=1.1.414",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
