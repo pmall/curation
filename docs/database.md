@@ -64,12 +64,14 @@ Papers reach PMC with a lag: 75–84 % of the papers of runs 70–79 (2022–202
 Python port of the legacy Perl tools (`drakkar-taxonomy`, `drakkar-uniprot`), in `src/drakkar/`:
 
 ```
-uv run drakkar-taxonomy <taxdump dir> [--dry-run]           # 1. NCBI taxonomy first
-uv run drakkar-uniprot parse <release dir>                   # 2. UniProt XML → TSV (cached)
-uv run drakkar-uniprot upgrade <release> <release dir> [--dry-run]
+uv run drakkar-taxonomy data/2026_03 [--dry-run]          # 1. NCBI taxonomy first
+uv run drakkar-uniprot parse data/2026_03                 # 2. UniProt XML → TSV (cached)
+uv run drakkar-uniprot upgrade data/2026_03 [--dry-run]   # 3. import; the release is the directory name
 ```
 
-Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` (all viral TrEMBL) and `uniprot_sprot_varsplic.fasta.gz` (isoforms). Each tool runs in one transaction; `--dry-run` rolls back. The upgrade writes `report.md` and `obsolete_vh_descriptions.tsv` (the descriptions to revise) in the release directory.
+**Data is scoped by UniProt release** \[confirmed\]: `data/<release>/` holds `taxonomy/` (the NCBI taxdump loaded with this release), `uniprot/` (the FTP files and their parsed TSV), `reports/` (upgrade report, descriptions to revise, and later the revision reports) and a `README.md` (dates and sources). `data/` is not versioned in git.
+
+Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` (all viral TrEMBL) and `uniprot_sprot_varsplic.fasta.gz` (isoforms). Each tool runs in one transaction; `--dry-run` rolls back. The upgrade writes `reports/uniprot_upgrade.md` and `reports/obsolete_vh_descriptions.tsv` (the descriptions to revise).
 
 Differences with the Perl tools: entries whose taxon is missing from `taxon` are imported and reported instead of skipped (the type comes from the file); retired taxa keep their names; taxon names are written as a diff.
 

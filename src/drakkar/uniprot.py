@@ -6,9 +6,12 @@ the UniProt FTP files instead of website search results:
 - `uniprot_sprot_human.xml.gz` (human, Swiss-Prot), `uniprot_sprot_viruses.xml.gz` and
   `uniprot_trembl_viruses.xml.gz` (all viruses), `uniprot_sprot_varsplic.fasta.gz` (isoforms).
 
+Files are scoped by release: `data/<release>/` holds `taxonomy/` (the NCBI taxdump loaded with
+this release), `uniprot/` (the FTP files) and `reports/`.
+
 Two steps:
 
-1. `parse`: each XML file is converted into a TSV file next to it (one row per entry).
+1. `parse`: each XML file of `uniprot/` is converted into a TSV file next to it.
 2. `upgrade`: the TSV files are staged, then, in one transaction:
    - an entry whose existing snapshot is unchanged (same accession, taxon and isoform sequences,
      and for human the same gene name) keeps it; any other entry gets a new `proteins` row;
@@ -219,8 +222,9 @@ def parse_one(args: tuple[Path, str]) -> tuple[str, int]:
     return source, n
 
 
-def parse(directory: Path) -> None:
+def parse(release_directory: Path) -> None:
     start = time.time()
+    directory = release_directory / "uniprot"
     todo = [(directory, s) for s in SOURCES if not tsv_path(directory, s).exists()]
     for source in SOURCES:
         if (directory, source) not in todo:
@@ -291,8 +295,12 @@ def fetch_table(cur: Any, sql: LiteralString) -> tuple[list[str], list[tuple[Any
     return [c.name for c in cur.description], cur.fetchall()
 
 
-def upgrade(release: str, directory: Path, *, dry_run: bool) -> None:
+def upgrade(release_directory: Path, *, dry_run: bool) -> None:
     start = time.time()
+    release = release_directory.resolve().name
+    directory = release_directory / "uniprot"
+    reports = release_directory / "reports"
+    reports.mkdir(exist_ok=True)
     with connect() as conn:
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM proteins WHERE version = %s LIMIT 1", (release,))
@@ -405,8 +413,8 @@ def upgrade(release: str, directory: Path, *, dry_run: bool) -> None:
             """,
         )
 
-        write_report(directory / "report.md", release, dry_run, headers, report)
-        with (directory / "obsolete_vh_descriptions.tsv").open("w") as f:
+        write_report(reports / "uniprot_upgrade.md", release, dry_run, headers, report)
+        with (reports / "obsolete_vh_descriptions.tsv").open("w") as f:
             writer = csv.writer(f, delimiter="\t", lineterminator="\n")
             writer.writerow(details_header)
             writer.writerows(details)
@@ -449,13 +457,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Upgrade the proteins to a new UniProt release.")
     commands = parser.add_subparsers(dest="command", required=True)
     parse_parser = commands.add_parser("parse", help="convert the XML files into TSV files")
-    parse_parser.add_argument("directory", type=Path)
+    parse_parser.add_argument("release_directory", type=Path, help="e.g. data/2026_03")
     upgrade_parser = commands.add_parser("upgrade", help="import the TSV files")
-    upgrade_parser.add_argument("release", help="UniProt release, e.g. 2026_03")
-    upgrade_parser.add_argument("directory", type=Path)
+    upgrade_parser.add_argument(
+        "release_directory", type=Path, help="e.g. data/2026_03 (its name is the release)"
+    )
     upgrade_parser.add_argument("--dry-run", action="store_true", help="roll back at the end")
     args = parser.parse_args()
     if args.command == "parse":
-        parse(args.directory)
+        parse(args.release_directory)
     else:
-        upgrade(args.release, args.directory, dry_run=args.dry_run)
+        upgrade(args.release_directory, dry_run=args.dry_run)

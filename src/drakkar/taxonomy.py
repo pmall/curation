@@ -1,4 +1,6 @@
-"""Load or update the NCBI taxonomy (`taxon`, `taxon_name`) from an NCBI taxdump directory.
+"""Load or update the NCBI taxonomy (`taxon`, `taxon_name`) from `data/<release>/taxonomy/`.
+
+The taxonomy is scoped by UniProt release: the dump loaded with a release is kept next to it.
 
 Python port of BioSQL's `load_ncbi_taxonomy.pl --nodelete`, as used by drakkar-taxonomy:
 
@@ -64,8 +66,9 @@ def nested_set(rows: list[tuple[int, int | None, int]], root: int) -> dict[int, 
     return values
 
 
-def load(directory: Path, *, dry_run: bool) -> None:
+def load(release_directory: Path, *, dry_run: bool) -> None:
     start = time.time()
+    directory = release_directory / "taxonomy"
     with connect() as conn:
         cur = conn.cursor()
 
@@ -213,7 +216,9 @@ def load(directory: Path, *, dry_run: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load or update the NCBI taxonomy.")
-    parser.add_argument("directory", type=Path, help="taxdump directory (nodes, names, merged)")
+    parser.add_argument(
+        "release_directory", type=Path, help="e.g. data/2026_03, with the taxdump in taxonomy/"
+    )
     parser.add_argument("--dry-run", action="store_true", help="roll back at the end")
     args = parser.parse_args()
-    load(args.directory, dry_run=args.dry_run)
+    load(args.release_directory, dry_run=args.dry_run)
