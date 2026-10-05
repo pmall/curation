@@ -11,7 +11,7 @@ Database: PostgreSQL 18, schema `public`. Drakkar is the curation database. Vinl
 | `runs`                 | A list of PMIDs for a slice of time (`type` `vh` or `hh`, `name` = sequence number).          | Future runs are `vh` only, split in two (see below). |
 | `publications`         | One row per PMID, with PubMed XML converted to JSON in `metadata` (`populated` once fetched). |                                                      |
 | `associations`         | (run, pmid): curation state + free-text note (`annotation`).                                  | A paper can be in a `vh` and an `hh` run.            |
-| `descriptions`         | One interaction, versioned (see §2).                                                          | No foreign keys yet (to be added, see §5).           |
+| `descriptions`         | One interaction, versioned (see §2).                                                          | Foreign keys since 2026-10-05 (§5).                  |
 | `methods`              | Whole PSI-MI ontology (1,328 terms), no hierarchy.                                            | Never modified.                                      |
 | `proteins`             | One row per UniProt entry snapshot (see §3).                                                  |                                                      |
 | `proteins_versions`    | The set of **current** snapshots, with gene names and features.                               |                                                      |
@@ -48,6 +48,7 @@ Papers reach PMC with a lag: 75–84 % of the papers of runs 70–79 (2022–202
 - **Nothing is ever deleted.** A revision sets `deleted_at` on the current row and inserts a row with the same `stable_id` and `version + 1`. Removing a description = setting `deleted_at` without a successor.
 - **Stable ID rule \[confirmed\]:** a description gets its stable ID when it enters the database, and the ID never changes afterwards. Every revision keeps it, whatever is corrected (method, interactors, mappings; 186 vh stable IDs changed method over their history). Its life ends only by deletion (`deleted_at` without successor). The paper never changes (V6). Uniqueness (D5) applies to **live** rows only.
 - **Stable ID prefix = origin \[confirmed\]:** `EY` = created through the web interface (retired as the main path, but it may still be used occasionally, so new `EY` rows can appear); `CW` = created by Claude, whatever the source (full text, curator Excel file). Both are followed by 8 uppercase hex characters. Claude draws them from a random source (Python `secrets.token_hex(4)`). **Collision check \[confirmed\]:** before inserting, look the candidate up among **all** rows of `descriptions` (live and deleted, any prefix) and draw again if it exists. With 4.3 billion values and one writer, a retry is very unlikely, but the check is mandatory.
+- **Fixing descriptions \[confirmed\]:** each kind of fix is reviewed with the user, with examples, before anything is written. No description is ever physically deleted, and no throwaway version is created. Maintenance revisions (UniProt upgrade, integrity fixes) do not touch the paper's note: the note explains curation only. Moving a viral protein to another UniProt entry (especially a mature protein, with its source entry and coordinates) is a curation decision, never a mechanical one.
 - Allowed write operations: add descriptions, revise descriptions, upgrade UniProt (and taxonomy), update association state and note, create runs and associations, apply the schema changes of §5 (foreign keys, `associations.ai_pass_at`).
 
 ## 3. UniProt versioning
@@ -109,21 +110,21 @@ An unchanged entry inserts nothing: its snapshot stays, and only `current_versio
 
 The GC candidates are 0.7 % of the table (2.6 GB). The bulk is the current but unused viral entries (all viral UniProt, TrEMBL included), which GC would not touch. Some snapshots end up useless (never used, no longer in UniProt), but they stay few over time. **Decision: no garbage collection** [confirmed].
 
-**Revised on 2026-10-05 \[confirmed\]:** UniProt 2026_03 deleted most viral TrEMBL entries, which left 4,062,406 viral snapshots obsolete and used by no description (live or deleted). Plan: first revise all obsolete and invalid descriptions, then delete the obsolete snapshots that no description row references, for a slim database. The foreign keys prevent deleting any snapshot still referenced.
+**Revised on 2026-10-05 \[confirmed\]:** UniProt 2026_03 deletes most viral TrEMBL entries, which leaves 4,062,406 viral snapshots obsolete and used by no description (live or deleted). Plan: first revise all obsolete and invalid descriptions, then delete the obsolete snapshots that no description row references, for a slim database. The foreign keys prevent deleting any snapshot still referenced.
 
 ### Consequences
 
 - **A UniProt upgrade includes the taxonomy** \[confirmed\]: load the latest NCBI `taxdump` first, then UniProt. Some inconsistencies remain, usually for obscure taxa: resolve merged taxa with `merged.dmp`, and report (do not skip) the remaining ones.
 - The 2021_02 upgrade was followed by bulk revisions (most version ≥ 2 rows were created between 2021-05-11 and 2021-06-02).
-- **2026-10-05 upgrade:** NCBI taxonomy of 2026-10-05, then UniProt 2026_03 (releases present: 2019_01, 2020_03, 2020_05, 2021_02, 2026_03). 230,069 new snapshots, 1,130,162 current entries. 14,607 live vh descriptions (1,580 papers) now reference obsolete snapshots and must be revised [confirmed: next step, before curation resumes].
-- **UniProt now keeps only Swiss-Prot and the TrEMBL entries of reference proteomes**: other TrEMBL entries are deleted ("not part of a reference proteome"; viral TrEMBL went from 4.9 M to 1.1 M entries). 507 viral accessions used by live vh descriptions were deleted. About half have an identical sequence in a current entry of the same virus; the others need a check against the paper. Rules C3 and C4 (`curation-rules.md`) cover the choice of the closest entry and the mapping identity (≥ 96 %).
-- The `dataset` view was redefined on 2026-10-05 (`sql/dataset.sql`): same columns, taxa read from the taxonomy for both proteins (it hard-coded the *Homo sapiens* nested-set values), no description hidden by a missing taxon, and indexes (unique on `description_id`, so `REFRESH MATERIALIZED VIEW CONCURRENTLY dataset` works).
+- **Current state:** latest release 2021_02. A trial of the taxonomy + UniProt 2026_03 upgrade was run on 2026-10-05, followed by an automatic fix of descriptions that was not acceptable; the database was restored from the dump. The upgrade is to be redone step by step with the user. What the trial measured: 230,069 new snapshots, 1,130,162 current entries, 14,607 live vh descriptions (1,580 papers) on obsolete snapshots; the 2026_03 data and the trial reports are in `data/2026_03/`.
+- **UniProt now keeps only Swiss-Prot and the TrEMBL entries of reference proteomes**: other TrEMBL entries are deleted ("not part of a reference proteome"; viral TrEMBL went from 4.9 M to 1.1 M entries). 507 viral accessions used by live vh descriptions are deleted in 2026_03. About half have an identical sequence in a current entry of the same virus; the others need a check against the paper. Rules C3 and C4 (`curation-rules.md`) cover the choice of the closest entry and the mapping identity (≥ 96 %).
+- The `dataset` view was redefined on 2026-10-05 (`sql/dataset.sql`): same columns, taxa read from the taxonomy for both proteins (it hard-coded *Homo sapiens* nested-set values that were already stale), no description hidden by a missing taxon, and indexes (unique on `description_id`, so `REFRESH MATERIALIZED VIEW CONCURRENTLY dataset` works).
 
 ## 4. Invariants
 
 Checked by `uv run drakkar-check <report dir>` (report: `check.md` and one TSV per violated invariant). Scope: **vh and hh** [confirmed: hh descriptions are corrected too]. "Live" = `deleted_at IS NULL`. Severity: **error** = must never happen; **warning** = needs a look. The method chosen by the curator is not checked (D8 dropped [confirmed]).
 
-Counts measured on 2026-10-05, after the UniProt 2026_03 upgrade (vh / hh):
+Counts measured on 2026-10-05 during the trial upgrade to UniProt 2026_03, before any fix (vh / hh); the restored database is still on 2021_02:
 
 | ID  | Invariant                                                                                               | Severity             |        vh |     hh |
 | --- | ------------------------------------------------------------------------------------------------------- | -------------------- | --------: | -----: |
@@ -155,7 +156,7 @@ S3, S6–S8 apply to Claude's work and are not implemented yet. R1, R2, R4 and V
 
 Rules marked "new data only" apply to descriptions with the Claude prefix (`CW`) and to associations whose note has a Claude entry (`[YYYY-MM-DD Claude] ACTION:`, template in `curation-rules.md` §6).
 
-## 5. Schema changes [allowed by the user]
+## 5. Schema changes (applied on 2026-10-05)
 
 Foreign keys. Every one holds today (0 orphans, measured 2026-10-05), and none conflicts with the ingestion order: proteins are inserted before `proteins_versions` is rebuilt, and runs, associations and proteins exist before a description is inserted.
 
@@ -179,20 +180,15 @@ ALTER TABLE associations ADD COLUMN ai_pass_at timestamp;
 
 Null = Claude has not made its curation pass on this paper. A date = the last pass, whatever its outcome. The history of passes is kept in the note (`Pass` lines, `curation-rules.md` §6). `selected` with a date = needs a manual pass. A new association state may come later, not now.
 
-## 6. Verification script (plan)
+## 6. Verification script
 
-- Python project managed with uv, checked with ruff and pyright, run as `uv run drakkar-check`.
-- One invariant = one SQL query returning the violating rows (with stable ID, PMID and the values involved), declared with its ID, severity and scope.
-- Runs in a **read-only** transaction.
-- Output: a Markdown report (counts per invariant + sample rows), formatted with mdformat; non-zero exit code if any error.
-- Known legacy violations can be accepted in a baseline file, so the check stays green while still reporting them.
-- Run it before and after every write session.
+`uv run drakkar-check <report dir>` (`src/drakkar/check.py`): one query per invariant, run in a transaction that only creates temporary tables and is always rolled back; a Markdown summary (`check.md`) and one TSV of violating rows per invariant; exit code 1 if any error. Run it before and after every write session.
 
 ## 7. Open technical questions
 
 1. The PubMed query used to fill runs.
 1. Taxonomy: the legacy loading script (source files, nested-set computation), to reuse in the upgrade.
-1. Legacy violations (D4, D5, S1, R3/D2) are fixed after the UniProt upgrade [confirmed]. Open: through revisions with a note on the paper, for each of them?
+1. Legacy violations are fixed after the UniProt upgrade [confirmed], one kind at a time with the user (§2).
 1. Licenses: many open access papers (including part of the PMC open access subset) are under non-commercial licenses (CC BY-NC, BY-NC-ND). Does Drakkar's use allow text-mining them?
 1. An Elsevier text-mining API key, to download Elsevier open access papers (most of the failed downloads)?
 
