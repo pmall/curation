@@ -26,7 +26,7 @@ Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen
 
 1. A PubMed query collects new PMIDs since the last run. One run per batch. Every paper starts `pending` (not pre-curated).
 
-1. **Pre-curation** on title and abstract, by Claude, for every paper: `selected` or `discarded`. The goal is to remove the query's false positives; about 10 % are selected. `discarded` is a pre-curation decision only.
+1. **Pre-curation** on title and abstract, by Claude, for every paper: `selected` or `discarded`. The goal is to remove the query's false positives; about 10 % are selected. A paper is `selected` as soon as the abstract suggests it may contain a virus–human PPI: **the goal is exhaustiveness**, so in doubt, select. **[confirmed]** `discarded` is a pre-curation decision only.
 
 1. **Curation pass** by Claude on each selected paper, from its full text when Claude can get one: first the PMC open access XML (no parsing needed), otherwise another legal open access copy that Claude parses. Once the full text has been read, the paper is `curated`, **whether descriptions were found or not**. A curated paper with zero descriptions is a valid outcome: the paper was reviewed and reports no interaction that meets the criteria. The note says why.
 
@@ -57,18 +57,23 @@ Legacy: in past runs, `discarded` may have been decided on the abstract or on th
 1. The method detects a **physical** interaction. Excluded: colocalization, functional interaction, citing an interaction shown elsewhere. Included: binary methods (co-crystal, Y2H) and complex-detection methods (co-IP…).
 1. Method from the PSI-MI **interaction detection method** branch (MI:0001).
 1. Interaction domains (mappings) are collected when clearly identified in the article.
-1. High-throughput papers: assess the rawest data available (e.g. ORF sequences) by alignment to assign the right accession.
+1. **Tagged proteins** (GFP, FLAG, HA, GST fusions…) are curated as the wild-type protein: only the protein sequence is kept, never the tag. **[confirmed]**
+1. **Fragments** (truncated constructs used to locate the binding region) are accepted: the interactor is the protein, the fragment is recorded as a mapping. **[confirmed]**
+1. High-throughput papers: assess the rawest data available (e.g. ORF sequences) by alignment to assign the right accession. **Scoring thresholds are the authors' own** (their high-confidence list or cut-off). **[confirmed]**
+1. **HLA presentation of viral epitopes is not a PPI**: not curated. Existing HLA descriptions (241 live vh, 77 papers) are reviewed during the fix; true epitope presentations are deleted, with a note. **[confirmed]**
+1. Viral strain: when the paper gives none, the choice is arbitrary: prefer a **Swiss-Prot** entry; if still undecided, the entry most used in Drakkar for the same virus and generic name. **[confirmed]**
+1. **Swiss-Prot over TrEMBL** whenever both fit. **[confirmed]**
+1. Existing notes are not a source of rules: they can be outdated or wrong. Only the criteria written here apply. **[confirmed]**
 
 ## 5. Conventions
 
-| ID  | Convention                                                                                                                                                                                                                                                                                       | Status    |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| C1  | A paper × method × human interactor × viral interactor is recorded **once**.                                                                                                                                                                                                                     | confirmed |
-| C2  | A viral interactor always has the same generic name. Reuse the existing name when the interactor is already known.                                                                                                                                                                               | confirmed |
-| C3  | The interactor is the UniProt entry **closest** to the paper's protein: the exact strain when it exists (about 96 % of cases), otherwise the closest entry of the same virus, documented and justified in the note (`Strain` line, §6).                                                          | confirmed |
-| C4  | The mapping is aligned on the interactor and its isoforms, to verify it belongs to the protein, find all occurrences and get positions. It must reach **≥ 96 % identity** on at least one isoform; no match or a lower identity flags the description for deeper review instead of inserting it. | confirmed |
-| C5  | Only proteins from the latest UniProt release in Drakkar are used.                                                                                                                                                                                                                               | confirmed |
-| C6  | Past curators created one description per mapping when a paper showed several regions for the same pair (e.g. 21454588, HLA-A × viral epitopes), which conflicts with C1.                                                                                                                        | observed  |
+| ID  | Convention                                                                                                                                                                                                                                                                                         | Status    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| C1  | A paper × method × human interactor × viral interactor is recorded **once**; several regions found for it are several mappings of that description. Several live descriptions for the same paper, method, human interactor and viral interactor are an error, fixed by merging them into one (D5). | confirmed |
+| C2  | A viral interactor always has the same generic name. Reuse the existing name when the interactor is already known.                                                                                                                                                                                 | confirmed |
+| C3  | The interactor is the UniProt entry **closest** to the paper's protein: the exact strain when it exists (about 96 % of cases), otherwise the closest entry of the same virus, documented and justified in the note (`Strain` line, §6).                                                            | confirmed |
+| C4  | The mapping is aligned on the interactor and its isoforms, to verify it belongs to the protein, find all occurrences and get positions. It must reach **≥ 96 % identity** on at least one isoform; no match or a lower identity flags the description for deeper review instead of inserting it.   | confirmed |
+| C5  | Only proteins from the latest UniProt release in Drakkar are used.                                                                                                                                                                                                                                 | confirmed |
 
 ## 6. Notes **[confirmed: free text, format chosen by Claude]**
 
@@ -159,11 +164,6 @@ The same paper after a curator file:
 
 ## 7. Open questions for a biologist
 
-1. **Constructs:** same pair, same method, several interacting regions (deletion mutants, epitopes). One description with several mappings, or one description per region (C6 vs C1)?
-1. **Epitopes:** is HLA presentation of a viral peptide (21454588) a virus–human PPI to curate?
-1. **Methods:** which PSI-MI methods are accepted? The SI accepts complex-detection methods (co-IP, AP-MS), but some discard notes say *"No direct VH-PPI described"*. Is there a rule for "direct"? I can provide the list of methods used in vh, with counts, as a starting point.
-1. **High-throughput / AP-MS:** which scoring thresholds apply? The authors' high-confidence list, or a generic rule?
-1. **Tags and mutants:** are tagged proteins (GFP, FLAG, GST fusions) "wild type"? Are truncated constructs accepted as long as the region is mapped?
-1. **Strain:** when a paper gives no strain, which UniProt entry should be chosen? (Practical option: the entry most used in Drakkar for the same virus species and generic name.)
-1. **Swiss-Prot vs TrEMBL** for viral proteins: prefer Swiss-Prot when both exist?
-1. **Pre-curation:** what makes a title and abstract good enough to be `selected`?
+None at the moment.
+
+Answered on 2026-10-05: tags and fragments (§4), several regions for one pair and method (one description, its mappings list), pre-curation (§3), epitopes (not PPIs), methods (no rule taken from old notes; criteria of §4), high-throughput thresholds (the authors'), strain without information and Swiss-Prot vs TrEMBL (§4).

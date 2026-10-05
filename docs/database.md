@@ -107,6 +107,8 @@ An unchanged entry inserts nothing: its snapshot stays, and only `current_versio
 
 The GC candidates are 0.7 % of the table (2.6 GB). The bulk is the current but unused viral entries (all viral UniProt, TrEMBL included), which GC would not touch. Some snapshots end up useless (never used, no longer in UniProt), but they stay few over time. **Decision: no garbage collection** [confirmed].
 
+**Revised on 2026-10-05 \[confirmed\]:** UniProt 2026_03 deleted most viral TrEMBL entries, which left 4,062,406 viral snapshots obsolete and used by no description (live or deleted). Plan: first revise all obsolete and invalid descriptions, then delete the obsolete snapshots that no description row references, for a slim database. The foreign keys prevent deleting any snapshot still referenced.
+
 ### Consequences
 
 - **A UniProt upgrade includes the taxonomy** \[confirmed\]: load the latest NCBI `taxdump` first, then UniProt. Some inconsistencies remain, usually for obscure taxa: resolve merged taxa with `merged.dmp`, and report (do not skip) the remaining ones.
@@ -218,5 +220,5 @@ Null = Claude has not made its curation pass on this paper. A date = the last pa
 
 - `stable_id` generation: any randomness, with a collision check (§2).
 - PSI-MI: the `methods` table is never modified. D8 uses the PSI-MI OBO file (HUPO-PSI `psi-mi.obo`), downloaded and pinned in the repository, read-only, only to get the MI:0001 hierarchy. A term needed but missing from `methods` is reported to the user.
-- Garbage collection of obsolete proteins: not done (§3).
+- Garbage collection of obsolete proteins: done after the descriptions are revised (§3).
 - Runs: no split. One run per batch; full-text access is stored on the publication and checked at curation time (§1).
