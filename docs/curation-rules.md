@@ -1,6 +1,6 @@
 # Curation rules (biological)
 
-Last updated: 2026-10-02. Sources: user answers, PNAS 2024 SI appendix (doi:10.1073/pnas.2308776121, supporting text pp. 3–10). The database side (tables, versioning, invariants) is in `database.md`.
+Last updated: 2026-10-05. Sources: user answers, PNAS 2024 SI appendix (doi:10.1073/pnas.2308776121, supporting text pp. 3–10). The database side (tables, versioning, invariants) is in `database.md`.
 
 Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen in past curation, not yet confirmed · **[proposed]** my suggestion, to be validated.
 
@@ -8,7 +8,9 @@ Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen
 
 - Manual curation is stopped. Claude now curates and is the only writer. **[confirmed]**
 - Scope: **virus–human (vh) protein–protein interactions** only. Human–human curation is discontinued. **[confirmed]**
-- Full texts: **PMC open access** only, for now. Non-OA papers will be curated by humans outside the interface and handed over as Excel files to interpret and ingest (later). **[confirmed]**
+- Full texts, in order of priority: **PMC open access** (structured XML, no parsing needed), then **other legal open access copies** (publisher, repository, preprint server; Claude parses HTML or PDF). For other papers, curators may hand over Excel files describing interactions; Claude interprets and inserts them (later). **[confirmed]**
+- Claude inserts every new description, whatever its source (full text or curator file), with a `CW` stable ID. `EY` IDs came from the web interface, which is retired. **[confirmed]**
+- Papers whose full text Claude cannot access need a human intervention (or a curator file). **[confirmed]**
 
 ## 2. Vocabulary
 
@@ -22,9 +24,27 @@ Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen
 
 ## 3. Process **[confirmed]**
 
-1. A PubMed query collects new PMIDs since the last run.
-1. **Pre-curation** on title and abstract: `selected` or `discarded`. The goal is to remove the query's false positives; about 10 % are selected.
-1. **Curation** of each selected paper from its full text: either record descriptions and mark the paper `curated`, or record none and mark it `discarded`. Write a note in both cases.
+1. A PubMed query collects new PMIDs since the last run. One run per batch. Every paper starts `pending` (not pre-curated).
+
+1. **Pre-curation** on title and abstract, by Claude, for every paper: `selected` or `discarded`. The goal is to remove the query's false positives; about 10 % are selected. `discarded` is a pre-curation decision only.
+
+1. **Curation pass** by Claude on each selected paper, from its full text when Claude can get one: first the PMC open access XML (no parsing needed), otherwise another legal open access copy that Claude parses. Once the full text has been read, the paper is `curated`, **whether descriptions were found or not**. A curated paper with zero descriptions is a valid outcome: the paper was reviewed and reports no interaction that meets the criteria. The note says why.
+
+1. Every selected paper Claude went through gets the date of the pass in `associations.ai_pass_at` (`database.md` §5), curated or not. A paper still `selected` with a date needs a **manual pass**: curated by hand, or handed to Claude as a curator file. Its note says why Claude could not curate it (e.g. no accessible full text, with the URL when there is one).
+
+**Tracking \[confirmed\]:**
+
+| State + `ai_pass_at` | Meaning                                  |
+| -------------------- | ---------------------------------------- |
+| `pending`            | Not pre-curated yet.                     |
+| `selected`, null     | Waiting for Claude's curation pass.      |
+| `selected`, date     | Claude could not curate it: manual pass. |
+| `curated`            | Done (by Claude if dated).               |
+| `discarded`          | Rejected at pre-curation.                |
+
+A run is **complete** when every paper is `discarded` or `curated`. Claude is **done with a run** when no paper is `pending` and every `selected` paper has a date. Papers in PMC outside the open access subset cannot be text-mined: Claude uses them only if an open access copy exists elsewhere.
+
+Legacy: in past runs, `discarded` may have been decided on the abstract or on the full text; the two cases cannot be told apart. Legacy states are left as they are.
 
 ## 4. Acceptance criteria **[confirmed, SI]**
 
@@ -54,20 +74,88 @@ Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen
 
 The note on the paper (`associations.annotation`) explains the choices at **article level**, for a future human reviewer. There is no per-description evidence.
 
-Format I'll use:
+**The note holds the latest state** **[confirmed]**: each time Claude acts on a paper, it rewrites the whole note, so it always describes the current state and descriptions. The only exception is the **pass history** at the end: one short `Pass` line per curation pass, kept across rewrites, so the note stays short while the passes stay traceable. The history of descriptions is in their versions. **Curator note \[confirmed\]:** on Claude's first pass (`ai_pass_at` null), a non-empty existing note was written by a curator (e.g. a past curation Claude now reviews). Claude keeps it **verbatim** in a final block, never edited, and kept across every rewrite.
+
+### Template
+
+A header line, optional `- ` detail lines, the pass history (oldest first), then the curator note if there was one:
 
 ```
-[2026-10-05 Claude] CURATED from PMC1234567.
-- Kept: NS1 (P03496) × IRF3 — co-IP, Fig. 2B; pull-down, Fig. 3A. Mapping NS1 1–73 (Fig. 4, deletion mutants).
-- Not kept: NS1 × TRIM25 — only cited from ref. 12.
-- Strain: A/Puerto Rico/8/1934 (Methods, "Viruses").
+[YYYY-MM-DD Claude] STATE: summary
+- Label: detail
+- Pass YYYY-MM-DD: outcome
+--- Curator note (before Claude) ---
+<previous note, verbatim>
+```
+
+The header is fixed so the check script can parse it: the date of the last rewrite, `Claude`, the association state in capitals, then a one-line summary. The state in the header must match `associations.state`.
+
+| State       | Summary                                                                                            | Detail lines                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `SELECTED`  | What the abstract suggests.                                                                        | `Full text` once checked; `Pass`.                                     |
+| `DISCARDED` | `<reason code>`, then a short why.                                                                 | —                                                                     |
+| `CURATED`   | Source and count: `from PMC1234567, 3 descriptions` or `from curator file <name>, N descriptions`. | `Kept`, `Not kept`, `Strain`, `Mapping`, `Revised`, `Remark`; `Pass`. |
+
+Pre-curation discard reason codes \[confirmed\]: `no-viral-protein`, `no-human-protein`, `no-ppi` (no physical interaction suggested), `non-human-host`, `review`, `preprint`, `not-research` (editorial, erratum, protocol…), `other`.
+
+Detail line formats:
+
+- `Full text: PMC open access (PMCID)`, `Full text: <source> (<license>, <URL>)` for another open access copy, or `Full text: closed — <why>` (not open access anywhere, or open access at <URL> but download blocked)
+- `Kept: <generic name> (<accession>[start-stop]) × <gene> (<accession>) — <method> (MI:xxxx), Fig. 2B[; <method>, Fig. 3A]`
+- `Not kept: <pair or claim> — <reason>`
+- `Strain: <strain> (<where in the paper>)`
+- `Mapping: <interactor> <start>–<stop> (<evidence>)`
+- `Revised: <stable IDs> — <reason>` (UniProt upgrade, invariant fix; only the latest revision)
+- `Remark: <anything a reviewer should know>` (for a curator file: how ambiguous rows were interpreted)
+- `Pass YYYY-MM-DD: <outcome>`, one per curation pass, e.g. `not accessible (not open access)`, `curated from PMC1234567`, `curated from curator file <name>`. The date of the last `Pass` line equals `associations.ai_pass_at`.
+
+### Examples
+
+Review of a past curation (the note was `Co-IP fig 2, NS1 only` before Claude's first pass):
+
+```
+[2026-10-20 Claude] CURATED: from PMC2345678, 1 description.
+- Kept: NS1 (P03496) × TRIM25 (Q14258) — anti-tag co-IP (MI:0007), Fig. 2.
+- Revised: EY1A2B3C4D — UniProt 2026_04 upgrade, new snapshot of P03496.
+- Pass 2026-10-20: reviewed, curated from PMC2345678.
+--- Curator note (before Claude) ---
+Co-IP fig 2, NS1 only
 ```
 
 ```
-[2026-10-05 Claude] DISCARDED: no physical interaction. Only a luciferase reporter assay (Fig. 3) and colocalization (Fig. 5).
+[2026-10-06 Claude] CURATED: from PMC1234567, 2 descriptions.
+- Kept: NS5A (P26662[1973-2419]) × EIF2AK2 (P19525) — anti-tag co-IP (MI:0007), Fig. 2B; pull-down (MI:0096), Fig. 3A.
+- Not kept: NS5A × TRIM25 — only cited from ref. 12.
+- Strain: genotype 1b, Con1 (Methods, "Plasmids").
+- Mapping: NS5A 2209–2274 (Fig. 4, deletion mutants).
+- Pass 2026-10-06: curated from PMC1234567.
 ```
 
-New entries are appended after any existing text.
+```
+[2026-10-05 Claude] DISCARDED: no-ppi — viral protein–RNA interaction, no host protein.
+```
+
+```
+[2026-10-05 Claude] SELECTED: Y2H screen of ZIKV proteins against a human library.
+- Full text: closed — not open access anywhere.
+- Pass 2026-10-05: not accessible (not open access).
+```
+
+The same paper after a curator file:
+
+```
+[2026-10-15 Claude] CURATED: from curator file run88_manual.xlsx, 4 descriptions.
+- Kept: …
+- Remark: row 7 gives "ZIKV E"; the paper's strain (PRVABC59) was used for the accession.
+- Pass 2026-10-05: not accessible (not open access).
+- Pass 2026-10-15: curated from curator file run88_manual.xlsx.
+```
+
+```
+[2026-10-06 Claude] CURATED: from PMC7654321, 0 descriptions.
+- Remark: no physical interaction. Only a luciferase reporter assay (Fig. 3) and colocalization (Fig. 5).
+- Pass 2026-10-06: curated from PMC7654321.
+```
 
 ## 7. Open questions for a biologist
 
