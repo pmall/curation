@@ -11,6 +11,7 @@ dependencies = [
 [project.scripts]
 drakkar-taxonomy = "drakkar.taxonomy:main"
 drakkar-uniprot = "drakkar.uniprot:main"
+drakkar-check = "drakkar.check:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
