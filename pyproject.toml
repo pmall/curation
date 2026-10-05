@@ -3,12 +3,25 @@ name = "curation"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "lxml>=6.1.3",
     "psycopg[binary]>=3.3.6",
     "python-dotenv>=1.2.4",
 ]
 
+[project.scripts]
+drakkar-taxonomy = "drakkar.taxonomy:main"
+drakkar-uniprot = "drakkar.uniprot:main"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "drakkar"
+
 [dependency-groups]
 dev = [
+    "lxml-stubs>=0.5.1",
     "mdformat>=1.0.0",
     "mdformat-gfm>=1.0.0",
     "pyright>=1.1.414",

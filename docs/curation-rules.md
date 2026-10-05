@@ -18,7 +18,7 @@ Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Interactor   | **(UniProt accession, start, stop)**. Human: always the full protein. Viral: the full protein or a mature protein cleaved from a polyprotein. |
 | Description  | One interaction reported by one paper: human interactor × viral interactor × PSI-MI detection method, with optional mappings.                 |
-| Mapping      | The sequence of an interaction domain, as identified in the paper.                                                                            |
+| Mapping      | The sequence of an interaction domain, as close as possible to what the paper describes. It is the reference and is never adapted to UniProt. |
 | Generic name | The standard name of a viral interactor (e.g. `NS1`), independent of how UniProt or the paper names it.                                       |
 | Note         | Free text attached to a paper, justifying the decision. **Very important.**                                                                   |
 
@@ -61,14 +61,14 @@ Legacy: in past runs, `discarded` may have been decided on the abstract or on th
 
 ## 5. Conventions
 
-| ID  | Convention                                                                                                                                                                | Status    |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| C1  | A paper × method × human interactor × viral interactor is recorded **once**.                                                                                              | confirmed |
-| C2  | A viral interactor always has the same generic name. Reuse the existing name when the interactor is already known.                                                        | confirmed |
-| C3  | No reference strain: record the strain the paper describes. Viral interactors are *supposed* to be equivalent across strains, but nothing enforces it.                    | confirmed |
-| C4  | A new mapping must match **at least one isoform at 100 % identity**. Old mappings with tolerated mismatches (96–100 %) are left as they are.                              | confirmed |
-| C5  | Only proteins from the latest UniProt release in Drakkar are used.                                                                                                        | confirmed |
-| C6  | Past curators created one description per mapping when a paper showed several regions for the same pair (e.g. 21454588, HLA-A × viral epitopes), which conflicts with C1. | observed  |
+| ID  | Convention                                                                                                                                                                                                                                                                                       | Status    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| C1  | A paper × method × human interactor × viral interactor is recorded **once**.                                                                                                                                                                                                                     | confirmed |
+| C2  | A viral interactor always has the same generic name. Reuse the existing name when the interactor is already known.                                                                                                                                                                               | confirmed |
+| C3  | The interactor is the UniProt entry **closest** to the paper's protein: the exact strain when it exists (about 96 % of cases), otherwise the closest entry of the same virus, documented and justified in the note (`Strain` line, §6).                                                          | confirmed |
+| C4  | The mapping is aligned on the interactor and its isoforms, to verify it belongs to the protein, find all occurrences and get positions. It must reach **≥ 96 % identity** on at least one isoform; no match or a lower identity flags the description for deeper review instead of inserting it. | confirmed |
+| C5  | Only proteins from the latest UniProt release in Drakkar are used.                                                                                                                                                                                                                               | confirmed |
+| C6  | Past curators created one description per mapping when a paper showed several regions for the same pair (e.g. 21454588, HLA-A × viral epitopes), which conflicts with C1.                                                                                                                        | observed  |
 
 ## 6. Notes **[confirmed: free text, format chosen by Claude]**
 
@@ -103,7 +103,7 @@ Detail line formats:
 - `Full text: PMC open access (PMCID)`, `Full text: <source> (<license>, <URL>)` for another open access copy, or `Full text: closed — <why>` (not open access anywhere, or open access at <URL> but download blocked)
 - `Kept: <generic name> (<accession>[start-stop]) × <gene> (<accession>) — <method> (MI:xxxx), Fig. 2B[; <method>, Fig. 3A]`
 - `Not kept: <pair or claim> — <reason>`
-- `Strain: <strain> (<where in the paper>)`
+- `Strain: <strain> (<where in the paper>)`. When the paper's strain has no UniProt entry: `Strain: <strain> (<where>) → <accession> (<strain of the entry>), closest entry: <justification>` (e.g. identity of the protein or of the mappings, same genotype). Required for every interactor that is not the paper's exact strain.
 - `Mapping: <interactor> <start>–<stop> (<evidence>)`
 - `Revised: <stable IDs> — <reason>` (UniProt upgrade, invariant fix; only the latest revision)
 - `Remark: <anything a reviewer should know>` (for a curator file: how ambiguous rows were interpreted)
