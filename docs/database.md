@@ -16,7 +16,7 @@ Database: PostgreSQL 18, schema `public`. Drakkar is the curation database. Vinl
 | `proteins`             | One row per UniProt entry snapshot (see §3).                                                  |                                                      |
 | `proteins_versions`    | The set of **current** snapshots, with gene names and features.                               |                                                      |
 | `taxon`, `taxon_name`  | NCBI taxonomy (nested sets).                                                                  | Can lag behind UniProt.                              |
-| `dataset`              | Materialized view joining everything, for consultation only.                                  | Hides descriptions whose viral taxon is missing.     |
+| `dataset`              | Materialized view joining everything, for consultation only.                                  | Definition in `sql/dataset.sql`.                     |
 | `keywords`, `peptides` | UI highlighting / legacy artefact.                                                            | Ignored.                                             |
 
 `hh` data is frozen history and is out of scope for curation and invariants.
@@ -113,7 +113,7 @@ The GC candidates are 0.7 % of the table (2.6 GB). The bulk is the current but u
 - The 2021_02 upgrade was followed by bulk revisions (most version ≥ 2 rows were created between 2021-05-11 and 2021-06-02).
 - **2026-10-05 upgrade:** NCBI taxonomy of 2026-10-05, then UniProt 2026_03 (releases present: 2019_01, 2020_03, 2020_05, 2021_02, 2026_03). 230,069 new snapshots, 1,130,162 current entries. 14,607 live vh descriptions (1,580 papers) now reference obsolete snapshots and must be revised [confirmed: next step, before curation resumes].
 - **UniProt now keeps only Swiss-Prot and the TrEMBL entries of reference proteomes**: other TrEMBL entries are deleted ("not part of a reference proteome"; viral TrEMBL went from 4.9 M to 1.1 M entries). 507 viral accessions used by live vh descriptions were deleted. About half have an identical sequence in a current entry of the same virus; the others need a check against the paper. Rules C3 and C4 (`curation-rules.md`) cover the choice of the closest entry and the mapping identity (≥ 96 %).
-- The `dataset` view hard-codes the *Homo sapiens* nested-set values (4480672, 4480677), which the taxonomy update changed: those two columns are stale until the view is redefined.
+- The `dataset` view was redefined on 2026-10-05 (`sql/dataset.sql`): same columns, taxa read from the taxonomy for both proteins (it hard-coded the *Homo sapiens* nested-set values), no description hidden by a missing taxon, and indexes (unique on `description_id`, so `REFRESH MATERIALIZED VIEW CONCURRENTLY dataset` works).
 
 ## 4. Invariants (draft, to agree on)
 
