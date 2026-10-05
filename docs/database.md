@@ -19,7 +19,7 @@ Database: PostgreSQL 18, schema `public`. Drakkar is the curation database. Vinl
 | `dataset`              | Materialized view joining everything, for consultation only.                                  | Definition in `sql/dataset.sql`.                     |
 | `keywords`, `peptides` | UI highlighting / legacy artefact.                                                            | Ignored.                                             |
 
-`hh` data is frozen history and is out of scope for curation and invariants.
+`hh`: no new curation, but existing hh descriptions are checked and corrected like vh ones (UniProt upgrades, invariants).
 
 ### Runs and full-text access [confirmed]
 
@@ -119,59 +119,37 @@ The GC candidates are 0.7 % of the table (2.6 GB). The bulk is the current but u
 - **UniProt now keeps only Swiss-Prot and the TrEMBL entries of reference proteomes**: other TrEMBL entries are deleted ("not part of a reference proteome"; viral TrEMBL went from 4.9 M to 1.1 M entries). 507 viral accessions used by live vh descriptions were deleted. About half have an identical sequence in a current entry of the same virus; the others need a check against the paper. Rules C3 and C4 (`curation-rules.md`) cover the choice of the closest entry and the mapping identity (≥ 96 %).
 - The `dataset` view was redefined on 2026-10-05 (`sql/dataset.sql`): same columns, taxa read from the taxonomy for both proteins (it hard-coded the *Homo sapiens* nested-set values), no description hidden by a missing taxon, and indexes (unique on `description_id`, so `REFRESH MATERIALIZED VIEW CONCURRENTLY dataset` works).
 
-## 4. Invariants (draft, to agree on)
+## 4. Invariants
 
-Scope: `vh` runs only. "Live" = `deleted_at IS NULL`. Severity: **error** = must never happen; **warning** = needs a look.
+Checked by `uv run drakkar-check <report dir>` (report: `check.md` and one TSV per violated invariant). Scope: **vh and hh** [confirmed: hh descriptions are corrected too]. "Live" = `deleted_at IS NULL`. Severity: **error** = must never happen; **warning** = needs a look. The method chosen by the curator is not checked (D8 dropped [confirmed]).
 
-Current counts were measured on 2026-10-02.
+Counts measured on 2026-10-05, after the UniProt 2026_03 upgrade (vh / hh):
 
-### Referential integrity
+| ID  | Invariant                                                                                               | Severity             |        vh |     hh |
+| --- | ------------------------------------------------------------------------------------------------------- | -------------------- | --------: | -----: |
+| R3  | Every protein of a live description has a row in `taxon`.                                               | error                |         1 |      0 |
+| V2  | Versions of a stable ID are contiguous from 1.                                                          | error                |         0 |      0 |
+| V3  | At most one live row per stable ID, and it is the highest version.                                      | error                |         0 |      0 |
+| V4  | Each non-last version is deleted, no later than the next version's creation.                            | error                |         0 |      0 |
+| V5  | `deleted_at` is not before `created_at`.                                                                | error                |         0 |      0 |
+| V6  | All versions of a stable ID belong to the same paper.                                                   | error                |         0 |      0 |
+| V7  | Stable ID format: `EY` or `CW` + 8 uppercase hexadecimal characters; legacy hh bulk import: `EYUW` + 6. | error                |         0 |      0 |
+| D1  | Protein 1 is human; protein 2 is viral in vh, human in hh.                                              | error                |         0 |      0 |
+| D2  | Both proteins are current snapshots (latest UniProt release).                                           | error                |    14,988 | 39,245 |
+| D3  | 1 ≤ start ≤ stop ≤ canonical length.                                                                    | error                |       123 |    294 |
+| D4  | Human interactors are the full protein.                                                                 | error                |       264 |    356 |
+| D5  | One live description per (paper, method, interactor 1, interactor 2).                                   | error                | 70 groups |      0 |
+| D6  | One non-empty generic name per viral interactor.                                                        | error                |         0 |      — |
+| D7  | Human names (`name1`, and `name2` in hh) are the gene name of their snapshot.                           | warning              |     1,120 |      3 |
+| D9  | Each mapping has an occurrence at ≥ 96 % identity matching the sequence (C4).                           | error                |        53 |      0 |
+| S1  | A paper with a live description is `curated`.                                                           | error                |  7 papers |      0 |
+| S3  | A paper Claude decides on has a note.                                                                   | error, new data only |         — |      — |
+| S5  | Run names are unique.                                                                                   | error                |         0 |      — |
+| S6  | A Claude note starts with the template header, and its state matches `associations.state`.              | error, new data only |         — |      — |
+| S7  | A paper with a non-null `ai_pass_at` is `selected` or `curated`, and has a Claude note.                 | error, new data only |         — |      — |
+| S8  | The date of the last `Pass` line of a Claude note equals `ai_pass_at`.                                  | error, new data only |         — |      — |
 
-| ID  | Invariant                                                                  | Severity | Current             |
-| --- | -------------------------------------------------------------------------- | -------- | ------------------- |
-| R1  | Every description references an existing association, method and proteins. | error    | 0 (FKs planned, §5) |
-| R2  | Every association references an existing run and publication.              | error    | 0 (FKs exist)       |
-| R3  | Every protein used by a description has a row in `taxon`.                  | error    | 1 (G8EFI1)          |
-| R4  | Every `proteins_versions` row references an existing `proteins` snapshot.  | error    | 0 (FK planned, §5)  |
-
-### Versioning
-
-| ID  | Invariant                                                                              | Severity | Current               |
-| --- | -------------------------------------------------------------------------------------- | -------- | --------------------- |
-| V1  | (stable_id, version) is unique.                                                        | error    | 0 (unique constraint) |
-| V2  | Versions of a stable ID are contiguous from 1.                                         | error    | 0                     |
-| V3  | At most one live row per stable ID, and it is the highest version.                     | error    | 0                     |
-| V4  | Each non-last version is deleted, with `deleted_at` ≤ the next version's `created_at`. | error    | 0                     |
-| V5  | `deleted_at` ≥ `created_at`.                                                           | error    | 0                     |
-| V6  | All versions of a stable ID belong to the same association (paper).                    | error    | 0                     |
-| V7  | Stable ID format: `^(EY\|CW)[0-9A-F]{8}$`.                                             | error    | 0                     |
-
-### Description content (live rows)
-
-| ID  | Invariant                                                                                                                     | Severity | Current                                                                   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------- |
-| D1  | Protein 1 is human (`type = 'h'`), protein 2 is viral (`type = 'v'`).                                                         | error    | 0                                                                         |
-| D2  | Both proteins are current snapshots (present in `proteins_versions`).                                                         | error    | 1 (G8EFI1)                                                                |
-| D3  | 1 ≤ start ≤ stop ≤ canonical length, for both interactors.                                                                    | error    | 0 for vh                                                                  |
-| D4  | Human interactor is full length (start = 1, stop = canonical length).                                                         | error    | 264                                                                       |
-| D5  | No two live descriptions share (paper, method, interactor 1, interactor 2), with interactor = (accession, start, stop).       | error    | 70 groups / 216 rows                                                      |
-| D6  | One generic name (`name2`) per viral interactor, non-empty.                                                                   | error    | 0                                                                         |
-| D7  | `name1` equals the human protein's current gene name.                                                                         | warning  | to measure on vh                                                          |
-| D8  | The method belongs to the PSI-MI interaction detection branch (MI:0001).                                                      | error    | needs the PSI-MI ontology (no hierarchy in `methods`)                     |
-| D9  | Each mapping has at least one occurrence at ≥ 96 % identity, within [start, stop] of its interactor (`curation-rules.md` C4). | error    | 16 vh mappings with no occurrence (on 2026-10-05, before the UniProt fix) |
-
-### Curation state
-
-| ID  | Invariant                                                                                  | Severity                | Current                                    |
-| --- | ------------------------------------------------------------------------------------------ | ----------------------- | ------------------------------------------ |
-| S1  | A paper with ≥ 1 live description is `curated`.                                            | error                   | 25 rows on `selected` / `discarded` papers |
-| S2  | *Dropped*: a `curated` paper may have zero descriptions (full text read, nothing found).   | —                       | pmid 37097169 is valid                     |
-| S3  | A paper Claude decides on (`curated` or `discarded`) has a note.                           | error for new data only | legacy: most notes are empty               |
-| S4  | Associations of `vh` runs only contain `vh` descriptions (protein types per D1).           | error                   | 0                                          |
-| S5  | Run names are unique.                                                                      | error                   | 0                                          |
-| S6  | A Claude note starts with the template header, and its state matches `associations.state`. | error for new data only | 0                                          |
-| S7  | A paper with a non-null `ai_pass_at` is `selected` or `curated`, and has a Claude note.    | error for new data only | 0                                          |
-| S8  | The date of the last `Pass` line of a Claude note equals `ai_pass_at`.                     | error for new data only | 0                                          |
+S3, S6–S8 apply to Claude's work and are not implemented yet. R1, R2, R4 and V1 are enforced by foreign keys and unique constraints.
 
 ### Data scope for "new data only"
 
