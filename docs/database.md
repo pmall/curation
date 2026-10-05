@@ -59,7 +59,21 @@ Papers reach PMC with a lag: 75–84 % of the papers of runs 70–79 (2022–202
 - A snapshot **absent** from `proteins_versions` is **obsolete**.
 - `proteins` is **append-only**: it accumulates snapshots over the upgrades. `proteins_versions` is the pointer to "what is current".
 
-### Upgrade process (legacy Perl)
+### Upgrade process
+
+Python port of the legacy Perl tools (`drakkar-taxonomy`, `drakkar-uniprot`), in `src/drakkar/`:
+
+```
+uv run drakkar-taxonomy <taxdump dir> [--dry-run]           # 1. NCBI taxonomy first
+uv run drakkar-uniprot parse <release dir>                   # 2. UniProt XML → TSV (cached)
+uv run drakkar-uniprot upgrade <release> <release dir> [--dry-run]
+```
+
+Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` (all viral TrEMBL) and `uniprot_sprot_varsplic.fasta.gz` (isoforms). Each tool runs in one transaction; `--dry-run` rolls back. The upgrade writes `report.md` and `obsolete_vh_descriptions.tsv` (the descriptions to revise) in the release directory.
+
+Differences with the Perl tools: entries whose taxon is missing from `taxon` are imported and reported instead of skipped (the type comes from the file); retired taxa keep their names; taxon names are written as a diff.
+
+The matching logic (same as the Perl import):
 
 1. Stage the new release: FASTA (canonical + isoforms) and XML (gene names, features) into `uniprot_entries` / `uniprot_metadata`. These staging tables no longer exist.
 1. For each root taxon (human 9606, then viruses), take the staged entries whose taxon is under it.
@@ -95,11 +109,11 @@ The GC candidates are 0.7 % of the table (2.6 GB). The bulk is the current but u
 
 ### Consequences
 
-- The import inner-joins `taxon`: an entry whose taxon is missing from `taxon` is **silently skipped**. The taxonomy must be refreshed before or with UniProt.
 - **A UniProt upgrade includes the taxonomy** \[confirmed\]: load the latest NCBI `taxdump` first, then UniProt. Some inconsistencies remain, usually for obscure taxa: resolve merged taxa with `merged.dmp`, and report (do not skip) the remaining ones.
 - The 2021_02 upgrade was followed by bulk revisions (most version ≥ 2 rows were created between 2021-05-11 and 2021-06-02).
-- Current state: latest release 2021_02. Releases present: 2019_01, 2020_03 (human only), 2020_05, 2021_02. One live vh description references an obsolete snapshot (EY05645BC3 → G8EFI1, taxon 1559366 missing from `taxon`). 2,742 proteins have no `taxon` row.
-- Next step \[confirmed\]: upgrade UniProt (Python rewrite reading the UniProt FTP files; the unfinished `proteins_v2_xml` script started this), then fix **all** invariant violations before curation resumes.
+- **2026-10-05 upgrade:** NCBI taxonomy of 2026-10-05, then UniProt 2026_03 (releases present: 2019_01, 2020_03, 2020_05, 2021_02, 2026_03). 230,069 new snapshots, 1,130,162 current entries. 14,607 live vh descriptions (1,580 papers) now reference obsolete snapshots and must be revised [confirmed: next step, before curation resumes].
+- **UniProt now keeps only Swiss-Prot and the TrEMBL entries of reference proteomes**: other TrEMBL entries are deleted ("not part of a reference proteome"; viral TrEMBL went from 4.9 M to 1.1 M entries). 507 viral accessions used by live vh descriptions were deleted. About half have an identical sequence in a current entry of the same virus; the others need a check against the paper. Rules C3 and C4 (`curation-rules.md`) cover the choice of the closest entry and the mapping identity (≥ 96 %).
+- The `dataset` view hard-codes the *Homo sapiens* nested-set values (4480672, 4480677), which the taxonomy update changed: those two columns are stale until the view is redefined.
 
 ## 4. Invariants (draft, to agree on)
 
@@ -130,17 +144,17 @@ Current counts were measured on 2026-10-02.
 
 ### Description content (live rows)
 
-| ID  | Invariant                                                                                                               | Severity                | Current                                               |
-| --- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------- |
-| D1  | Protein 1 is human (`type = 'h'`), protein 2 is viral (`type = 'v'`).                                                   | error                   | 0                                                     |
-| D2  | Both proteins are current snapshots (present in `proteins_versions`).                                                   | error                   | 1 (G8EFI1)                                            |
-| D3  | 1 ≤ start ≤ stop ≤ canonical length, for both interactors.                                                              | error                   | 0 for vh                                              |
-| D4  | Human interactor is full length (start = 1, stop = canonical length).                                                   | error                   | 264                                                   |
-| D5  | No two live descriptions share (paper, method, interactor 1, interactor 2), with interactor = (accession, start, stop). | error                   | 70 groups / 216 rows                                  |
-| D6  | One generic name (`name2`) per viral interactor, non-empty.                                                             | error                   | 0                                                     |
-| D7  | `name1` equals the human protein's current gene name.                                                                   | warning                 | to measure on vh                                      |
-| D8  | The method belongs to the PSI-MI interaction detection branch (MI:0001).                                                | error                   | needs the PSI-MI ontology (no hierarchy in `methods`) |
-| D9  | Each mapping has at least one 100 % occurrence and lies within [start, stop] of its interactor.                         | error for new data only | 2,496 old mappings below 100 % (not flagged)          |
+| ID  | Invariant                                                                                                                     | Severity | Current                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------- |
+| D1  | Protein 1 is human (`type = 'h'`), protein 2 is viral (`type = 'v'`).                                                         | error    | 0                                                                         |
+| D2  | Both proteins are current snapshots (present in `proteins_versions`).                                                         | error    | 1 (G8EFI1)                                                                |
+| D3  | 1 ≤ start ≤ stop ≤ canonical length, for both interactors.                                                                    | error    | 0 for vh                                                                  |
+| D4  | Human interactor is full length (start = 1, stop = canonical length).                                                         | error    | 264                                                                       |
+| D5  | No two live descriptions share (paper, method, interactor 1, interactor 2), with interactor = (accession, start, stop).       | error    | 70 groups / 216 rows                                                      |
+| D6  | One generic name (`name2`) per viral interactor, non-empty.                                                                   | error    | 0                                                                         |
+| D7  | `name1` equals the human protein's current gene name.                                                                         | warning  | to measure on vh                                                          |
+| D8  | The method belongs to the PSI-MI interaction detection branch (MI:0001).                                                      | error    | needs the PSI-MI ontology (no hierarchy in `methods`)                     |
+| D9  | Each mapping has at least one occurrence at ≥ 96 % identity, within [start, stop] of its interactor (`curation-rules.md` C4). | error    | 16 vh mappings with no occurrence (on 2026-10-05, before the UniProt fix) |
 
 ### Curation state
 
