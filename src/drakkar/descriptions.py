@@ -4,14 +4,17 @@ Guard functions for the regular curation route (`docs/database.md` §2), not a s
 database corrections, which go outside this route:
 
 - `add_description`: a new interaction on a publication, with a new `CW` stable ID, version 1.
-- `revise_description`: a new version of an existing stable ID (the publication never changes).
+- `revise_description`: a new version of an existing stable ID that fixes it (the publication
+  never changes). It keeps the protein snapshots of the description, even obsolete ones.
+- `update_snapshots`: a new version of an existing stable ID that only moves it to the current
+  protein snapshots (UniProt upgrade job, never mixed with fixes).
 - `mark_curated`: end of a curation pass, the publication `curated` with its note.
 - `curate_publication`: a curation pass, all the descriptions found at once, then
   `mark_curated`.
 
 They take each interaction as an `Interaction` (accessions, coordinates, names, mapping
 sequences). Everything the invariants derive is computed here, never passed by the caller:
-current snapshots (D2), human names (D7), human coordinates (D4), mapping occurrences (D9). The
+snapshots, human names (D7), human coordinates (D4), mapping occurrences (D9). The
 remaining invariants are checked against the database before writing, and any violation raises
 `InvalidDescription` with every problem found. Nothing is committed: the caller owns the
 transaction and commits or rolls back (dry run).
@@ -25,7 +28,7 @@ import json
 import re
 import secrets
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, cast
 
 from Bio import Align
@@ -124,17 +127,30 @@ def map_sequence(sequence: str, snapshot: Snapshot, start: int, stop: int) -> di
     return {"sequence": sequence, "isoforms": isoforms}
 
 
-def _snapshot(cur: Any, accession: str) -> Snapshot | None:
-    """The current snapshot of an accession (C5), or None; raise if the data is inconsistent."""
-    cur.execute(
-        """
-        SELECT p.id, p.accession, p.type, p.name, p.ncbi_taxon_id, p.sequences::text
-        FROM proteins AS p
-        JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
-        WHERE p.accession = %s
-        """,
-        (accession,),
-    )
+def _snapshot(cur: Any, accession: str, snapshot_id: int | None = None) -> Snapshot | None:
+    """A snapshot of an accession, or None; raise if the data is inconsistent.
+
+    The current one (C5), or the given `snapshot_id`, which may be obsolete (fixes keep the
+    snapshots of the description).
+    """
+    if snapshot_id is None:
+        cur.execute(
+            """
+            SELECT p.id, p.accession, p.type, p.name, p.ncbi_taxon_id, p.sequences::text
+            FROM proteins AS p
+            JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
+            WHERE p.accession = %s
+            """,
+            (accession,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT id, accession, type, name, ncbi_taxon_id, sequences::text
+            FROM proteins WHERE id = %s AND accession = %s
+            """,
+            (snapshot_id, accession),
+        )
     rows = cur.fetchall()
     if not rows:
         return None
@@ -160,11 +176,18 @@ def _snapshot(cur: Any, accession: str) -> Snapshot | None:
 
 
 def _build(
-    cur: Any, association_id: int, run_type: str, item: Interaction, stable_id: str | None
+    cur: Any,
+    association_id: int,
+    run_type: str,
+    item: Interaction,
+    stable_id: str | None,
+    kept: tuple[tuple[str, int], tuple[str, int]] | None = None,
 ) -> dict[str, Any]:
     """The row to write for an interaction; raise `InvalidDescription` on any violation.
 
     `stable_id` is the description being revised (excluded from the D5 and D6 comparisons).
+    `kept` is its (accession, snapshot ID) on each side: a side that keeps its accession keeps
+    that snapshot, even obsolete; otherwise a side uses the current snapshot of its accession.
     """
     problems: list[str] = []
     cur.execute("SELECT id FROM methods WHERE psimi_id = %s", (item.method,))
@@ -175,8 +198,12 @@ def _build(
     elif len(methods) > 1:
         problems.append(f"method {item.method} has {len(methods)} rows in `methods`")
 
-    p1 = _snapshot(cur, item.accession1)
-    p2 = _snapshot(cur, item.accession2)
+    pinned = [
+        kept[side][1] if kept and kept[side][0] == accession else None
+        for side, accession in enumerate((item.accession1, item.accession2))
+    ]
+    p1 = _snapshot(cur, item.accession1, pinned[0])
+    p2 = _snapshot(cur, item.accession2, pinned[1])
     expected2 = "v" if run_type == "vh" else "h"
     for side, accession, snapshot, expected in (
         (1, item.accession1, p1, "h"),
@@ -572,8 +599,8 @@ def curate_publication(
 def current(cur: Any, stable_id: str) -> Interaction:
     """Interaction of the live version of a stable ID, to derive a revision.
 
-    Accessions are those of the snapshots it uses, which may be obsolete: the revision moves to
-    the current snapshot of the same accession, unless the caller changes the accession.
+    Accessions are those of the snapshots it uses, which may be obsolete: `revise_description`
+    keeps those snapshots, unless the caller changes the accession.
     """
     live_id = _live_row(cur, stable_id, lock=False)[0]
     cur.execute(
@@ -628,19 +655,29 @@ def _live_row(cur: Any, stable_id: str, lock: bool) -> tuple[Any, ...]:
     return live[0]
 
 
-def revise_description(cur: Any, stable_id: str, item: Interaction) -> int:
-    """Replace the live version of a stable ID by a new version; return the new version number.
+# Accessions and snapshot IDs of a description row, and its viral coordinates.
+PROTEINS = """
+    SELECT p1.accession, p1.id, p2.accession, p2.id, d.start2, d.stop2
+    FROM descriptions AS d
+    JOIN proteins AS p1 ON p1.id = d.protein1_id
+    JOIN proteins AS p2 ON p2.id = d.protein2_id
+    WHERE d.id = %s
+"""
 
-    The publication stays the same (V6). The live row is deleted and the new row created at the same
-    instant (V4, V5). A revision identical to the live row is refused: no throwaway version.
-    """
-    live_id, _, version, association_id, _, _ = _live_row(cur, stable_id, lock=True)
-    cur.execute(ASSOCIATION + "WHERE a.id = %s", (association_id,))
-    association = _one_association(cur.fetchall(), f"association {association_id}")
+
+def _revisable(cur: Any, stable_id: str) -> tuple[tuple[Any, ...], _Association]:
+    """The live row of a stable ID, locked, and its publication, which must accept revisions."""
+    live = _live_row(cur, stable_id, lock=True)
+    cur.execute(ASSOCIATION + "WHERE a.id = %s", (live[3],))
+    association = _one_association(cur.fetchall(), f"association {live[3]}")
     if problems := _state_problems(association):
         raise InvalidDescription(problems)
-    row = _build(cur, association.id, association.run_type, item, stable_id)
+    return live, association
 
+
+def _replace(cur: Any, stable_id: str, live: tuple[Any, ...], row: dict[str, Any]) -> int:
+    """Write `row` as the next version of a stable ID; refuse it if it changes nothing."""
+    live_id, _, version = live[:3]
     columns = list(row)
     cur.execute(
         f"SELECT {', '.join(columns)} FROM descriptions WHERE id = %s",
@@ -656,3 +693,71 @@ def revise_description(cur: Any, stable_id: str, item: Interaction) -> int:
     cur.execute("UPDATE descriptions SET deleted_at = now() WHERE id = %s", (live_id,))
     _insert(cur, stable_id, version + 1, row)
     return version + 1
+
+
+def revise_description(cur: Any, stable_id: str, item: Interaction) -> int:
+    """Fix the live version of a stable ID by a new version; return the new version number.
+
+    A fix never moves to another snapshot: a side that keeps its accession keeps the snapshot
+    of the live row, even obsolete, and its derived values (human name and coordinates, mapping
+    occurrences) are computed on it. A side whose accession changes takes the current snapshot of
+    the new accession. Moving to current snapshots is `update_snapshots` alone.
+
+    The publication stays the same (V6). The live row is deleted and the new row created at the same
+    instant (V4, V5). A revision identical to the live row is refused: no throwaway version.
+    """
+    live, association = _revisable(cur, stable_id)
+    cur.execute(PROTEINS, (live[0],))
+    accession1, id1, accession2, id2, _, _ = cur.fetchone()
+    kept = ((accession1, id1), (accession2, id2))
+    row = _build(cur, association.id, association.run_type, item, stable_id, kept)
+    return _replace(cur, stable_id, live, row)
+
+
+def update_snapshots(cur: Any, stable_id: str) -> int:
+    """Move the live version of a stable ID to the current snapshots; return the new version.
+
+    The UniProt upgrade job, and nothing else: same method, accessions, viral coordinates and
+    generic name, same mapping sequences. Only what derives from the snapshots follows: human
+    names and full-length coordinates, mapping occurrences. Refused, with every problem found,
+    when the description is already current, when an accession has no current snapshot (deleted
+    from UniProt: another entry is a curation decision), when the sequence of a viral interactor
+    changed between its coordinates (a curation decision), or when the result breaks an
+    invariant (e.g. a mapping no longer found, D9).
+    """
+    live, association = _revisable(cur, stable_id)
+    cur.execute(PROTEINS, (live[0],))
+    accession1, id1, accession2, id2, start2, stop2 = cur.fetchone()
+    problems: list[str] = []
+    moved = False
+    for side, accession, old_id in ((1, accession1, id1), (2, accession2, id2)):
+        snapshot = _snapshot(cur, accession)
+        if snapshot is None:
+            problems.append(
+                f"protein {side}: {accession} has no current snapshot: choosing another entry "
+                "is a curation decision"
+            )
+            continue
+        if snapshot.id == old_id:
+            continue
+        moved = True
+        if side == 2 and association.run_type == "vh":
+            old = _snapshot(cur, accession, old_id)
+            assert old is not None  # foreign key
+            before = old.sequences[accession][start2 - 1 : stop2]
+            after = snapshot.sequences[accession][start2 - 1 : stop2]
+            if before != after:
+                problems.append(
+                    f"protein 2: the sequence of {accession}[{start2}-{stop2}] changed: "
+                    "new coordinates are a curation decision"
+                )
+    if not problems and not moved:
+        problems.append(f"{stable_id} is already on the current snapshots")
+    if problems:
+        raise InvalidDescription(problems)
+
+    item = current(cur, stable_id)
+    if association.run_type == "hh":  # human interactor 2: full length, derived
+        item = replace(item, start2=None, stop2=None)
+    row = _build(cur, association.id, association.run_type, item, stable_id)
+    return _replace(cur, stable_id, live, row)
