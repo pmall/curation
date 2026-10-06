@@ -242,10 +242,11 @@ SQL_INVARIANTS = [
     Invariant(
         "S1",
         "error",
-        "A paper with a live description is `curated`.",
+        "A publication with a live description is `selected` (curation in progress) or `curated`.",
         """
         SELECT run_type, pmid, run, state, count(*) AS descriptions FROM live
-        WHERE state <> 'curated' GROUP BY run_type, pmid, run, state ORDER BY pmid
+        WHERE state NOT IN ('selected', 'curated') GROUP BY run_type, pmid, run, state
+        ORDER BY pmid
         """,
     ),
     Invariant(
