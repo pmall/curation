@@ -11,4 +11,4 @@
 
 ## Documentation
 
-- Project knowledge lives in `docs/`: `curation-rules.md` (biological curation rules), `database.md` (structure, versioning, invariants).
+- Project knowledge lives in `docs/`: `glossary.md` (the meaning of every term, to use everywhere), `curation-rules.md` (biological curation rules), `database.md` (structure, versioning, invariants).
