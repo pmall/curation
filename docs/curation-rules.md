@@ -60,7 +60,7 @@ Legacy: in past runs, `discarded` may have been decided on the abstract or on th
 1. **Tagged proteins** (GFP, FLAG, HA, GST fusions…) are curated as the wild-type protein: only the protein sequence is kept, never the tag. **[confirmed]**
 1. **Fragments** (truncated constructs used to locate the binding region) are accepted: the interactor is the protein, the fragment is recorded as a mapping. **[confirmed]**
 1. High-throughput papers: assess the rawest data available (e.g. ORF sequences) by alignment to assign the right accession. **Scoring thresholds are the authors' own** (their high-confidence list or cut-off). **[confirmed]**
-1. **HLA presentation of viral epitopes is not a PPI**: not curated. Existing HLA descriptions (241 live vh, 77 papers) are reviewed during the fix; true epitope presentations are deleted, with a note. **[confirmed]**
+1. **No HLA proteins**: a description involving an HLA protein (any `HLA-` gene, vh or hh) is not curated. The existing ones (241 vh, 835 hh) were removed on 2026-10-06 (`02-data-fixes.md` point 7). **[confirmed 2026-10-06, by the biologists]**
 1. Viral strain: when the paper gives none, the choice is arbitrary: prefer a **Swiss-Prot** entry; if still undecided, the entry most used in Drakkar for the same virus and generic name. **[confirmed]**
 1. **Swiss-Prot over TrEMBL** whenever both fit. **[confirmed]**
 1. Existing notes are not a source of rules: they can be outdated or wrong. Only the criteria written here apply. **[confirmed]**
