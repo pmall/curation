@@ -9,7 +9,7 @@ Workflow \[confirmed 2026-10-06\]:
 - A problem is defined by its fix (what we change), not by how it is detected.
 - Problems are fixed in the order of this list, because some fixes depend on others. Viral names and coordinates concern a viral protein as a whole, across all its descriptions: they are decisions (which name, which coordinates are right; UniProt chains are the source of truth for a mature protein). They come before duplicates, because putting a viral interactor on its right coordinates can turn two descriptions into one. Mappings come last, because their occurrences are computed on the interactor's snapshot and coordinates.
 - Points 1 to 9 fix only the descriptions that need that single fix. A description that needs several fixes is set aside in point 10, fixed last, in a single revision that merges all its corrections.
-- The description list, with its point, is `data/2021_02/reports/fix-list-2026-10-06.tsv`.
+- The description list, with its point, is `data/2021_02/reports/fix-list-2026-10-06.tsv`, built by `uv run drakkar-fix-list <check report dir> <output TSV>` (`src/drakkar/fix_list.py`). Rebuild it after each fix, from a new check report.
 
 Source: `uv run drakkar-check` on 2026-10-06, read-only. The full rows are in `data/2021_02/reports/check-2026-10-06/` (`check.md`, plus one TSV per invariant, named after the invariant ID in brackets below).
 

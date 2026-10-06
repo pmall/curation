@@ -159,6 +159,12 @@ Counts measured by `drakkar-check` on 2026-10-06, on UniProt 2021_02, before any
 
 S3, S6–S8 apply to Claude's work and are not implemented yet. One invariant per fix: D3 and D4 are separate fixes (viral: the coordinates of the mature protein; human: 1 to the length), and a description violating both is fixed in a single revision. R1, R2, R4 and V1 are enforced by foreign keys and unique constraints.
 
+### Integration checks (planned)
+
+Not invariants: no rule is broken, but a big disparity is worth a look [confirmed 2026-10-06]. Not implemented yet.
+
+- **I1, mature protein length across accessions:** mature proteins are scoped by accession (D6, D10), but the same mature protein (same virus, same generic name) is supposed to have about the same length on every accession. A big length disparity between accessions is reported for review. To decide when implementing: the virus level used to group accessions (e.g. the species in the taxonomy) and the size of a "big" disparity.
+
 ### Data scope for "new data only"
 
 Rules marked "new data only" apply to descriptions with the Claude prefix (`CW`) and to associations whose note has a Claude entry (`[YYYY-MM-DD Claude] ACTION:`, template in `curation-rules.md` §6).
