@@ -302,7 +302,7 @@ def _number(value: Any, strict: bool = True) -> float | None:
     return None
 
 
-def _structure(mappings: Any, strict: bool = True) -> list[str]:
+def mapping_structure(mappings: Any, strict: bool = True) -> list[str]:
     """Structure and type problems of a mapping column (D11), without looking at the content.
 
     The structure is a list of objects `{"sequence": string, "isoforms": [{"accession": string,
@@ -394,7 +394,7 @@ def check_d9(cur: Any) -> Rows:
     for row in cur.fetchall():
         run_type, stable_id, pmid, side, type_, accession, start, stop, text, sequences = row
         mappings: Any = json.loads(text or "null")
-        if _structure(mappings, strict=False):
+        if mapping_structure(mappings, strict=False):
             continue
         isoforms: dict[str, str] = json.loads(sequences)
         seen: set[str] = set()
@@ -437,16 +437,47 @@ def check_d9(cur: Any) -> Rows:
 def check_d11(cur: Any) -> Rows:
     """Mapping structure: the shape and the types of the JSON, not its content.
 
-    Numbers stored as text are a structure problem, fixed in place without a revision
-    (`docs/database.md` §2). One row per description side.
+    Every version is checked, live or deleted: a structure problem is fixed in place, without a
+    revision, in all the rows that have it (`docs/database.md` §2). One row per version side.
     """
-    cur.execute(MAPPING_SIDES)
+    cur.execute("""
+        SELECT r.type, d.stable_id, d.version, d.deleted_at IS NULL, a.pmid, x.side, p.type,
+               p.accession, x.mapping::text
+        FROM descriptions AS d
+        JOIN associations AS a ON a.id = d.association_id
+        JOIN runs AS r ON r.id = a.run_id
+        CROSS JOIN LATERAL (VALUES (1, d.mapping1, d.protein1_id), (2, d.mapping2, d.protein2_id))
+            AS x (side, mapping, protein_id)
+        JOIN proteins AS p ON p.id = x.protein_id
+    """)
     rows: list[tuple[Any, ...]] = []
-    for run_type, stable_id, pmid, side, type_, accession, _, _, text, _ in cur.fetchall():
-        if problems := _structure(json.loads(text or "null")):
-            row = (run_type, stable_id, pmid, side, _protein(type_), accession, "; ".join(problems))
-            rows.append(row)
-    return ["run_type", "stable_id", "pmid", "side", "protein", "accession", "problem"], rows
+    for run_type, stable_id, version, live, pmid, side, type_, accession, text in cur.fetchall():
+        if problems := mapping_structure(json.loads(text or "null")):
+            rows.append(
+                (
+                    run_type,
+                    stable_id,
+                    version,
+                    "yes" if live else "no",
+                    pmid,
+                    side,
+                    _protein(type_),
+                    accession,
+                    "; ".join(problems),
+                )
+            )
+    header = [
+        "run_type",
+        "stable_id",
+        "version",
+        "live",
+        "pmid",
+        "side",
+        "protein",
+        "accession",
+        "problem",
+    ]
+    return header, rows
 
 
 def run(output: Path) -> int:
@@ -464,8 +495,8 @@ def run(output: Path) -> int:
         Invariant(
             "D11",
             "error",
-            "Mapping structure: a list of objects with the expected fields and JSON types "
-            "(numbers as text are fixed in place).",
+            "Mapping structure, every version: a list of objects with the expected fields "
+            "and JSON types (numbers as text are fixed in place).",
             check_d11,
         ),
     ]
