@@ -3,6 +3,7 @@ name = "curation"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "biopython>=1.88",
     "lxml>=6.1.3",
     "psycopg[binary]>=3.3.6",
     "python-dotenv>=1.2.4",
