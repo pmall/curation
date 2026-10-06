@@ -55,7 +55,7 @@ VERSIONS = """
 @dataclass
 class Invariant:
     id: str
-    severity: str  # "error" or "warning"
+    severity: str  # "error", "warning" or "upgrade" (obsolete snapshot: the upgrade job, not a fix)
     title: str
     check: LiteralString | Callable[[Any], Rows]
 
@@ -156,7 +156,7 @@ SQL_INVARIANTS = [
     ),
     Invariant(
         "D2",
-        "error",
+        "upgrade",
         "Both proteins are current snapshots (latest UniProt release).",
         """
         SELECT run_type, stable_id, pmid, side, accession FROM (
