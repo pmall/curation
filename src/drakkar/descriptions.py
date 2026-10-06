@@ -228,13 +228,15 @@ def _build(
 
     start2 = 1 if item.start2 is None else item.start2
     stop2 = p2.length if item.stop2 is None else item.stop2
-    if not 1 <= start2 <= stop2 <= p2.length:  # D3
-        problems.append(f"protein 2: {start2}-{stop2} is outside 1-{p2.length} (D3)")
     if run_type == "hh":
         if (start2, stop2) != (1, p2.length):  # D4
-            problems.append("protein 2: human interactors are the full protein (D4)")
+            problems.append(
+                f"protein 2: {start2}-{stop2}, but a human interactor is 1-{p2.length} (D4)"
+            )
         name2 = p2.gene
     else:
+        if not 1 <= start2 <= stop2 <= p2.length:  # D3
+            problems.append(f"protein 2: {start2}-{stop2} is outside 1-{p2.length} (D3)")
         name2 = item.name2.strip()
         if not name2:
             problems.append("protein 2: the generic name is empty (D6)")

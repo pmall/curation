@@ -8,13 +8,14 @@ The exit code is 1 if any error is found.
 import argparse
 import csv
 import json
+import re
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, LiteralString
+from typing import Any, LiteralString, cast
 
 from drakkar.db import connect
 
@@ -127,7 +128,7 @@ SQL_INVARIANTS = [
     Invariant(
         "V6",
         "error",
-        "All versions of a stable ID belong to the same paper.",
+        "All versions of a stable ID belong to the same publication.",
         """
         SELECT min(run_type) AS run_type, stable_id,
                count(DISTINCT association_id) AS associations FROM versions
@@ -170,15 +171,11 @@ SQL_INVARIANTS = [
     Invariant(
         "D3",
         "error",
-        "1 ≤ start ≤ stop ≤ canonical length, for both interactors.",
+        "Viral interactors: 1 ≤ start ≤ stop ≤ canonical length (human ones: D4).",
         """
-        SELECT run_type, stable_id, pmid, side, accession, start, stop, length FROM (
-            SELECT run_type, stable_id, pmid, 1 AS side, accession1 AS accession,
-                   start1 AS start, stop1 AS stop, length1 AS length FROM live
-            UNION ALL
-            SELECT run_type, stable_id, pmid, 2, accession2, start2, stop2, length2 FROM live
-        ) AS x
-        WHERE start < 1 OR start > stop OR stop > length
+        SELECT run_type, stable_id, pmid, 2 AS side, accession2 AS accession,
+               start2 AS start, stop2 AS stop, length2 AS length FROM live
+        WHERE type2 = 'v' AND (start2 < 1 OR start2 > stop2 OR stop2 > length2)
         ORDER BY accession, stable_id
         """,
     ),
@@ -192,7 +189,7 @@ SQL_INVARIANTS = [
                    start1 AS start, stop1 AS stop, length1 AS length FROM live
             UNION ALL
             SELECT run_type, stable_id, pmid, 2, accession2, start2, stop2, length2
-            FROM live WHERE run_type = 'hh'
+            FROM live WHERE type2 = 'h'
         ) AS x
         WHERE start <> 1 OR stop <> length ORDER BY accession, stable_id
         """,
@@ -200,7 +197,7 @@ SQL_INVARIANTS = [
     Invariant(
         "D5",
         "error",
-        "One live description per (paper, method, interactor 1, interactor 2).",
+        "One live description per (publication, method, interactor 1, interactor 2).",
         """
         SELECT run_type, pmid, psimi_id, accession1, start1, stop1, accession2, start2, stop2,
                count(*) AS descriptions, string_agg(stable_id, ' ' ORDER BY stable_id) AS stable_ids
@@ -217,11 +214,28 @@ SQL_INVARIANTS = [
         "One non-empty generic name (`name2`) per viral interactor (accession, start, stop).",
         """
         SELECT run_type, accession2, start2, stop2,
-               string_agg(DISTINCT name2, ' | ') AS names, count(*) AS descriptions
+               string_agg(DISTINCT name2, ' | ') AS names, count(*) AS descriptions,
+               string_agg(stable_id, ' ' ORDER BY stable_id) AS stable_ids
         FROM live WHERE run_type = 'vh'
         GROUP BY run_type, accession2, start2, stop2
         HAVING count(DISTINCT name2) > 1 OR bool_or(trim(name2) = '')
         ORDER BY accession2, start2
+        """,
+    ),
+    Invariant(
+        "D10",
+        "error",
+        "One viral interactor (start, stop) per generic name of a viral protein "
+        "(accession, `name2`).",
+        """
+        SELECT run_type, accession2, name2,
+               string_agg(DISTINCT start2 || '-' || stop2, ' | ') AS coordinates,
+               count(*) AS descriptions,
+               string_agg(stable_id, ' ' ORDER BY stable_id) AS stable_ids
+        FROM live WHERE run_type = 'vh'
+        GROUP BY run_type, accession2, name2
+        HAVING count(DISTINCT (start2, stop2)) > 1
+        ORDER BY accession2, name2
         """,
     ),
     Invariant(
@@ -258,52 +272,181 @@ SQL_INVARIANTS = [
 ]
 
 
-def check_d9(cur: Any) -> Rows:
-    """Mappings: an occurrence at >= 96 % identity, inside the interactor, matching the sequence.
+AMINO_ACIDS = re.compile(r"[ACDEFGHIKLMNPQRSTVWYUOXBZJ]+")
+OCCURRENCE_KEYS = ("start", "stop", "identity")
+NUMBER = re.compile(r"\d+(\.\d+)?")
 
-    Occurrence positions are relative to the interactor region [start, stop]. The occurrence must
-    match the current sequence of its isoform (canonical: restricted to the region).
+# The description sides with mappings, with what the mapping checks need.
+MAPPING_SIDES = """
+    SELECT l.run_type, l.stable_id, l.pmid, x.side, x.type, x.accession, x.start, x.stop,
+           x.mapping::text, p.sequences::text
+    FROM live AS l
+    CROSS JOIN LATERAL (VALUES
+        (1, l.type1, l.accession1, l.start1, l.stop1, l.mapping1, l.protein1_id),
+        (2, l.type2, l.accession2, l.start2, l.stop2, l.mapping2, l.protein2_id))
+        AS x (side, type, accession, start, stop, mapping, protein_id)
+    JOIN proteins AS p ON p.id = x.protein_id
+    WHERE x.mapping IS NULL OR json_typeof(x.mapping) <> 'array'
+       OR json_array_length(x.mapping) > 0
+"""
+
+
+def _number(value: Any, strict: bool = True) -> float | None:
+    """A JSON number as a float; unless `strict`, a number stored as text too; None otherwise."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not strict and isinstance(value, str) and NUMBER.fullmatch(value):
+        return float(value)
+    return None
+
+
+def _structure(mappings: Any, strict: bool = True) -> list[str]:
+    """Structure and type problems of a mapping column (D11), without looking at the content.
+
+    The structure is a list of objects `{"sequence": string, "isoforms": [{"accession": string,
+    "occurrences": [{"start": number, "stop": number, "identity": number}]}]}`. Unless `strict`,
+    numbers stored as text are accepted, so that D9 can read the content.
     """
-    cur.execute("""
-        SELECT l.run_type, l.stable_id, l.pmid, x.side, x.accession, x.start, x.stop,
-               x.mapping::text, p.sequences::text
-        FROM live AS l
-        CROSS JOIN LATERAL (VALUES (1, l.accession1, l.start1, l.stop1, l.mapping1, l.protein1_id),
-                                   (2, l.accession2, l.start2, l.stop2, l.mapping2, l.protein2_id))
-            AS x (side, accession, start, stop, mapping, protein_id)
-        JOIN proteins AS p ON p.id = x.protein_id
-        WHERE json_array_length(x.mapping) > 0
-    """)
+    if not isinstance(mappings, list):
+        return ["not a list of mappings"]
+    problems: set[str] = set()
+    for mapping in cast(list[Any], mappings):
+        if not isinstance(mapping, dict):
+            problems.add("a mapping is not an object")
+            continue
+        fields = cast(dict[str, Any], mapping)
+        if not isinstance(fields.get("sequence"), str):
+            problems.add("a sequence is not a string")
+        isoforms = fields.get("isoforms")
+        if not isinstance(isoforms, list):
+            problems.add("isoforms is not a list")
+            continue
+        for isoform in cast(list[Any], isoforms):
+            if not isinstance(isoform, dict):
+                problems.add("an isoform is not an object")
+                continue
+            entry = cast(dict[str, Any], isoform)
+            if not isinstance(entry.get("accession"), str):
+                problems.add("an isoform accession is not a string")
+            occurrences = entry.get("occurrences")
+            if not isinstance(occurrences, list):
+                problems.add("occurrences is not a list")
+                continue
+            for occurrence in cast(list[Any], occurrences):
+                if not isinstance(occurrence, dict):
+                    problems.add("an occurrence is not an object")
+                    continue
+                values = cast(dict[str, Any], occurrence)
+                for key in OCCURRENCE_KEYS:
+                    if _number(values.get(key), strict) is not None:
+                        continue
+                    if _number(values.get(key), strict=False) is not None:
+                        problems.add("numbers stored as text")
+                    else:
+                        problems.add(f"an occurrence {key} is not a number")
+    return sorted(problems)
+
+
+def _misfit(
+    mapping: dict[str, Any], isoforms: dict[str, str], accession: str, start: int, stop: int
+) -> str:
+    """Why the occurrences of a mapping do not fit the sequences of its snapshot, or ""."""
+    occurrences = [
+        (i["accession"], *(cast(float, _number(o[k], strict=False)) for k in OCCURRENCE_KEYS))
+        for i in mapping["isoforms"]
+        for o in i["occurrences"]
+    ]
+    if not occurrences:
+        return "no occurrence"
+    if max(identity for *_, identity in occurrences) < 96:
+        return "best identity below 96 %"
+    for isoform, first, last, identity in occurrences:
+        sequence = isoforms.get(isoform)
+        if sequence is None:
+            return f"isoform {isoform} not in the snapshot"
+        if isoform == accession:
+            sequence = sequence[start - 1 : stop]
+        if not 1 <= first <= last <= len(sequence):
+            return f"occurrence {first:g}-{last:g} outside {isoform}"
+        found = sequence[int(first) - 1 : int(last)]
+        if identity == 100 and found != mapping["sequence"]:
+            return f"100 % occurrence does not match {isoform}"
+    return ""
+
+
+def _protein(type_: str) -> str:
+    return {"h": "human", "v": "viral"}.get(type_, type_)
+
+
+def check_d9(cur: Any) -> Rows:
+    """Mapping content: an amino acid sequence, once, with an occurrence that fits (C4).
+
+    An occurrence at >= 96 % identity is required. Occurrence positions are relative to the
+    interactor region [start, stop], and must match the sequence of their isoform in the snapshot
+    (canonical: restricted to the region). Mappings whose structure cannot be read are left to
+    D11; numbers stored as text are read as numbers. `protein` tells a human mapping from a viral
+    one, which are separate fixes.
+    """
+    cur.execute(MAPPING_SIDES)
     rows: list[tuple[Any, ...]] = []
     for row in cur.fetchall():
-        run_type, stable_id, pmid, side, accession, start, stop, mapping, sequences = row
+        run_type, stable_id, pmid, side, type_, accession, start, stop, text, sequences = row
+        mappings: Any = json.loads(text or "null")
+        if _structure(mappings, strict=False):
+            continue
         isoforms: dict[str, str] = json.loads(sequences)
-        for m in json.loads(mapping):
-            occurrences = [
-                (i["accession"], o) for i in m.get("isoforms", []) for o in i["occurrences"]
-            ]
-            problem = ""
-            if not occurrences:
-                problem = "no occurrence"
-            elif max(float(o["identity"]) for _, o in occurrences) < 96:
-                problem = "best identity below 96 %"
-            else:
-                for isoform, o in occurrences:
-                    sequence = isoforms.get(isoform)
-                    if sequence is None:
-                        problem = f"isoform {isoform} not in the snapshot"
-                        break
-                    if isoform == accession:
-                        sequence = sequence[start - 1 : stop]
-                    found = sequence[int(o["start"]) - 1 : int(o["stop"])]
-                    if float(o["identity"]) == 100 and found != m["sequence"]:
-                        problem = f"100 % occurrence does not match {isoform}"
-                        break
-            if problem:
-                length = len(m["sequence"])
-                rows.append((run_type, stable_id, pmid, side, accession, length, problem))
-    header = ["run_type", "stable_id", "pmid", "side", "accession", "mapping_length", "problem"]
+        seen: set[str] = set()
+        for mapping in mappings:
+            sequence = mapping["sequence"]
+            problems: list[str] = []
+            if not AMINO_ACIDS.fullmatch(sequence):
+                problems.append("sequence is not an uppercase amino acid sequence")
+            if sequence in seen:
+                problems.append("duplicate mapping sequence")
+            seen.add(sequence)
+            if misfit := _misfit(mapping, isoforms, accession, start, stop):
+                problems.append(misfit)
+            if problems:
+                rows.append(
+                    (
+                        run_type,
+                        stable_id,
+                        pmid,
+                        side,
+                        _protein(type_),
+                        accession,
+                        len(sequence),
+                        "; ".join(problems),
+                    )
+                )
+    header = [
+        "run_type",
+        "stable_id",
+        "pmid",
+        "side",
+        "protein",
+        "accession",
+        "mapping_length",
+        "problem",
+    ]
     return header, rows
+
+
+def check_d11(cur: Any) -> Rows:
+    """Mapping structure: the shape and the types of the JSON, not its content.
+
+    Numbers stored as text are a structure problem, fixed in place without a revision
+    (`docs/database.md` §2). One row per description side.
+    """
+    cur.execute(MAPPING_SIDES)
+    rows: list[tuple[Any, ...]] = []
+    for run_type, stable_id, pmid, side, type_, accession, _, _, text, _ in cur.fetchall():
+        if problems := _structure(json.loads(text or "null")):
+            row = (run_type, stable_id, pmid, side, _protein(type_), accession, "; ".join(problems))
+            rows.append(row)
+    return ["run_type", "stable_id", "pmid", "side", "protein", "accession", "problem"], rows
 
 
 def run(output: Path) -> int:
@@ -314,11 +457,19 @@ def run(output: Path) -> int:
         Invariant(
             "D9",
             "error",
-            "Each mapping has an occurrence at ≥ 96 % identity matching the sequence.",
+            "Mapping content: an amino acid sequence, once per side, with an occurrence at "
+            "≥ 96 % identity that fits the sequences.",
             check_d9,
         ),
+        Invariant(
+            "D11",
+            "error",
+            "Mapping structure: a list of objects with the expected fields and JSON types "
+            "(numbers as text are fixed in place).",
+            check_d11,
+        ),
     ]
-    invariants.sort(key=lambda i: (i.id[0] != "R", i.id[0] != "V", i.id))
+    invariants.sort(key=lambda i: (i.id[0] != "R", i.id[0] != "V", i.id[0], int(i.id[1:])))
     summary: list[tuple[Invariant, int, int]] = []  # violations in vh, in hh
     # Only temporary tables are created, and the transaction is always rolled back.
     with connect() as conn:
@@ -353,7 +504,7 @@ def run(output: Path) -> int:
         f"# Drakkar check, {date.today()}",
         "",
         "Live descriptions: "
-        + ", ".join(f"{t} {n} in {p} papers" for t, (n, p) in sorted(scope.items()))
+        + ", ".join(f"{t} {n} in {p} publications" for t, (n, p) in sorted(scope.items()))
         + ". One TSV per violated invariant in this directory (rows of the violations).",
         "",
         "| ID | Severity | Invariant | vh | hh |",
