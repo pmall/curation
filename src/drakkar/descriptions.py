@@ -698,7 +698,10 @@ def _replace(cur: Any, stable_id: str, live: tuple[Any, ...], row: dict[str, Any
 
 
 def revise_description(cur: Any, stable_id: str, item: Interaction) -> int:
-    """Fix the live version of a stable ID by a new version; return the new version number.
+    """Revise the live version of a stable ID during curation; return the new version number.
+
+    Not for data fixes: it rebuilds the row and recomputes everything derived from the snapshots
+    (`docs/database.md` §2).
 
     A fix never moves to another snapshot: a side that keeps its accession keeps the snapshot
     of the live row, even obsolete, and its derived values (human name and coordinates, mapping
