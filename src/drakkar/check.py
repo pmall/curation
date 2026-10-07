@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, LiteralString, cast
 
 from drakkar.db import connect
+from drakkar.descriptions import MIN_IDENTITY, segment_identity
 
 Rows = tuple[list[str], list[tuple[Any, ...]]]
 
@@ -274,6 +275,11 @@ SQL_INVARIANTS = [
 
 AMINO_ACIDS = re.compile(r"[ACDEFGHIKLMNPQRSTVWYUOXBZJ]+")
 OCCURRENCE_KEYS = ("start", "stop", "identity")
+# How far below its recorded identity a slice may align: legacy gap placement, up to 0.47 point.
+IDENTITY_TOLERANCE = 1.0
+# The threshold legacy descriptions were curated with; `MIN_IDENTITY` applies to Claude's (`CW`).
+# Both are warnings (D12), never errors.
+LEGACY_MIN_IDENTITY = 96.0
 NUMBER = re.compile(r"\d+(\.\d+)?")
 
 # The description sides with mappings, with what the mapping checks need.
@@ -350,9 +356,20 @@ def mapping_structure(mappings: Any, strict: bool = True) -> list[str]:
 
 
 def _misfit(
-    mapping: dict[str, Any], isoforms: dict[str, str], accession: str, start: int, stop: int
+    mapping: dict[str, Any],
+    isoforms: dict[str, str],
+    accession: str,
+    start: int,
+    stop: int,
 ) -> str:
-    """Why the occurrences of a mapping do not fit the sequences of its snapshot, or ""."""
+    """Why the occurrences of a mapping do not fit the sequences of its snapshot, or "".
+
+    Each stored occurrence is judged on its own, against the protein segment at its coordinates:
+    an occurrence recorded at 100 % must be exactly the mapping; otherwise the mapping aligned end
+    to end on the segment must be no more than `IDENTITY_TOLERANCE` below the recorded identity.
+    Low identities are warnings (D12), not misfits. Whether the mapping could also be found
+    elsewhere, or on other isoforms, is not checked.
+    """
     occurrences = [
         (i["accession"], *(cast(float, _number(o[k], strict=False)) for k in OCCURRENCE_KEYS))
         for i in mapping["isoforms"]
@@ -360,9 +377,7 @@ def _misfit(
     ]
     if not occurrences:
         return "no occurrence"
-    if max(identity for *_, identity in occurrences) < 96:
-        return "best identity below 96 %"
-    for isoform, first, last, identity in occurrences:
+    for isoform, first, last, stored in occurrences:
         sequence = isoforms.get(isoform)
         if sequence is None:
             return f"isoform {isoform} not in the snapshot"
@@ -370,9 +385,15 @@ def _misfit(
             sequence = sequence[start - 1 : stop]
         if not 1 <= first <= last <= len(sequence):
             return f"occurrence {first:g}-{last:g} outside {isoform}"
-        found = sequence[int(first) - 1 : int(last)]
-        if identity == 100 and found != mapping["sequence"]:
-            return f"100 % occurrence does not match {isoform}"
+        segment = sequence[int(first) - 1 : int(last)]
+        if stored == 100 and segment != mapping["sequence"]:
+            return f"100 % occurrence {first:g}-{last:g} does not match {isoform}"
+        identity = segment_identity(mapping["sequence"], segment)
+        if identity < stored - IDENTITY_TOLERANCE:
+            return (
+                f"occurrence {first:g}-{last:g} on {isoform} recorded at {stored:g} %, "
+                f"{identity:g} % at its coordinates"
+            )
     return ""
 
 
@@ -383,11 +404,11 @@ def _protein(type_: str) -> str:
 def check_d9(cur: Any) -> Rows:
     """Mapping content: an amino acid sequence, once, with an occurrence that fits (C4).
 
-    An occurrence at >= 96 % identity is required. Occurrence positions are relative to the
-    interactor region [start, stop], and must match the sequence of their isoform in the snapshot
-    (canonical: restricted to the region). Mappings whose structure cannot be read are left to
-    D11; numbers stored as text are read as numbers. `protein` tells a human mapping from a viral
-    one, which are separate fixes.
+    Every stored occurrence must be true to its coordinates (`_misfit`), whatever its identity
+    (low identities are D12 warnings). Occurrence positions are relative to the interactor
+    region [start, stop] on the canonical isoform, to the whole sequence on other isoforms.
+    Mappings whose structure cannot be read are left to D11; numbers stored as text are read as
+    numbers. `protein` tells a human mapping from a viral one, which are separate fixes.
     """
     cur.execute(MAPPING_SIDES)
     rows: list[tuple[Any, ...]] = []
@@ -430,6 +451,54 @@ def check_d9(cur: Any) -> Rows:
         "accession",
         "mapping_length",
         "problem",
+    ]
+    return header, rows
+
+
+def check_d12(cur: Any) -> Rows:
+    """Mapping identity (warning): the best recorded identity of a mapping is below the threshold.
+
+    `LEGACY_MIN_IDENTITY` (96 %) for legacy descriptions, `MIN_IDENTITY` (90 %) for Claude's
+    `CW` ones. A mapping below 90 % is explained in the note of its publication (C4).
+    """
+    cur.execute(MAPPING_SIDES)
+    rows: list[tuple[Any, ...]] = []
+    for row in cur.fetchall():
+        run_type, stable_id, pmid, side, type_, accession, _, _, text, _ = row
+        mappings: Any = json.loads(text or "null")
+        if mapping_structure(mappings, strict=False):
+            continue
+        threshold = MIN_IDENTITY if stable_id.startswith("CW") else LEGACY_MIN_IDENTITY
+        for mapping in mappings:
+            identities = [
+                cast(float, _number(o["identity"], strict=False))
+                for i in mapping["isoforms"]
+                for o in i["occurrences"]
+            ]
+            if identities and max(identities) < threshold:
+                rows.append(
+                    (
+                        run_type,
+                        stable_id,
+                        pmid,
+                        side,
+                        _protein(type_),
+                        accession,
+                        len(mapping["sequence"]),
+                        max(identities),
+                        threshold,
+                    )
+                )
+    header = [
+        "run_type",
+        "stable_id",
+        "pmid",
+        "side",
+        "protein",
+        "accession",
+        "mapping_length",
+        "best_identity",
+        "threshold",
     ]
     return header, rows
 
@@ -488,9 +557,17 @@ def run(output: Path) -> int:
         Invariant(
             "D9",
             "error",
-            "Mapping content: an amino acid sequence, once per side, with an occurrence at "
-            "≥ 96 % identity that fits the sequences.",
+            "Mapping content: an amino acid sequence, once per side, with occurrences true to "
+            "their coordinates: exact at 100 %, otherwise within 1 point of the identity at "
+            "those coordinates.",
             check_d9,
+        ),
+        Invariant(
+            "D12",
+            "warning",
+            "Mapping identity: the best occurrence of a mapping is below 96 % (legacy) or 90 % "
+            "(CW); below 90 %, the note of the publication explains it.",
+            check_d12,
         ),
         Invariant(
             "D11",

@@ -1,6 +1,8 @@
 # Fixing the invalid data of the current database
 
-This is the list of invalid data in Drakkar as it stands today, on UniProt 2021_02, before any upgrade. It covers invariant violations only: each description is judged against the protein snapshots it points to, whether they are obsolete or not, and a fix never moves it to another snapshot. Moving descriptions off obsolete snapshots is the UniProt upgrade job, done later (`database.md` §2). Terms are defined in `glossary.md`.
+**Status (2026-10-07): the fixing pass is done.** Every point is fixed except point 2, left to the UniProt upgrade. Final check: `data/2021_02/reports/check-2026-10-07-warnings/`: every error at 0 except R3 (point 2); D12 lists 3 accepted edge cases (warnings); D2 lists the obsolete descriptions (last section), the next job: the versioning pass.
+
+This is the list of invalid data in Drakkar as it stood on 2026-10-06, on UniProt 2021_02, before any upgrade. It covers invariant violations only: each description is judged against the protein snapshots it points to, whether they are obsolete or not, and a fix never moves it to another snapshot. Moving descriptions off obsolete snapshots is the UniProt upgrade job, done later (`database.md` §2). Terms are defined in `glossary.md`.
 
 Rules: each problem is fixed one at a time, only when the user says so. Each fix is first explained in plain words, with examples and a count, and nothing is written until the user approves that specific fix. No description is physically deleted, and no throwaway version is created.
 
@@ -28,9 +30,9 @@ Counts are descriptions (stable IDs), each in a single point.
 | 5   | Viral name: the same (accession, name) has inconsistent coordinates across descriptions         | D10        |               0 |               — | nothing to fix |
 | 6   | Viral coordinates: the same (accession, start, stop) has inconsistent names across descriptions | D6         |               0 |               — | nothing to fix |
 | 7   | Same description recorded several times                                                         | D5         |             216 |               0 | done           |
-| 8   | Human mappings not fitting the sequences (content)                                              | D9         |       see below |       see below | open           |
-| 9   | Viral mappings not fitting the sequences (content)                                              | D9         |       see below |               — | open           |
-| 10  | Descriptions that need several fixes, fixed last                                                | several    |               0 |               3 | to do          |
+| 8   | Human mappings not fitting the sequences (content)                                              | D9         |               0 |               0 | nothing to fix |
+| 9   | Viral mappings not fitting the sequences (content)                                              | D9         |              36 |               — | done           |
+| 10  | Descriptions that need several fixes, fixed last                                                | several    |               0 |               3 | done           |
 
 ### 1. Descriptions on a publication not selected or curated [S1]
 
@@ -84,17 +86,41 @@ Check after: `data/2021_02/reports/check-2026-10-06-after-point-7/` (D5 = 0, no 
 
 A description, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. There are 70 groups of live descriptions with the same combination: 216 descriptions, 146 of them extra, in 6 vh publications. By publication: PMID 31873071 (25 groups), 31710650 (22), 30209081 (12), 21454588 (7), 27775586 (3), 25782006 (1). For example, PMID 21454588 has HLA-A (P04439) with B2VQG4 by MI:0070 recorded 5 times. That publication is about HLA, which may not be a PPI under the curation rules.
 
-### 8. Human mappings not fitting the sequences [D9]
+### 8 and 9. Mappings not fitting the sequences [D9]
 
-### 9. Viral mappings not fitting the sequences [D9]
+**Done on 2026-10-07.** Point 8 (human mappings): nothing to fix. Point 9 (viral mappings): 53 mappings in 36 vh descriptions, all fixed.
 
-**Open** (2026-10-06). Points 8 and 9 are handled together: a wrong mapping, human or viral, is fixed by realigning its sequence (taken from the publication, never changed) on the snapshot, and a mapping that cannot be realigned is a problem for the curator [confirmed 2026-10-06]. Alignments on isoforms count like those on the canonical sequence.
+**What is checked \[confirmed 2026-10-07\]:** whether the stored mappings, occurrences and identities are true, not whether a mapping could be found elsewhere or on other isoforms. Each stored occurrence is judged against the protein segment at its coordinates: an occurrence recorded at 100 % must be exactly the mapping; otherwise the mapping aligned end to end on the segment must be no more than 1 point below the recorded identity (D9). A mapping that passes is kept as it is, even when our aligner would place it differently. Identity thresholds (96 % legacy, 90 % for Claude's curation) are warnings (D12), not errors. Mismatches and gaps are allowed only for the reason of `curation-rules.md` §4 (fundamental rule). The alignment settings are an arbitrary choice (BLOSUM62, gaps −10/−2).
 
-D9 is incomplete: it verifies only occurrences stored at 100 % (53 viral mappings in 36 descriptions). A full audit (`data/2021_02/reports/mapping-audit.tsv`, read-only) realigned every live mapping with `map_sequence` and compared with what is stored: 643 human mappings (495 descriptions) and 417 viral mappings (364 descriptions) differ, mostly isoforms where the sequence aligns but is not stored; 19 mappings do not realign at all (16 coronavirus peptides of PMID 34799561 crossing the boundary of their mature protein or on the wrong one, 2 HCV Core peptides of PMID 25485706 starting with the initiator methionine outside Core 2–191, and WNK1 in EY8EDA52AB).
+**Measured on 2026-10-07** (`data/2021_02/reports/check-2026-10-07-d9-segments/`, with `D9-details.tsv`): 53 viral vh mappings, no human mapping, nothing in hh. Every other occurrence recorded below 100 % is true: on its segment, the identity is at most 0.47 point below the recorded one (legacy gap placement), and every recorded identity was at least 96 %.
 
-**These counts are not reliable**: `map_sequence` does not compute identity as the old curation app did, and the old app is right [confirmed 2026-10-06]. Example: EY8EDA52AB, WNK1 on isoform Q9H4A3-5, stored at 96.31 % (418 identities / 434), 95.87 % with `map_sequence`, so wrongly below 96 %. A realignment of 842 descriptions applied on 2026-10-06 dropped 75 such isoform occurrences: it was undone the same day (the 842 new versions physically deleted, the previous versions live again, every mapping checked identical to before, `descriptions_id_seq` set back to the highest id). Before any realignment: get the old app's identity formula, and check that our alignment reproduces the stored values.
+| PMID               | Viral protein            | Mappings | Problem                                                                     |
+| ------------------ | ------------------------ | -------: | --------------------------------------------------------------------------- |
+| 25485706           | Q99IB8 (HCV)             |       23 | stored at 100 % but not at its coordinates (22), or outside the protein (1) |
+| 25733156           | Q99IB8 (HCV)             |        1 | stored at 100 % but not at its coordinates                                  |
+| 27375898           | P03377 (HIV-1 Env)       |       11 | stored at 100 % but not at its coordinates                                  |
+| 17868381, 19889084 | P06935                   |        2 | stored at 100 % but not at its coordinates                                  |
+| 34799561           | coronavirus polyproteins |       16 | no occurrence stored                                                        |
+
+**The fixes**, each a revision in plain SQL that copies the live row and changes only `mapping2`, the old version deleted at the same instant, every other column checked identical before committing:
+
+**Mechanical fixes done on 2026-10-07** (approved by the user): 17 vh descriptions whose only problem was an occurrence recorded at 100 % one or more positions away from the exact match of its mapping: 4 HCV Core descriptions of PMID 25485706 (−1, positions counted on the polyprotein instead of Core 2–191), 11 HIV-1 Env descriptions of PMID 27375898 (+32), and 2 descriptions on P06935 Core, PMIDs 17868381 and 19889084 (+1). 25 occurrences moved to their exact position, still at 100 %. Each description is revised in plain SQL: the live row copied with only `mapping2` changed (only the start and stop of those occurrences), the old version deleted at the same instant. Checked before committing: 17 new versions, every other column identical. Report: `data/2021_02/reports/fix-viral-occurrence-positions/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-07-after-point-9-mechanical/` (D9 = 28, versioning unchanged).
+
+**EY369B3E2F done on 2026-10-07** (decided by the user): USP7 × nsp1 of P0C6U8, PMID 34799561, carried the nsp3 peptide `VDTSNSFEVLAVEDTQ` with no occurrence. The same peptide is already recorded on nsp3 in EY786D86D6 (same publication, method and USP7 mapping). The least destructive fix: a revision of EY369B3E2F that keeps it on nsp1 and removes its viral mapping (`mapping2` = `[]`), every other column identical. Report: `data/2021_02/reports/fix-ey369b3e2f/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-07-after-ey369b3e2f/`.
+
+**EY72B2536C done on 2026-10-07** (edge case decided by the user, not a rule): RDX × nsp3 of P0C6U8, PMID 34799561. Its peptide `VDTSNSFEVLAVEDTQY` had no occurrence: on nsp3 it differs by one residue (final Y, G in UniProt), 16/17 = 94.12 %, below the legacy 96 %. It is kept: a revision gives it the occurrence 1178–1194 at 94.11765 %, every other column identical. It is reported as a D12 warning (below 96 %), not an error. Report: `data/2021_02/reports/fix-ey72b2536c/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-07-after-ey72b2536c/` (D9 = 26).
+
+**PMID 34799561 cleavage-site peptides done on 2026-10-07** (decided by the user): 14 descriptions had a 16-residue viral peptide exact on the polyprotein but crossing the cleavage site between two mature proteins (nsp8/nsp9, nsp9/nsp10, nsp4/nsp5, nsp13/nsp14), so it fit neither interactor and had no occurrence. The peptides appear in no other description. Each description is revised with that peptide removed from `mapping2`, the other mappings byte-identical (5 descriptions are left without a viral mapping). The peptides, their positions and descriptions are recorded in the publication's note, which says the publication is to be reviewed (curator note kept verbatim). Report: `data/2021_02/reports/fix-34799561-cleavage-site-peptides/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-07-after-34799561/`.
+
+**HCV Core initiator methionine done on 2026-10-07** (decided by the user): 3 descriptions on HCV Core (Q99IB8 2–191) had a peptide starting with the initiator methionine, polyprotein residue 1, outside the mature protein: `MSTNPKPQRKTKRNT` in EY294151C6 and EYA45D9AA2 (PMID 25485706), and a 122-residue fragment in EY9CD1A21A (PMID 25733156). The exact sequence of the publication is kept, identified on the mature protein: the occurrence starts at Core position 1 (polyprotein residue 2), so the sequence is one residue longer than its span, at its real identity (1–14 at 93.33 %, 1–121 at 99.18 %). The same revisions moved the 9 other occurrences of EY294151C6 and EYA45D9AA2 by −1 (polyprotein positions, as in the mechanical fixes). The two 93.33 % occurrences are edge cases below the legacy 96 %, reported as D12 warnings. Report: `data/2021_02/reports/fix-hcv-core-methionine/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-07-after-methionine/` (D9 = 0).
+
+**After the fixes:** D9 = 0. The 3 occurrences below 96 % (EY72B2536C, EY294151C6, EYA45D9AA2) are edge cases decided one by one, not a rule; they are D12 warnings. No flag in the mapping JSON is needed.
+
+**Earlier, on 2026-10-06:** an audit realigned every mapping and compared with the stored occurrences (`data/2021_02/reports/mapping-audit.tsv`); it judged where the mapping could be found rather than whether the stored data is true, so it is not the check. A realignment of 842 descriptions applied that day was undone the same day (the 842 new versions physically deleted, the previous versions live again, every mapping checked identical to before, `descriptions_id_seq` set back to the highest id).
 
 ### 10. Descriptions that need several fixes
+
+**Done on 2026-10-07** (approved by the user): one revision per description, changing only the columns below, every other column identical. Names: the gene name of the snapshot in the database, the reference; each old name is a synonym of the same entry in UniProt 2026_03 (FAM86C1P is now classified as a pseudogene, a question for the 2026_03 upgrade). Coordinates: the stored stop was the length of a former canonical isoform. Report: `data/2021_02/reports/point-10-several-fixes/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-07-after-point-10/`.
 
 Three hh descriptions, each fixed in a single revision:
 
@@ -110,4 +136,4 @@ A malformed mapping has a bad structure or bad types, while its content is right
 
 ## Not in this list: obsolete descriptions
 
-14,485 live descriptions are on an obsolete snapshot: 14,484 hh descriptions (440 proteins, 866 publications), left over from past upgrades never applied to hh, and the vh description of problem 2. Besides problem 2, 141 of them also have occurrence numbers as text, fixed in place without touching their snapshot. They are moved to current snapshots by the UniProt upgrade job, later.
+Measured on 2026-10-06: 14,485 live descriptions on an obsolete snapshot (14,484 hh, left over from past upgrades never applied to hh, and the vh description of point 2). After the fixes and the HLA removal, on 2026-10-07: **13,893** (13,892 hh and the vh description of point 2). The fixes never moved a description to another snapshot. They are not moved within 2021_02: the next session upgrades straight to 2026_03, then the versioning pass moves them to their 2026_03 snapshots (`database.md` §3).
