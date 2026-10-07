@@ -34,7 +34,7 @@ from typing import Any, cast
 from Bio import Align
 from Bio.Align import substitution_matrices
 
-MIN_IDENTITY = 96.0  # C4
+MIN_IDENTITY = 90.0  # C4
 AMINO_ACIDS = re.compile(r"[ACDEFGHIKLMNPQRSTVWYUOXBZJ]+")
 
 
@@ -51,7 +51,9 @@ class Interaction:
     `accession2` is viral in vh, human in hh. `start2`/`stop2` default to the full protein; a
     mature protein of a polyprotein gets its coordinates. `name2` is the generic name of a viral
     interactor; it is ignored in hh, where it is the gene name. Mappings are the domain sequences
-    as described by the publication (C4: never adapted to UniProt).
+    as described by the publication (C4: never adapted to UniProt). `below_threshold` lists the
+    mapping sequences accepted below `MIN_IDENTITY`, each explained in the `Mapping` line of the
+    publication's note (C4); they are stored with their best alignment.
     """
 
     method: str  # PSI-MI ID, e.g. "MI:0007"
@@ -62,6 +64,7 @@ class Interaction:
     stop2: int | None = None
     mappings1: tuple[str, ...] = field(default=())
     mappings2: tuple[str, ...] = field(default=())
+    below_threshold: tuple[str, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -78,26 +81,45 @@ class Snapshot:
         return len(self.sequences[self.accession])
 
 
-def _aligner() -> Any:  # Biopython is not fully typed
-    # The whole mapping is aligned (global), the protein may overhang at both ends for free.
+def _aligner(overhang: bool) -> Any:  # Biopython is not fully typed
+    # The whole mapping is aligned (global); with `overhang`, the protein may extend beyond both
+    # ends of the mapping for free.
     aligner = Align.PairwiseAligner(mode="global")
     aligner.substitution_matrix = substitution_matrices.load("BLOSUM62")  # type: ignore
     aligner.open_gap_score = -10
-    aligner.extend_gap_score = -0.5
-    aligner.end_deletion_score = 0  # protein residues outside the mapping
+    aligner.extend_gap_score = -2  # long gaps cost more than a few mismatches
+    if overhang:
+        aligner.end_deletion_score = 0  # protein residues outside the mapping
     return aligner
 
 
-ALIGNER: Any = _aligner()
+ALIGNER: Any = _aligner(overhang=True)
+SEGMENT_ALIGNER: Any = _aligner(overhang=False)  # a fixed segment: aligned end to end
 
 
-def map_sequence(sequence: str, snapshot: Snapshot, start: int, stop: int) -> dict[str, Any]:
+def segment_identity(sequence: str, segment: str) -> float:
+    """Identity of a mapping aligned end to end on the protein segment of an occurrence.
+
+    Identical residues over the alignment length (the mapping plus the segment residues facing a
+    gap in it), as in `map_sequence`.
+    """
+    if sequence == segment:
+        return 100.0
+    alignment: Any = SEGMENT_ALIGNER.align(segment, sequence)[0]
+    counts: Any = alignment.counts()
+    columns = len(sequence) + counts.deletions
+    return round(100 * counts.identities / columns, 5)
+
+
+def map_sequence(
+    sequence: str, snapshot: Snapshot, start: int, stop: int, min_identity: float = MIN_IDENTITY
+) -> dict[str, Any]:
     """Mapping JSON for one sequence: its occurrences on each isoform of the interactor.
 
     Positions on the canonical isoform are relative to the region [start, stop], positions on
     other isoforms to the whole isoform (as checked by D9). On each isoform, every exact
     occurrence is reported; without any, the best alignment is kept if it reaches
-    `MIN_IDENTITY`. Identity is the number of identical residues over the alignment length
+    `min_identity`. Identity is the number of identical residues over the alignment length
     (mapping plus the protein residues facing a gap in it).
     """
     regions = {
@@ -118,7 +140,7 @@ def map_sequence(sequence: str, snapshot: Snapshot, start: int, stop: int) -> di
             counts: Any = alignment.counts()
             columns = len(sequence) + counts.internal_deletions
             identity: float = round(100 * counts.identities / columns, 5)
-            if identity >= MIN_IDENTITY:
+            if identity >= min_identity:
                 blocks = alignment.aligned[0]  # aligned blocks on the region
                 start_, stop_ = int(blocks[0][0]) + 1, int(blocks[-1][1])
                 occurrences.append({"start": start_, "stop": stop_, "identity": identity})
@@ -243,7 +265,7 @@ def _build(
     if problems:
         raise InvalidDescription(problems)
 
-    # D9: mappings are computed here, and must reach the identity threshold.
+    # D9: mappings are computed here; below the identity threshold, only if explained (C4).
     mappings: list[list[dict[str, Any]]] = []
     for side, snapshot, sequences, start, stop in (
         (1, p1, item.mappings1, 1, p1.length),
@@ -260,11 +282,20 @@ def _build(
                 )
                 continue
             mapping = map_sequence(sequence, snapshot, start, stop)
+            if not mapping["isoforms"] and sequence in item.below_threshold:
+                low = map_sequence(sequence, snapshot, start, stop, min_identity=0.0)
+                best = max(
+                    low["isoforms"],
+                    key=lambda i: max(o["identity"] for o in i["occurrences"]),
+                    default=None,
+                )
+                mapping["isoforms"] = [best] if best else []
             if not mapping["isoforms"]:
                 problems.append(
                     f"protein {side}: mapping {sequence[:20]}… "
                     f"({len(sequence)} aa) is below {MIN_IDENTITY:g} % identity "
-                    f"on every isoform of {snapshot.accession}[{start}-{stop}] (D9)"
+                    f"on every isoform of {snapshot.accession}[{start}-{stop}]: explain it in "
+                    "the note and list it in below_threshold (C4)"
                 )
             computed.append(mapping)
         mappings.append(computed)
@@ -630,6 +661,18 @@ def current(cur: Any, stable_id: str) -> Interaction:
         stop2=stop2,
         mappings1=_mapping_sequences(stable_id, 1, m1),
         mappings2=_mapping_sequences(stable_id, 2, m2),
+        below_threshold=_below_threshold(m1) + _below_threshold(m2),
+    )
+
+
+def _below_threshold(text: str) -> tuple[str, ...]:
+    """The mapping sequences already stored below `MIN_IDENTITY` (accepted and explained)."""
+    mappings: Any = json.loads(text)
+    return tuple(
+        m["sequence"]
+        for m in cast(list[dict[str, Any]], mappings)
+        if (identities := [o["identity"] for i in m["isoforms"] for o in i["occurrences"]])
+        and max(identities) < MIN_IDENTITY
     )
 
 
