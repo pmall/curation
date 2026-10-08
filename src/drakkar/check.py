@@ -57,7 +57,8 @@ VERSIONS = """
 @dataclass
 class Invariant:
     id: str
-    severity: str  # "error", "warning" or "upgrade" (obsolete snapshot: the upgrade job, not a fix)
+    severity: str  # "error", "warning", "upgrade" (obsolete snapshot: the upgrade job, not a fix)
+    # or "info" (good to know, not a violation)
     title: str
     check: LiteralString | Callable[[Any], Rows]
 
@@ -65,8 +66,8 @@ class Invariant:
 SQL_INVARIANTS = [
     Invariant(
         "R3",
-        "error",
-        "Every protein of a live description has a row in `taxon`.",
+        "info",
+        "Proteins of live descriptions whose taxon is not in `taxon` (UniProt ahead of NCBI).",
         """
         SELECT run_type, stable_id, pmid, side, accession, taxon FROM (
             SELECT run_type, stable_id, pmid, 1 AS side, accession1 AS accession,
@@ -226,15 +227,15 @@ SQL_INVARIANTS = [
     Invariant(
         "D10",
         "error",
-        "One viral interactor (start, stop) per generic name of a viral protein "
-        "(accession, `name2`).",
+        "One viral interactor (start, stop) per generic name of a viral snapshot "
+        "(`protein2_id`, `name2`).",
         """
-        SELECT run_type, accession2, name2,
+        SELECT run_type, accession2, protein2_id, name2,
                string_agg(DISTINCT start2 || '-' || stop2, ' | ') AS coordinates,
                count(*) AS descriptions,
                string_agg(stable_id, ' ' ORDER BY stable_id) AS stable_ids
         FROM live WHERE run_type = 'vh'
-        GROUP BY run_type, accession2, name2
+        GROUP BY run_type, accession2, protein2_id, name2
         HAVING count(DISTINCT (start2, stop2)) > 1
         ORDER BY accession2, name2
         """,

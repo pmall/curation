@@ -239,12 +239,6 @@ def _build(
                 f"protein {side}: {accession} is type {snapshot.type!r}, "
                 f"expected {expected!r} in a {run_type} run (D1)"
             )
-        cur.execute("SELECT 1 FROM taxon WHERE ncbi_taxon_id = %s", (snapshot.taxon,))
-        if cur.fetchone() is None:
-            problems.append(
-                f"protein {side}: taxon {snapshot.taxon} of {accession} "
-                "is missing from the taxonomy (R3)"
-            )
     if p1 is None or p2 is None or problems:
         raise InvalidDescription(problems)
 
