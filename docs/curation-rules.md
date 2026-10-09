@@ -13,6 +13,8 @@ Status tags: **[confirmed]** stated by the user or the SI · **[observed]** seen
 - Publications whose full text Claude cannot access need a human intervention (or a curator file). **[confirmed]**
 - **Curation is valid at its time** \[confirmed 2026-10-09\]: a description was right on the UniProt snapshots it was curated on. Updating it to a new release is best effort; when a viral protein is gone from UniProt (e.g. a patient isolate), the description stays live on its old snapshot, and its mappings stay good data.
 - **Human interactors are always on the latest Swiss-Prot** \[confirmed 2026-10-09\]: the derived datasets are used on the latest human Swiss-Prot release, so a description is revised whenever one of its human interactors can be updated (`database.md` §3, versioning pass).
+- **Exact curation, not grouping** \[confirmed 2026-10-09\]: the job is that each description is exactly right (accessions, coordinates, generic names, mappings). How the data is grouped (species, taxonomy levels, strains abstracted into one interactor) is the concern of the applications that consume it (`derived-datasets.md`). Grouping is only a tool to spot curation errors, never a problem to report.
+- **Maintenance reads abstracts only** \[confirmed 2026-10-08\]: in the fixing and versioning passes and in reviews, a question about a publication (strain, protein name, which entry) is settled from its title and abstract, never its full text; no answer from the abstract means the description is put aside. Full texts are read only in a curation pass.
 
 ## 2. Vocabulary
 
