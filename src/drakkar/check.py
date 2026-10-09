@@ -567,7 +567,7 @@ def run(output: Path) -> int:
             "D12",
             "warning",
             "Mapping identity: the best occurrence of a mapping is below 96 % (legacy) or 90 % "
-            "(CW); below 90 %, the note of the publication explains it.",
+            "(CW); below 90 %, the description note explains it.",
             check_d12,
         ),
         Invariant(

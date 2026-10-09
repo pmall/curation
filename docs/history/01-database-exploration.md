@@ -1,6 +1,6 @@
 # Database exploration — first pass
 
-> Note: the workflow and some interpretations below are superseded by `curation-rules.md` (biology) and `database.md` (structure, versioning, invariants).
+> Note: the workflow and some interpretations below are superseded by `../curation-rules.md` (biology) and `../database.md` (structure, versioning, invariants).
 
 Database: `drakkar_2026_09_09_curation_ai` (PostgreSQL 18.6, schema `public`). Date: 2026-10-02. All queries were run in a read-only session (`default_transaction_read_only=on`).
 
