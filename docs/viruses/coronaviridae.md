@@ -4,39 +4,39 @@ Family conventions: the replicase chains are `nsp1` to `nsp16`, lowercase, as Sw
 
 ## SARS-CoV-2 and SARS-CoV (*Betacoronavirus pandemicum*, NCBI 3418604)
 
-| Generic name | Protein (UniProt name; gene)                   | Reference        |                 Length | Also called                            |
-| ------------ | ---------------------------------------------- | ---------------- | ---------------------: | -------------------------------------- |
-| `nsp1`       | Host translation inhibitor nsp1; rep           | P0DTD1 1–180     |                    180 | Leader protein                         |
-| `nsp2`       | Non-structural protein 2; rep                  | P0DTD1 181–818   |                    638 | p65 homolog                            |
-| `nsp3`       | Papain-like protease nsp3; rep                 | P0DTD1 819–2763  |            1,922–1,945 | PL-PRO, PL2-PRO                        |
-| `nsp4`       | Non-structural protein 4; rep                  | P0DTD1 2764–3263 |                    500 | —                                      |
-| `nsp5`       | 3C-like proteinase nsp5; rep                   | P0DTD1 3264–3569 |                    306 | 3CL-PRO, Mpro, main protease           |
-| `nsp6`       | Non-structural protein 6; rep                  | P0DTD1 3570–3859 |                    290 | —                                      |
-| `nsp7`       | Non-structural protein 7; rep                  | P0DTD1 3860–3942 |                     83 | —                                      |
-| `nsp8`       | Non-structural protein 8; rep                  | P0DTD1 3943–4140 |                    198 | —                                      |
-| `nsp9`       | Viral protein genome-linked nsp9; rep          | P0DTD1 4141–4253 |                    113 | RNA-capping enzyme subunit nsp9        |
-| `nsp10`      | Non-structural protein 10; rep                 | P0DTD1 4254–4392 |                    139 | GFL, growth factor-like peptide        |
-| `nsp11`      | Non-structural protein 11; 1a                  | P0DTC1 4393–4405 |                     13 | —                                      |
-| `nsp12`      | RNA-directed RNA polymerase nsp12; rep         | P0DTD1 4393–5324 |                    932 | RdRp, Pol                              |
-| `nsp13`      | Helicase nsp13; rep                            | P0DTD1 5325–5925 |                    601 | Hel                                    |
-| `nsp14`      | Guanine-N7 methyltransferase nsp14; rep        | P0DTD1 5926–6452 |                    527 | ExoN, proofreading exoribonuclease     |
-| `nsp15`      | Uridylate-specific endoribonuclease nsp15; rep | P0DTD1 6453–6798 |                    346 | NendoU                                 |
-| `nsp16`      | 2'-O-methyltransferase nsp16; rep              | P0DTD1 6799–7096 |                    298 | —                                      |
-| `S`          | Spike glycoprotein; S (whole polyprotein)      | P0DTC2 1–1273    |            1,255–1,273 | S glycoprotein, E2, peplomer protein   |
-| `ORF3a`      | ORF3a protein; 3a                              | P0DTC3 1–275     |                274–275 | Accessory protein 3a, protein U274, X1 |
-| `ORF3b`      | ORF3b protein; 3b                              | P59633 1–154     | 154 (22 in SARS-CoV-2) | ns3b, accessory protein 3b, protein X2 |
-| `E`          | Envelope small membrane protein; E             | P0DTC4 1–75      |                  75–76 | sM protein                             |
-| `M`          | Membrane protein; M                            | P0DTC5 1–222     |                221–222 | E1 glycoprotein, matrix glycoprotein   |
-| `ORF6`       | ORF6 protein; 6                                | P0DTC6 1–61      |                  61–63 | ns6, accessory protein 6, protein X3   |
-| `ORF7a`      | ORF7a protein; 7a                              | P0DTC7 1–121     |                121–122 | Accessory protein 7a, protein U122, X4 |
-| `ORF7b`      | ORF7b protein; 7b                              | P0DTD8 1–43      |                  43–44 | ns7b, accessory protein 7b             |
-| `ORF8`       | ORF8 protein; 8                                | P0DTC8 1–121     |                121–122 | ns8, accessory protein 8               |
-| `ORF8a`      | ORF8a protein; 8a                              | Q7TFA0 1–39      |                     39 | ns8a                                   |
-| `ORF8b`      | ORF8b protein; 8b                              | Q80H93 1–84      |                     84 | ns8b                                   |
-| `N`          | Nucleoprotein; N                               | P0DTC9 1–419     |                419–422 | Nucleocapsid protein, NC               |
-| `ORF9b`      | ORF9b protein; 9b                              | P0DTD2 1–97      |                  97–98 | Accessory protein 9b, ORF-9b           |
-| `ORF9c`      | Putative ORF9c protein; 9c                     | P0DTD3 1–73      |                  70–73 | ORF14, uncharacterized protein 14      |
-| `ORF10`      | Putative ORF10 protein; ORF10                  | A0A663DJA2 1–38  |                     38 | —                                      |
+| Generic name | Protein (UniProt name; gene)                   | Reference                 |                 Length | Also called                            |
+| ------------ | ---------------------------------------------- | ------------------------- | ---------------------: | -------------------------------------- |
+| `nsp1`       | Host translation inhibitor nsp1; rep           | P0DTD1 1–180              |                    180 | Leader protein                         |
+| `nsp2`       | Non-structural protein 2; rep                  | P0DTD1 181–818            |                    638 | p65 homolog                            |
+| `nsp3`       | Papain-like protease nsp3; rep                 | P0DTD1 819–2763           |            1,922–1,945 | PL-PRO, PL2-PRO                        |
+| `nsp4`       | Non-structural protein 4; rep                  | P0DTD1 2764–3263          |                    500 | —                                      |
+| `nsp5`       | 3C-like proteinase nsp5; rep                   | P0DTD1 3264–3569          |                    306 | 3CL-PRO, Mpro, main protease           |
+| `nsp6`       | Non-structural protein 6; rep                  | P0DTD1 3570–3859          |                    290 | —                                      |
+| `nsp7`       | Non-structural protein 7; rep                  | P0DTD1 3860–3942          |                     83 | —                                      |
+| `nsp8`       | Non-structural protein 8; rep                  | P0DTD1 3943–4140          |                    198 | —                                      |
+| `nsp9`       | Viral protein genome-linked nsp9; rep          | P0DTD1 4141–4253          |                    113 | RNA-capping enzyme subunit nsp9        |
+| `nsp10`      | Non-structural protein 10; rep                 | P0DTD1 4254–4392          |                    139 | GFL, growth factor-like peptide        |
+| `nsp11`      | Non-structural protein 11; 1a                  | P0DTC1 4393–4405          |                     13 | —                                      |
+| `nsp12`      | RNA-directed RNA polymerase nsp12; rep         | P0DTD1 4393–5324          |                    932 | RdRp, Pol                              |
+| `nsp13`      | Helicase nsp13; rep                            | P0DTD1 5325–5925          |                    601 | Hel                                    |
+| `nsp14`      | Guanine-N7 methyltransferase nsp14; rep        | P0DTD1 5926–6452          |                    527 | ExoN, proofreading exoribonuclease     |
+| `nsp15`      | Uridylate-specific endoribonuclease nsp15; rep | P0DTD1 6453–6798          |                    346 | NendoU                                 |
+| `nsp16`      | 2'-O-methyltransferase nsp16; rep              | P0DTD1 6799–7096          |                    298 | —                                      |
+| `S`          | Spike glycoprotein; S (whole polyprotein)      | P0DTC2 1–1273             |            1,255–1,273 | S glycoprotein, E2, peplomer protein   |
+| `ORF3a`      | ORF3a protein; 3a                              | P0DTC3 1–275              |                274–275 | Accessory protein 3a, protein U274, X1 |
+| `ORF3b`      | ORF3b protein; 3b                              | P59633 1–154; P0DTF1 1–22 | 154 (22 in SARS-CoV-2) | ns3b, accessory protein 3b, protein X2 |
+| `E`          | Envelope small membrane protein; E             | P0DTC4 1–75               |                  75–76 | sM protein                             |
+| `M`          | Membrane protein; M                            | P0DTC5 1–222              |                221–222 | E1 glycoprotein, matrix glycoprotein   |
+| `ORF6`       | ORF6 protein; 6                                | P0DTC6 1–61               |                  61–63 | ns6, accessory protein 6, protein X3   |
+| `ORF7a`      | ORF7a protein; 7a                              | P0DTC7 1–121              |                121–122 | Accessory protein 7a, protein U122, X4 |
+| `ORF7b`      | ORF7b protein; 7b                              | P0DTD8 1–43               |                  43–44 | ns7b, accessory protein 7b             |
+| `ORF8`       | ORF8 protein; 8                                | P0DTC8 1–121              |                121–122 | ns8, accessory protein 8               |
+| `ORF8a`      | ORF8a protein; 8a                              | Q7TFA0 1–39               |                     39 | ns8a                                   |
+| `ORF8b`      | ORF8b protein; 8b                              | Q80H93 1–84               |                     84 | ns8b                                   |
+| `N`          | Nucleoprotein; N                               | P0DTC9 1–419              |                419–422 | Nucleocapsid protein, NC               |
+| `ORF9b`      | ORF9b protein; 9b                              | P0DTD2 1–97               |                  97–98 | Accessory protein 9b, ORF-9b           |
+| `ORF9c`      | Putative ORF9c protein; 9c                     | P0DTD3 1–73               |                  70–73 | ORF14, uncharacterized protein 14      |
+| `ORF10`      | Putative ORF10 protein; ORF10                  | A0A663DJA2 1–38           |                     38 | —                                      |
 
 Names: the Swiss-Prot short names, with the capital `ORF` spelling of these entries; Drakkar's lowercase `orf3a`, `orf6`… are renamed. `ORF9c` covers the SARS-CoV protein that Swiss-Prot calls ORF14 (same protein group). `ORF8` is the full-length ORF8, `ORF8a` and `ORF8b` the two products of the SARS-CoV strains carrying the 29-nucleotide deletion. The 63-residue Q6VA95, named `N` in Drakkar, is ORF6.
 
