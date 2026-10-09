@@ -77,6 +77,8 @@ uv run drakkar-uniprot parse data/2026_03                 # 2. UniProt XML → T
 uv run drakkar-uniprot upgrade data/2026_03 [--dry-run]   # 3. import; the release is the directory name
 ```
 
+Then, before the versioning pass, the viral proteins reference is updated to the new release (`viruses.md` §5).
+
 **Data is scoped by UniProt release** \[confirmed\]: `data/<release>/` holds `taxonomy/` (the NCBI taxdump loaded with this release), `uniprot/` (the FTP files and their parsed TSV), `reports/` (upgrade report, descriptions to revise, and later the revision reports) and a `README.md` (dates and sources). `data/` is not versioned in git.
 
 Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` (all viral TrEMBL) and `uniprot_sprot_varsplic.fasta.gz` (isoforms). Each tool runs in one transaction; `--dry-run` rolls back. The upgrade writes `reports/uniprot_upgrade.md` and `reports/obsolete_vh_descriptions.tsv` (the descriptions to revise).
