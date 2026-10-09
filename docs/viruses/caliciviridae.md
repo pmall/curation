@@ -4,15 +4,15 @@ Family conventions: the non-structural proteins take the name of their UniProt c
 
 ## Norovirus (*Norovirus norwalkense*, NCBI 3431196)
 
-| Generic name | Protein (UniProt name; gene)      | Reference        |  Length | Also called                          |
-| ------------ | --------------------------------- | ---------------- | ------: | ------------------------------------ |
-| `NS1-2`      | NS1-2; ORF1                       | Q83883 1–398     | 330–399 | NS1.2, NS1/2, p48, p37, Nterm        |
-| `NS1`        | NS1; ORF1                         | Q83883 1–123     | 120–123 | —                                    |
-| `NS2`        | NS2; ORF1                         | Q83883 124–341   | 210–218 | —                                    |
-| `VPg`        | Viral genome-linked protein; ORF1 | Q83883 963–1100  | 124–138 | NS5                                  |
-| `3CLpro`     | 3C-like protease; ORF1            | Q83883 1101–1281 | 181–183 | NS6, Calicivirin, 3C-like proteinase |
-| `RdRp`       | RNA-directed RNA polymerase; ORF1 | Q83883 1282–1789 | 508–510 | NS7, Pol                             |
-| `VP2`        | Minor capsid protein VP2; ORF3    | Q83885 1–212     | 211–212 | —                                    |
+| Generic name | Protein (UniProt name; gene)      | Reference                  |  Length | Also called                          |
+| ------------ | --------------------------------- | -------------------------- | ------: | ------------------------------------ |
+| `NS1-2`      | NS1-2; ORF1                       | Q83883 1–398; C9EI98 1–330 | 330–399 | NS1.2, NS1/2, p48, p37, Nterm        |
+| `NS1`        | NS1; ORF1                         | Q83883 1–123; P54634 1–120 | 120–123 | —                                    |
+| `NS2`        | NS2; ORF1                         | Q83883 124–341             | 210–218 | —                                    |
+| `VPg`        | Viral genome-linked protein; ORF1 | Q83883 963–1100            | 124–138 | NS5                                  |
+| `3CLpro`     | 3C-like protease; ORF1            | Q83883 1101–1281           | 181–183 | NS6, Calicivirin, 3C-like proteinase |
+| `RdRp`       | RNA-directed RNA polymerase; ORF1 | Q83883 1282–1789           | 508–510 | NS7, Pol                             |
+| `VP2`        | Minor capsid protein VP2; ORF3    | Q83885 1–212               | 211–212 | —                                    |
 
 Names: the Norwalk 1968 strain (Q83883, Q83885) is the reference; the interactors also come from GII (P54634, Lordsdale), GIV, bovine GIII and murine (Q80J95) strains, whose coordinates differ. `NS1-2` rather than `p48` or `p37`: the chain name, the same in every strain, while the kDa names change with the genogroup.
 

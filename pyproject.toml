@@ -14,6 +14,7 @@ drakkar-taxonomy = "drakkar.taxonomy:main"
 drakkar-uniprot = "drakkar.uniprot:main"
 drakkar-check = "drakkar.check:main"
 drakkar-fix-list = "drakkar.fix_list:main"
+drakkar-viruses = "drakkar.viruses:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

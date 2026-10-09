@@ -4,32 +4,32 @@ Family conventions: polyproteins take their gene name (`Gag`, `Gag-Pol`, `Gag-Pr
 
 ## Human immunodeficiency virus 1 (*Lentivirus humimdef1*, NCBI 3418650)
 
-| Generic name | Protein (UniProt name; gene)                                                      | Reference               |      Length | Also called                             |
-| ------------ | --------------------------------------------------------------------------------- | ----------------------- | ----------: | --------------------------------------- |
-| `Gag`        | Gag polyprotein; gag (whole polyprotein)                                          | P04591 1–500            |     500–512 | Pr55Gag                                 |
-| `MA`         | Matrix protein p17; gag                                                           | P04591 2–132            |         131 | p17                                     |
-| `CA`         | Capsid protein p24; gag                                                           | P04591 133–363          |         231 | p24                                     |
-| `CA-NC`      | Capsid protein p24 to nucleocapsid protein p7; gag (joined chains)                | P04591 133–432          |         300 | —                                       |
-| `NC`         | Nucleocapsid protein p7; gag                                                      | P04591 378–432          |          55 | p7                                      |
-| `SP2`        | Spacer peptide 2; gag                                                             | P03348 433–448          |          16 | p1                                      |
-| `p6`         | p6-gag; gag                                                                       | P04591 449–500          |       52–64 | p6-gag                                  |
-| `NC-p6`      | Nucleocapsid protein p7 to transframe region, on Gag-Pol; gag-pol (joined chains) | P04585 378–488          |         111 | —                                       |
-| `Gag-Pol`    | Gag-Pol polyprotein; gag-pol (whole polyprotein)                                  | P04585 1–1435           | 1,434–1,447 | Pr160Gag-Pol                            |
-| `Pol`        | Pol polyprotein; pol (no Swiss-Prot entry; whole polyprotein)                     | Q74085 1–1,015 (TrEMBL) | 1,003–1,015 | —                                       |
-| `PR`         | Protease; gag-pol                                                                 | P04585 489–587          |          99 | Protease, Retropepsin                   |
-| `p66 RT`     | Reverse transcriptase/ribonuclease H; gag-pol                                     | P04585 588–1147         |         560 | RT, Exoribonuclease H                   |
-| `p51 RT`     | p51 RT; gag-pol                                                                   | P04585 588–1027         |         440 | RT                                      |
-| `IN`         | Integrase; gag-pol                                                                | P04585 1148–1435        |         288 | Integrase                               |
-| `Vif`        | Virion infectivity factor; vif                                                    | P69723 1–192            |         192 | SOR protein                             |
-| `Vpr`        | Protein Vpr; vpr                                                                  | P69726 1–96             |       95–97 | Viral protein R, R ORF protein          |
-| `Tat`        | Protein Tat; tat                                                                  | P04608 1–86             |      72–106 | Transactivating regulatory protein      |
-| `Rev`        | Protein Rev; rev                                                                  | P04618 1–116            |         116 | ART/TRS, Anti-repression transactivator |
-| `Vpu`        | Protein Vpu; vpu                                                                  | P05919 1–82             |       74–85 | Viral protein U, U ORF protein          |
-| `Env`        | Envelope glycoprotein gp160; env (whole polyprotein)                              | P04578 1–856            |     847–912 | gp160, Env polyprotein                  |
-| `gp120`      | Surface protein gp120; env                                                        | P04578 33–511           |     467–484 | SU                                      |
-| `gp41`       | Transmembrane protein gp41; env                                                   | P04578 512–856          |     343–346 | TM                                      |
-| `Nef`        | Protein Nef; nef                                                                  | P04601 1–206            |     200–239 | Negative factor, F-protein, 3'ORF       |
-| `ASP`        | Antisense protein; asp (no Swiss-Prot entry)                                      | I3QK15 1–189 (TrEMBL)   |         189 | —                                       |
+| Generic name | Protein (UniProt name; gene)                                                      | Reference                                                                                 |      Length | Also called                             |
+| ------------ | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------: | --------------------------------------- |
+| `Gag`        | Gag polyprotein; gag (whole polyprotein)                                          | P04591 1–500                                                                              |     500–512 | Pr55Gag                                 |
+| `MA`         | Matrix protein p17; gag                                                           | P04591 2–132                                                                              |         131 | p17                                     |
+| `CA`         | Capsid protein p24; gag                                                           | P04591 133–363                                                                            |         231 | p24                                     |
+| `CA-NC`      | Capsid protein p24 to nucleocapsid protein p7; gag (joined chains)                | P04591 133–432                                                                            |         300 | —                                       |
+| `NC`         | Nucleocapsid protein p7; gag                                                      | P04591 378–432                                                                            |          55 | p7                                      |
+| `SP2`        | Spacer peptide 2; gag                                                             | P03348 433–448                                                                            |          16 | p1                                      |
+| `p6`         | p6-gag; gag                                                                       | P04591 449–500                                                                            |       52–64 | p6-gag                                  |
+| `NC-p6`      | Nucleocapsid protein p7 to transframe region, on Gag-Pol; gag-pol (joined chains) | P04585 378–488                                                                            |         111 | —                                       |
+| `Gag-Pol`    | Gag-Pol polyprotein; gag-pol (whole polyprotein)                                  | P04585 1–1435                                                                             | 1,434–1,447 | Pr160Gag-Pol                            |
+| `Pol`        | Pol polyprotein; pol (no Swiss-Prot entry; whole polyprotein)                     | Q74085 1–1,015 (TrEMBL)                                                                   | 1,003–1,015 | —                                       |
+| `PR`         | Protease; gag-pol                                                                 | P04585 489–587                                                                            |          99 | Protease, Retropepsin                   |
+| `p66 RT`     | Reverse transcriptase/ribonuclease H; gag-pol                                     | P04585 588–1147                                                                           |         560 | RT, Exoribonuclease H                   |
+| `p51 RT`     | p51 RT; gag-pol                                                                   | P04585 588–1027                                                                           |         440 | RT                                      |
+| `IN`         | Integrase; gag-pol                                                                | P04585 1148–1435                                                                          |         288 | Integrase                               |
+| `Vif`        | Virion infectivity factor; vif                                                    | P69723 1–192                                                                              |         192 | SOR protein                             |
+| `Vpr`        | Protein Vpr; vpr                                                                  | P69726 1–96                                                                               |       95–97 | Viral protein R, R ORF protein          |
+| `Tat`        | Protein Tat; tat                                                                  | P04608 1–86                                                                               |      72–106 | Transactivating regulatory protein      |
+| `Rev`        | Protein Rev; rev                                                                  | P04618 1–116                                                                              |         116 | ART/TRS, Anti-repression transactivator |
+| `Vpu`        | Protein Vpu; vpu                                                                  | P05919 1–82; D2JNV4 1–76; D3VYE5 1–74; D3VYF4 1–76; O91085 1–83; Q77376 1–85; Q9IDV3 1–74 |       74–85 | Viral protein U, U ORF protein          |
+| `Env`        | Envelope glycoprotein gp160; env (whole polyprotein)                              | P04578 1–856                                                                              |     847–912 | gp160, Env polyprotein                  |
+| `gp120`      | Surface protein gp120; env                                                        | P04578 33–511                                                                             |     467–484 | SU                                      |
+| `gp41`       | Transmembrane protein gp41; env                                                   | P04578 512–856                                                                            |     343–346 | TM                                      |
+| `Nef`        | Protein Nef; nef                                                                  | P04601 1–206                                                                              |     200–239 | Negative factor, F-protein, 3'ORF       |
+| `ASP`        | Antisense protein; asp (no Swiss-Prot entry)                                      | I3QK15 1–189 (TrEMBL)                                                                     |         189 | —                                       |
 
 Names:
 
@@ -65,19 +65,19 @@ Names:
 
 ## Simian immunodeficiency virus (*Lentivirus simimdef*, NCBI 3418654)
 
-| Generic name | Protein (UniProt name; gene)                         | Reference        |  Length | Also called                       |
-| ------------ | ---------------------------------------------------- | ---------------- | ------: | --------------------------------- |
-| `Gag`        | Gag polyprotein; gag (whole polyprotein)             | Q02843 1–513     |     513 | Pr55Gag                           |
-| `MA`         | Matrix protein p17; gag-pol                          | P05896 2–135     |     134 | p17                               |
-| `CA`         | Capsid protein p24; gag                              | P19505 136–365   | 229–230 | p24                               |
-| `NC`         | Nucleocapsid protein p7; gag-pol                     | P05895 377–443   |      67 | p7                                |
-| `IN`         | Integrase; gag-pol                                   | P05896 1156–1448 | 236–293 | Integrase                         |
-| `Vif`        | Virion infectivity factor; vif                       | P05902 1–214     | 214–238 | Q protein, SOR protein            |
-| `Vpx`        | Protein Vpx; vpx                                     | P05917 1–112     |  99–119 | Viral protein X, X ORF protein    |
-| `Vpr`        | Protein Vpr; vpr                                     | P12521 1–89      |  89–135 | Viral protein R, R ORF protein    |
-| `Vpu`        | Protein Vpu; vpu                                     | Q1A244 1–79      |   76–79 | Viral protein U, U ORF protein    |
-| `Env`        | Envelope glycoprotein gp160; env (whole polyprotein) | P19503 1–889     | 854–889 | gp160, Env polyprotein            |
-| `Nef`        | Protein Nef; nef                                     | P05861 1–247     |  92–263 | Negative factor, F-protein, 3'ORF |
+| Generic name | Protein (UniProt name; gene)                         | Reference                                                            |  Length | Also called                       |
+| ------------ | ---------------------------------------------------- | -------------------------------------------------------------------- | ------: | --------------------------------- |
+| `Gag`        | Gag polyprotein; gag (whole polyprotein)             | Q02843 1–513                                                         |     513 | Pr55Gag                           |
+| `MA`         | Matrix protein p17; gag-pol                          | P05896 2–135                                                         |     134 | p17                               |
+| `CA`         | Capsid protein p24; gag                              | P19505 136–365                                                       | 229–230 | p24                               |
+| `NC`         | Nucleocapsid protein p7; gag-pol                     | P05895 377–443                                                       |      67 | p7                                |
+| `IN`         | Integrase; gag-pol                                   | P05896 1156–1448                                                     | 236–293 | Integrase                         |
+| `Vif`        | Virion infectivity factor; vif                       | P05902 1–214; P05904 1–235; P89905 1–238; Q87773 1–221               | 214–238 | Q protein, SOR protein            |
+| `Vpx`        | Protein Vpx; vpx                                     | P05917 1–112; E1ANU0 1–105; E1ANU9 1–105; P05918 1–119; Q02842 1–118 |  99–119 | Viral protein X, X ORF protein    |
+| `Vpr`        | Protein Vpr; vpr                                     | P12521 1–89                                                          |  89–135 | Viral protein R, R ORF protein    |
+| `Vpu`        | Protein Vpu; vpu                                     | Q1A244 1–79; Q6VG44 1–76; Q8JAH5 1–76                                |   76–79 | Viral protein U, U ORF protein    |
+| `Env`        | Envelope glycoprotein gp160; env (whole polyprotein) | P19503 1–889                                                         | 854–889 | gp160, Env polyprotein            |
+| `Nef`        | Protein Nef; nef                                     | P05861 1–247; P17664 1–205; Q02840 1–223; Q8AIH4 1–195               |  92–263 | Negative factor, F-protein, 3'ORF |
 
 Names: several SIV lineages in one species. Some TrEMBL Vpx entries are named "Protein Vpr" with gene vpx (Q6EZD7, E1ANU0, E1ANU9, Q7ZB17): gene and closest Swiss-Prot say Vpx.
 

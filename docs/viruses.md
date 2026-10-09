@@ -6,6 +6,8 @@ This file holds the rules; the names are in one file per virus family, in `virus
 
 ## 1. Identifying a protein
 
+**The goal is a consistent Drakkar** \[decided 2026-10-09\]: the same protein carries the same name in every strain of a virus, and a name designates one protein. The reference serves that goal; it does not force every interactor onto a target. An interactor that matches no target (a fragment entry, an uncharacterized protein, a region of its own) keeps the name its curator chose, as long as that name does not designate another protein of the virus.
+
 - A protein is identified by its **sequence**, never by the name it carries in Drakkar, and never by the most common name: the majority can be wrong.
 - **UniProt says what the protein is**: the name of its Swiss-Prot entry, or of its chain when it is a mature protein. For a TrEMBL entry, whose names are often automatic, the Swiss-Prot entry of the same protein (closest by sequence, same virus, else same family) decides.
 - Example: in measles, A4URT5 1–186 is named `V` in Drakkar. UniProt calls this entry "C protein", gene C, and it has the length of the C protein (186 residues; V has 299). It is C.
@@ -31,7 +33,7 @@ Conventions to decide, one at a time. Until then, the family files name what Dra
 
 ## 4. Index
 
-One section per NCBI species, most described first. Each row is a **target**: one protein of the virus, with one reference sequence, so the reference alone is enough to place any interactor (search its sequence against the targets of its virus) and to maintain Drakkar. Its reference is a UniProt entry and region: Swiss-Prot when there is one, else a current TrEMBL entry (with the Swiss-Prot protein it is named after), else an obsolete snapshot still in Drakkar (marked with its release). A target is added when curation meets a new protein; the reference does not list whole proteomes.
+One section per NCBI species, most described first. Each row is a **target**: one protein of the virus, with one reference sequence, so the reference alone is enough to place any interactor (search its sequence against the targets of its virus) and to maintain Drakkar. Its reference is a UniProt entry and region, or several separated by `;` when the protein differs too much between strains of the species to align on one (e.g. SARS-CoV and SARS-CoV-2 ORF3b, the SIV lineages): Swiss-Prot when there is one, else a current TrEMBL entry (with the Swiss-Prot protein it is named after), else an obsolete snapshot still in Drakkar (marked with its release). A target is added when curation meets a new protein; the reference does not list whole proteomes.
 
 | Family                         | File                                                               | Species |
 | ------------------------------ | ------------------------------------------------------------------ | ------: |
@@ -108,5 +110,6 @@ Then:
 
 - Targets on obsolete snapshots (marked with their release) are tried again at each release: a current entry with the same protein replaces them.
 - Every change is written in the family file, and the date at the top of this file is updated. The changes of a release (targets moved, renamed, set aside) are recorded in the history of its versioning pass.
-- Steps 1, 2 and 4 are mechanical: a script parses the target tables of `viruses/` and lists, per target, what changed in the new release. Step 3 is a curation decision, recorded in the family file (`Names:` line).
+- Steps 1, 2 and 4 are mechanical: a script parses the target tables of `viruses/` and lists, per target, what changed in the new release.
+- After each change, `uv run drakkar-viruses <report dir>` (`src/drakkar/viruses.py`) places every live viral interactor on the target of its species by sequence and reports, per interactor: `same` (its name is the target's), `rename` (the target's protein under another name), `partial` (the region is not the whole target: a strain length difference, a fragment or a wrong region) and `no target`. An interactor that should have a target but finds none means the target needs another reference. Step 3 is a curation decision, recorded in the family file (`Names:` line).
 - New targets come from curation, not from upgrades: a target is added when a new description needs a protein the reference does not have (§4).
