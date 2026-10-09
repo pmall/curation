@@ -2,7 +2,7 @@
 
 **Status (2026-10-07): the fixing pass is done.** Every point is fixed except point 2, left to the UniProt upgrade. Final check: `data/2021_02/reports/check-2026-10-07-warnings/`: every error at 0 except R3 (point 2); D12 lists 3 accepted edge cases (warnings); D2 lists the obsolete descriptions (last section), the next job: the versioning pass.
 
-This is the list of invalid data in Drakkar as it stood on 2026-10-06, on UniProt 2021_02, before any upgrade. It covers invariant violations only: each description is judged against the protein snapshots it points to, whether they are obsolete or not, and a fix never moves it to another snapshot. Moving descriptions off obsolete snapshots is the UniProt upgrade job, done later (`database.md` §2). Terms are defined in `glossary.md`.
+This is the list of invalid data in Drakkar as it stood on 2026-10-06, on UniProt 2021_02, before any upgrade. It covers invariant violations only: each description is judged against the protein snapshots it points to, whether they are obsolete or not, and a fix never moves it to another snapshot. Moving descriptions off obsolete snapshots is the UniProt upgrade job, done later (`../database.md` §2). Terms are defined in `../glossary.md`.
 
 Rules: each problem is fixed one at a time, only when the user says so. Each fix is first explained in plain words, with examples and a count, and nothing is written until the user approves that specific fix. No description is physically deleted, and no throwaway version is created.
 
@@ -16,6 +16,24 @@ Workflow \[confirmed 2026-10-06\]:
 Source: `uv run drakkar-check` on 2026-10-06, read-only. The full rows are in `data/2021_02/reports/check-2026-10-06/` (`check.md`, plus one TSV per invariant, named after the invariant ID in brackets below).
 
 Scope measured: 117,457 live vh descriptions in 6,048 publications, and 299,446 live hh descriptions in 9,363 publications. Versioning, stable IDs and protein types have no violations.
+
+## `drakkar-check` before the fixes
+
+Rows of the report on 2026-10-06, on UniProt 2021_02 (D9 and D12 redefined and measured on 2026-10-07; D12 counts the 3 edge cases decided in point 9). Every invariant not listed was at 0.
+
+| ID  | Severity |             vh |                                                    hh |
+| --- | -------- | -------------: | ----------------------------------------------------: |
+| R3  | error    |              1 |                                                     0 |
+| D2  | upgrade  |              1 |                                                14,484 |
+| D4  | error    |            264 |                                                   356 |
+| D5  | error    |      70 groups |                                                     0 |
+| D7  | warning  |          1,120 |                                                     3 |
+| D9  | error    |             53 |                                                     0 |
+| D11 | error    |              0 | 7,256 live sides + 102 deleted sides (fixed in place) |
+| D12 | warning  |              3 |                                                     0 |
+| S1  | error    | 3 publications |                                                     0 |
+
+R3 was an error then; it became information on 2026-10-08 (`03-versioning-pass.md`, step 3c).
 
 ## Problems
 
@@ -80,7 +98,7 @@ No (accession, start, stop) has inconsistent names today: nothing to fix. The fi
 **Done on 2026-10-06** (approved by the user). The 70 groups had two causes, and in every group the copies were identical in every column and created by a bulk import in the same second:
 
 - **The same row imported several times** (58 groups, 125 descriptions, PMIDs 30209081, 31710650, 31873071, imported in January 2021): identical from their first version. One copy is kept per group (the first stable ID in alphabetical order), the 67 others are removed (their live version deleted, no successor). Report: `data/2021_02/reports/point-7-duplicates/applied.tsv`.
-- **HLA alleles merged** (12 groups, 91 descriptions, PMIDs 21454588, 25782006, 27775586, 30209081): each copy was first on a different HLA allele entry; on 2021-05-26 they were all moved to the reference entries (HLA-A P04439, HLA-B P01889, HLA-C P10321), which made them identical. The biologists decided to remove every description involving an HLA protein \[confirmed 2026-10-06\]: 1,076 live descriptions (241 vh in 77 publications, 835 hh in 73 publications, any `HLA-` gene), removed the same way. This settles these groups. List reviewed before: `data/2021_02/reports/hla-descriptions.tsv`; report: `data/2021_02/reports/hla-removal/applied.tsv`. Rule: `curation-rules.md` §4.
+- **HLA alleles merged** (12 groups, 91 descriptions, PMIDs 21454588, 25782006, 27775586, 30209081): each copy was first on a different HLA allele entry; on 2021-05-26 they were all moved to the reference entries (HLA-A P04439, HLA-B P01889, HLA-C P10321), which made them identical. The biologists decided to remove every description involving an HLA protein \[confirmed 2026-10-06\]: 1,076 live descriptions (241 vh in 77 publications, 835 hh in 73 publications, any `HLA-` gene), removed the same way. This settles these groups. List reviewed before: `data/2021_02/reports/hla-descriptions.tsv`; report: `data/2021_02/reports/hla-removal/applied.tsv`. Rule: `../curation-rules.md` §4.
 
 Check after: `data/2021_02/reports/check-2026-10-06-after-point-7/` (D5 = 0, no live HLA description, versioning unchanged).
 
@@ -90,7 +108,7 @@ A description, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. 
 
 **Done on 2026-10-07.** Point 8 (human mappings): nothing to fix. Point 9 (viral mappings): 53 mappings in 36 vh descriptions, all fixed.
 
-**What is checked \[confirmed 2026-10-07\]:** whether the stored mappings, occurrences and identities are true, not whether a mapping could be found elsewhere or on other isoforms. Each stored occurrence is judged against the protein segment at its coordinates: an occurrence recorded at 100 % must be exactly the mapping; otherwise the mapping aligned end to end on the segment must be no more than 1 point below the recorded identity (D9). A mapping that passes is kept as it is, even when our aligner would place it differently. Identity thresholds (96 % legacy, 90 % for Claude's curation) are warnings (D12), not errors. Mismatches and gaps are allowed only for the reason of `curation-rules.md` §4 (fundamental rule). The alignment settings are an arbitrary choice (BLOSUM62, gaps −10/−2).
+**What is checked \[confirmed 2026-10-07\]:** whether the stored mappings, occurrences and identities are true, not whether a mapping could be found elsewhere or on other isoforms. Each stored occurrence is judged against the protein segment at its coordinates: an occurrence recorded at 100 % must be exactly the mapping; otherwise the mapping aligned end to end on the segment must be no more than 1 point below the recorded identity (D9). A mapping that passes is kept as it is, even when our aligner would place it differently. Identity thresholds (96 % legacy, 90 % for Claude's curation) are warnings (D12), not errors. Mismatches and gaps are allowed only for the reason of `../curation-rules.md` §4 (fundamental rule). The alignment settings are an arbitrary choice (BLOSUM62, gaps −10/−2).
 
 **Measured on 2026-10-07** (`data/2021_02/reports/check-2026-10-07-d9-segments/`, with `D9-details.tsv`): 53 viral vh mappings, no human mapping, nothing in hh. Every other occurrence recorded below 100 % is true: on its segment, the identity is at most 0.47 point below the recorded one (legacy gap placement), and every recorded identity was at least 96 %.
 
@@ -132,8 +150,8 @@ Three hh descriptions, each fixed in a single revision:
 
 **Done on 2026-10-06** (approved by the user): 5,154 rows (5,100 live, 54 deleted versions, 5,129 stable IDs), 51,015 values. Only the quotes were removed: each number keeps its digits (`"100"` → `100`, `"99.72973"` → `99.72973`), as the rest of the database writes them. Checked before committing: no malformed mapping left (D11 = 0), mapping content unchanged (same D9 rows), all other columns and the row count unchanged, and every rewritten column equal to the old text with only those quotes removed. Function: `fix_mapping_numbers` (`src/drakkar/fixes.py`); report of every rewritten column: `data/2021_02/reports/fix-mapping-numbers/applied.tsv`; check after: `data/2021_02/reports/check-2026-10-06-after-numbers/`.
 
-A malformed mapping has a bad structure or bad types, while its content is right. Fixing it is not a change in the data, so not a revision: the rows are corrected in place \[confirmed 2026-10-06, `database.md` §2\]. The only structure problem today: 5,100 live hh descriptions (7,830 mappings, 159 publications, created between 2019-11-27 and 2021-05-25) store the numbers of their occurrences as text, e.g. `"start":"204","identity":"98.64865"`, instead of numbers. Read as numbers, their positions fit the sequences. The fix turns each text number into the same number and changes nothing else. It is independent of the points above: 3 of these descriptions are also in point 4. 54 deleted hh versions (102 sides) have the same format, 29 of them in descriptions whose live version is fine. **All are fixed, live and deleted versions** \[confirmed 2026-10-06\]: numbers as text should never have been there. The fix list marks 5,129 descriptions (`malformed_mapping`): 5,100 with a live version to fix, 29 with only a deleted one.
+A malformed mapping has a bad structure or bad types, while its content is right. Fixing it is not a change in the data, so not a revision: the rows are corrected in place \[confirmed 2026-10-06, `../database.md` §2\]. The only structure problem today: 5,100 live hh descriptions (7,830 mappings, 159 publications, created between 2019-11-27 and 2021-05-25) store the numbers of their occurrences as text, e.g. `"start":"204","identity":"98.64865"`, instead of numbers. Read as numbers, their positions fit the sequences. The fix turns each text number into the same number and changes nothing else. It is independent of the points above: 3 of these descriptions are also in point 4. 54 deleted hh versions (102 sides) have the same format, 29 of them in descriptions whose live version is fine. **All are fixed, live and deleted versions** \[confirmed 2026-10-06\]: numbers as text should never have been there. The fix list marks 5,129 descriptions (`malformed_mapping`): 5,100 with a live version to fix, 29 with only a deleted one.
 
 ## Not in this list: obsolete descriptions
 
-Measured on 2026-10-06: 14,485 live descriptions on an obsolete snapshot (14,484 hh, left over from past upgrades never applied to hh, and the vh description of point 2). After the fixes and the HLA removal, on 2026-10-07: **13,893** (13,892 hh and the vh description of point 2). The fixes never moved a description to another snapshot. They are not moved within 2021_02: the next session upgrades straight to 2026_03, then the versioning pass moves them to their 2026_03 snapshots (`database.md` §3).
+Measured on 2026-10-06: 14,485 live descriptions on an obsolete snapshot (14,484 hh, left over from past upgrades never applied to hh, and the vh description of point 2). After the fixes and the HLA removal, on 2026-10-07: **13,893** (13,892 hh and the vh description of point 2). The fixes never moved a description to another snapshot. They are not moved within 2021_02: the next session upgrades straight to 2026_03, then the versioning pass moves them to their 2026_03 snapshots (`../database.md` §3).

@@ -8,6 +8,8 @@ database corrections, which go outside this route:
   never changes). It keeps the protein snapshots of the description, even obsolete ones.
 - `update_snapshots`: a new version of an existing stable ID that only moves it to the current
   protein snapshots (UniProt upgrade job, never mixed with fixes).
+- `annotate`: decisions taken on the live version without a new version (an interactor put
+  aside, an in-place correction), added to its description note.
 - `mark_curated`: end of a curation pass, the publication `curated` with its note.
 - `curate_publication`: a curation pass, all the descriptions found at once, then
   `mark_curated`.
@@ -53,7 +55,9 @@ class Interaction:
     interactor; it is ignored in hh, where it is the gene name. Mappings are the domain sequences
     as described by the publication (C4: never adapted to UniProt). `below_threshold` lists the
     mapping sequences accepted below `MIN_IDENTITY`, each explained in the `Mapping` line of the
-    publication's note (C4); they are stored with their best alignment.
+    description note (C4); they are stored with their best alignment. `note` is the description
+    note of the version written: Claude's decisions, empty when obvious (`docs/curation-rules.md`
+    §6).
     """
 
     method: str  # PSI-MI ID, e.g. "MI:0007"
@@ -65,6 +69,7 @@ class Interaction:
     mappings1: tuple[str, ...] = field(default=())
     mappings2: tuple[str, ...] = field(default=())
     below_threshold: tuple[str, ...] = field(default=())
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -289,7 +294,7 @@ def _build(
                     f"protein {side}: mapping {sequence[:20]}… "
                     f"({len(sequence)} aa) is below {MIN_IDENTITY:g} % identity "
                     f"on every isoform of {snapshot.accession}[{start}-{stop}]: explain it in "
-                    "the note and list it in below_threshold (C4)"
+                    "the description note and list it in below_threshold (C4)"
                 )
             computed.append(mapping)
         mappings.append(computed)
@@ -494,8 +499,9 @@ def _vh_association(cur: Any, run_id: int, pmid: int) -> _Association:
 
 def _add(cur: Any, association: _Association, item: Interaction) -> str:
     row = _build(cur, association.id, "vh", item, None)
+    _check_description_note(cur, item.note, "CREATED")
     stable_id = new_stable_id(cur)
-    _insert(cur, stable_id, 1, row)
+    _insert(cur, stable_id, 1, {**row, "annotation": item.note})
     return stable_id
 
 
@@ -512,6 +518,39 @@ CLAUDE_HEADER = re.compile(r"\[(\d{4}-\d{2}-\d{2}) Claude\] ([A-Z]+): (.+)")
 PASS_LINE = re.compile(r"- Pass (\d{4}-\d{2}-\d{2}): \S")
 CURATOR_BLOCK = "--- Curator note (before Claude) ---"
 DESCRIPTION_COUNT = re.compile(r"\b(\d+) descriptions?\b")
+
+
+def _description_note_problems(note: str, today: str, actions: tuple[str, ...]) -> list[str]:
+    """Problems of a description note against the template of `docs/curation-rules.md` §6.
+
+    Empty when the decision is obvious. Otherwise decision headers dated today, each with one of
+    `actions`, optionally followed by `- ` detail lines.
+    """
+    if not note:
+        return []
+    problems: list[str] = []
+    lines = note.split("\n")
+    if CLAUDE_HEADER.fullmatch(lines[0]) is None:
+        problems.append("description note must start with `[YYYY-MM-DD Claude] ACTION: summary`")
+    for line in lines:
+        if line.startswith("- ") and len(line) > 2:
+            continue
+        header = CLAUDE_HEADER.fullmatch(line)
+        if header is None:
+            problems.append(f"description note line is neither a decision nor a detail: {line!r}")
+        elif header[1] != today:
+            problems.append(f"description note decision is dated {header[1]}, not today ({today})")
+        elif header[2] not in actions:
+            problems.append(
+                f"description note action {header[2]} is not {' or '.join(actions)} here"
+            )
+    return problems
+
+
+def _check_description_note(cur: Any, note: str, *actions: str) -> None:
+    cur.execute("SELECT current_date::text")
+    if problems := _description_note_problems(note, cur.fetchone()[0], actions):
+        raise InvalidDescription(problems)
 
 
 def _note_problems(old: str, note: str, today: str, descriptions: int) -> list[str]:
@@ -714,8 +753,14 @@ def _revisable(cur: Any, stable_id: str) -> tuple[tuple[Any, ...], _Association]
     return live, association
 
 
-def _replace(cur: Any, stable_id: str, live: tuple[Any, ...], row: dict[str, Any]) -> int:
-    """Write `row` as the next version of a stable ID; refuse it if it changes nothing."""
+def _replace(
+    cur: Any, stable_id: str, live: tuple[Any, ...], row: dict[str, Any], note: str, action: str
+) -> int:
+    """Write `row` as the next version of a stable ID, with its description note.
+
+    Refused if it changes nothing: a new note alone is not a revision (`annotate`).
+    """
+    _check_description_note(cur, note, action)
     live_id, _, version = live[:3]
     columns = list(row)
     cur.execute(
@@ -730,7 +775,7 @@ def _replace(cur: Any, stable_id: str, live: tuple[Any, ...], row: dict[str, Any
         raise InvalidDescription([f"the revision of {stable_id} changes nothing"])
 
     cur.execute("UPDATE descriptions SET deleted_at = now() WHERE id = %s", (live_id,))
-    _insert(cur, stable_id, version + 1, row)
+    _insert(cur, stable_id, version + 1, {**row, "annotation": note})
     return version + 1
 
 
@@ -753,10 +798,10 @@ def revise_description(cur: Any, stable_id: str, item: Interaction) -> int:
     accession1, id1, accession2, id2, _, _ = cur.fetchone()
     kept = ((accession1, id1), (accession2, id2))
     row = _build(cur, association.id, association.run_type, item, stable_id, kept)
-    return _replace(cur, stable_id, live, row)
+    return _replace(cur, stable_id, live, row, item.note, "REVISED")
 
 
-def update_snapshots(cur: Any, stable_id: str) -> int:
+def update_snapshots(cur: Any, stable_id: str, note: str = "") -> int:
     """Move the live version of a stable ID to the current snapshots; return the new version.
 
     The UniProt upgrade job, and nothing else: same method, accessions, viral coordinates and
@@ -765,7 +810,8 @@ def update_snapshots(cur: Any, stable_id: str) -> int:
     when the description is already current, when an accession has no current snapshot (deleted
     from UniProt: another entry is a curation decision), when the sequence of a viral interactor
     changed between its coordinates (a curation decision), or when the result breaks an
-    invariant (e.g. a mapping no longer found, D9).
+    invariant (e.g. a mapping no longer found, D9). `note` is the description note of the new
+    version (`UPDATED`), empty when the move is obvious.
     """
     live, association = _revisable(cur, stable_id)
     cur.execute(PROTEINS, (live[0],))
@@ -802,4 +848,21 @@ def update_snapshots(cur: Any, stable_id: str) -> int:
     if association.run_type == "hh":  # human interactor 2: full length, derived
         item = replace(item, start2=None, stop2=None)
     row = _build(cur, association.id, association.run_type, item, stable_id)
-    return _replace(cur, stable_id, live, row)
+    return _replace(cur, stable_id, live, row, note, "UPDATED")
+
+
+def annotate(cur: Any, stable_id: str, note: str) -> None:
+    """Add decisions taken without a new version to the note of the live version, in place.
+
+    An interactor put aside (`ASIDE`) or an in-place correction (`CORRECTED`); the existing
+    note is kept, the decisions are added after it.
+    """
+    live = _live_row(cur, stable_id, lock=True)
+    if not note:
+        raise InvalidDescription([f"{stable_id}: no decision to add"])
+    _check_description_note(cur, note, "ASIDE", "CORRECTED")
+    cur.execute(
+        "UPDATE descriptions SET annotation = concat_ws(E'\\n', nullif(annotation, ''), %s::text) "
+        "WHERE id = %s",
+        (note, live[0]),
+    )

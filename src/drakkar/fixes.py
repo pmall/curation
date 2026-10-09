@@ -1,4 +1,4 @@
-"""Corrections of the database, outside the curation route (`docs/02-data-fixes.md`).
+"""Corrections of the database, outside the curation route (`docs/history/02-data-fixes.md`).
 
 Each function writes one fix approved by the user, and refuses rows it does not expect. Nothing is
 committed: the caller commits once the user approved the write, or rolls back (dry run).

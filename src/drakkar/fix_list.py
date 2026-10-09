@@ -1,9 +1,9 @@
 """Build the fix list from a `drakkar-check` report, without writing to the database.
 
-One row per description with a problem: its point in `docs/02-data-fixes.md` and the invariants
-it violates. A description that needs several fixes goes to the last point, fixed in a single
-revision. Malformed mappings (D11) are fixed in place, without a revision: they are a separate
-column, not a point.
+One row per description with a problem: its point in `docs/history/02-data-fixes.md` and the
+invariants it violates. A description that needs several fixes goes to the last point, fixed in a
+single revision. Malformed mappings (D11) are fixed in place, without a revision: they are a
+separate column, not a point.
 """
 
 import argparse
