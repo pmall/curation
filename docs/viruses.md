@@ -91,7 +91,8 @@ One section per NCBI species, most described first. Each row is a **target**: on
 | Virgaviridae                   | [`viruses/virgaviridae.md`](viruses/virgaviridae.md)               |       3 |
 | Zimmerviridae                  | [`viruses/zimmerviridae.md`](viruses/zimmerviridae.md)             |       1 |
 | Viruses with no family in NCBI | [`viruses/unclassified.md`](viruses/unclassified.md)               |       4 |
-| **Total**                      |                                                                    | **395** |
+
+What a mapping pass leaves open (an interactor the evidence does not settle, or kept although something about it is wrong) is listed per family in [`open.md`](open.md), the only record of these cases. | **Total** | | **395** |
 
 ## 5. Maintenance
 
@@ -111,5 +112,5 @@ Then:
 - Targets on obsolete snapshots (marked with their release) are tried again at each release: a current entry with the same protein replaces them.
 - Every change is written in the family file, and the date at the top of this file is updated. The changes of a release (targets moved, renamed, set aside) are recorded in the history of its versioning pass.
 - Steps 1, 2 and 4 are mechanical: a script parses the target tables of `viruses/` and lists, per target, what changed in the new release.
-- After each change, `uv run drakkar-viruses <report dir>` (`src/drakkar/viruses.py`) places every live viral interactor on the target of its species by sequence and reports, per interactor: `same` (its name is the target's), `rename` (the target's protein under another name), `partial` (the region is not the whole target: a strain length difference, a fragment or a wrong region) and `no target`. An interactor that should have a target but finds none means the target needs another reference. Step 3 is a curation decision, recorded in the family file (`Names:` line).
+- After each change, the interactors of the family are mapped again to the reference with the `map-viral-family` skill (`skills/map-viral-family/SKILL.md`, tool `uv run drakkar-viruses review <family>`, `src/drakkar/viruses.py`): each live viral interactor is placed on the target of its species by sequence (`same`, `rename`, `partial`, `no target`), then checked by hand. An interactor that should have a target but finds none means the target needs another reference. Step 3 is a curation decision, recorded in the family file (`Names:` line).
 - New targets come from curation, not from upgrades: a target is added when a new description needs a protein the reference does not have (§4).

@@ -123,7 +123,7 @@ The versioning pass is the part of the upgrade job that moves the obsolete descr
 - **Obvious first.** Proteins are handled in groups, counted in proteins: first the same sequences (canonical and isoforms) with only a human gene name or a viral taxon change, then new sequences that pass the protein checks, then what is left, one group at a time.
 - **An interactor that fails any check is put aside**, with its reason, on its old snapshot: it is left for re-curation.
 - **Human interactors are always updated when they can be** \[confirmed 2026-10-09\]: a description, vh or hh, is revised whenever one of its human interactors can be moved to the latest Swiss-Prot. When the other interactor is put aside (e.g. a viral protein gone from UniProt), the revision updates the human interactor only, and the other stays on its old snapshot: the description stays live, with an obsolete interactor. A human interactor that cannot be updated (entry deleted, name check failed, human mapping no longer fitting) is left as it is.
-- **Publications are checked by their abstracts only**, never their full texts; no answer from the abstracts means aside.
+- **The publications decide** (`curation-rules.md` §1): a question is settled from the title and abstract and the full text when available; what they do not settle is put aside.
 
 **A protein moves automatically** to the current snapshot of the same accession when all these checks pass:
 
