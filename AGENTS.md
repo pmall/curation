@@ -2,7 +2,7 @@
 
 ## Documentation
 
-- Project knowledge lives in `docs/`: `glossary.md` (the meaning of every term, to use everywhere), `curation-rules.md` (biological curation rules), `database.md` (structure, versioning, invariants), `derived-datasets.md` (what is exported from Drakkar, and what it means for curation), `viruses.md` and `viruses/` (the generic name of each viral protein, decided once, one file per virus family).
+- Project knowledge lives in `docs/`: `glossary.md` (the meaning of every term, to use everywhere), `curation-rules.md` (biological curation rules), `database.md` (structure, versioning, invariants), `derived-datasets.md` (what is exported from Drakkar, and what it means for curation).
 - **Only what is committed in `docs/` is kept.** `data/`, reports and scratch files are disposable: any result needed later (a reference, a decision, a list) goes into `docs/` and is committed. Work from `docs/`, and keep it up to date.
 - `docs/history/` records the passes done on the database (exploration, fixing pass, versioning pass): what was done, when, with counts and reports. Reference docs hold the rules and point to the history; a rule found in a history file belongs in the reference docs.
 
