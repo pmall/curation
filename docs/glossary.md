@@ -1,6 +1,6 @@
 # Glossary
 
-One meaning per word, used everywhere: docs, code, reports and conversations. When a schema name says otherwise, the schema name is legacy and this glossary wins. Points marked **to confirm** are open.
+One meaning per word, used everywhere: docs, code, reports and conversations. When a schema name says otherwise, the schema name is legacy and this glossary wins.
 
 ## Publications and their curation
 
