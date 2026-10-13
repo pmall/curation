@@ -30,4 +30,4 @@ Mappings with no up-to-date human target are left out.
 ## What it means for curation
 
 - A description is revised whenever one of its human interactors can be updated to the latest Swiss-Prot, even when its other interactor cannot (`database.md` §3, versioning pass).
-- The same viral protein has the same generic name across the strains of a virus (`curation-rules.md` C2): the datasets abstract the strains.
+- Drakkar is consistent at the accession level (hard: D6, D10) and at the strain level (soft, kept when curating) (`curation-rules.md` §1, C2). Consistency at the generic protein level is a concern of the derived datasets: across strains, the same protein can carry different generic names (e.g. `orf14` and `orf9c`), and grouping them under one name, to abstract the strains, is done when the datasets are built, not in Drakkar.
