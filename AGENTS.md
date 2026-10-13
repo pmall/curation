@@ -11,7 +11,7 @@
 - Use the user's definitions exactly as given (terms in `docs/glossary.md`): never merge, regroup, relabel or extend a problem, term or rule; when one seems incomplete, ask one precise question.
 - Be precise and short: say what is counted (descriptions, interactors, proteins, sides) and never mix units; one decision at a time; show the special cases, not the obvious ones; plain words, no invariant codes.
 - Every count comes from a fresh query or the latest report, never from memory or arithmetic on earlier numbers; tables add up to their total.
-- Database writes: nothing is written before the user approves that specific fix, explained in plain words with examples and a count (`docs/database.md` §2). Dry runs and read-only analysis are fine. A small fix on a few rows is plain SQL, never a new function.
+- Database writes: in consistency reviews, fixing passes and versioning passes, Claude takes every decision (unsettled is one), reports it in plain words with examples and a count, and commits nothing before the user's green light on the report. Live curation commits and goes on to the next publication without waiting (`docs/curation-rules.md` §1). Dry runs and read-only analysis are fine. A small fix on a few rows is plain SQL, never a new function.
 - Recomputed values (alignments, identities, coordinates) are written only if our code first reproduces the stored values on the cases that are right; any discrepancy: stop, show it, write nothing.
 - Low-stakes requests (test data, demos): the simplest thing in minutes, one plain query, no enrichment; extras only afterwards.
 

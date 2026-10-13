@@ -1,38 +1,119 @@
 ---
 name: review-viral-family
-description: "Consistency review of the viral interactors of one or more virus families named in the prompt: produce a report to inspect and validate with the user, then write the validated revisions. Use when the user names virus families to review."
+description: "Consistency review of the viral interactors of one or more virus families: find descriptions whose generic names or coordinates disagree, report the revisions, write them once validated. Use when the user names virus families to review. The prompt gives the families and where to write the report."
 ---
 
 # Consistency review of virus families
 
-The prompt names one or more virus families. Claude, as the curator, reviews their viral interactors, writes a report for the user to inspect and validate, and writes the revisions once they are validated.
+## Inputs
 
-The descriptions are valid: they follow every rule of the database. The review does not look for errors; it looks for descriptions that are valid but do not agree with each other. The viral interactors were curated over years by different curators, and the derived datasets group strains as (a common taxon, generic name): the same protein under two generic names becomes two proteins, two proteins under one generic name become one, and a wrongly identified protein carries interactions that are not its own. Once a family is reviewed, its naming in Drakkar is consistent, and live curation takes the generic names of new interactors from it.
+- **Families**: one or more virus families.
+- **Report location**: a file, or a directory (then name the file `<date>-<families>.md`). If missing, ask.
 
-## 1. List the viral interactors
+## Goal
 
-One row per viral interactor (accession, start, stop) of the live vh descriptions of the families, on current snapshots (the obsolete descriptions are put aside, waiting for re-curation): strain group (the NCBI taxon of rank species above its species), species, UniProt description, region sequence and length, generic name, the UniProt chain at these coordinates, number of descriptions and publications. Read-only queries, fast: collect the distinct taxa first, then walk their lineage once by `parent_taxon_id`.
+The descriptions are valid; look only for viral interactors that disagree with each other:
 
-## 2. Find the inconsistencies
+- the same protein under two generic names;
+- two different proteins under one generic name;
+- a wrongly identified protein (sequence or length unlike the others of its generic name);
+- coordinates unlike those of the same protein elsewhere.
 
-Read every row as the curator, strain group by strain group, comparing the strains (group them otherwise when the family calls for it). Use what you know of these viruses and their classical protein names to spot what is strange, never as evidence. Look for the same protein under two generic names, two different proteins under one generic name, a wrongly identified protein (a sequence or a length unlike the others of its generic name), coordinates unlike those of the same protein elsewhere.
+Ignore everything consistent.
 
-The sequence is a key, not evidence: it finds the outliers across strains, finds the same protein among the curated interactors so their generic names and coordinates can be compared, and leads to the UniProt entry or chain a region belongs to.
+## Step 1: List the viral interactors
 
-## 3. Settle each one
+Read-only. One row per viral interactor (accession, start, stop) of the live vh descriptions of the families, on current snapshots (skip obsolete descriptions):
 
-The evidence, cheapest first: the UniProt entry (chains, names), then the title and abstract of the publications, the full text as a last resort. When the generic name and the coordinates disagree, UniProt shows the mismatch, not which one is wrong: the publications decide whether the curator meant the named protein (the coordinates change) or the protein of the region (the generic name changes). In doubt, the curated value stands, and the case is an open question.
+- strain group (NCBI taxon of rank species above the species), species
+- UniProt description, region sequence and length
+- generic name, UniProt chain at these coordinates
+- number of descriptions and of publications
 
-The fewest revisions: a generic name changes only when it is inconsistent, never for its form (case, spelling), and the new one is the generic name already used in Drakkar for that protein across the strains of the virus, never taken from the publication. Leave alone what only differs in form, real biology (a protein that truly differs in one virus), and a fragment whose region matches its generic name.
+Collect the distinct taxa first, then walk their lineage once by `parent_taxon_id`. This listing is working material; it does not go in the report.
 
-## 4. Report
+## Step 2: Find the inconsistencies
 
-Write the report in `data/<current release>/reports/consistency-review/`, named after the date and the families: the naming of each family in Drakkar, each proposed revision with its evidence and the number of descriptions it changes, the open questions, what is left as it is and why. Give the path in chat and stop: nothing is written to the database before the user validates.
+- Read every row, strain group by strain group, comparing strains (group otherwise when the family calls for it).
+- Use knowledge of the viruses and their classical protein names to spot oddities, never as evidence.
+- Use the sequence as a key: to find outliers across strains, the same protein among curated interactors, and the UniProt entry or chain a region belongs to.
 
-## 5. Revisions, once validated
+## Step 3: Settle each case
 
-Each description concerned by a validated revision gets a new version, in plain SQL, in one transaction: a copy of the live row with the new generic name or coordinates and its description note, the old version deleted at the same instant. New coordinates: the viral mappings are searched again on them. Run the transaction without committing, check that the data stays valid, and show the result; commit only when the user validates it, then run `uv run drakkar-check <report dir>`.
+Every case ends **kept**, **revised** or **unsettled**. Decide; never ask the user to choose between names or coordinates. Unsettled = evidence does not decide; write nothing for it.
 
-## 6. Record
+**Evidence, cheapest first:** UniProt entry (chains, names) → publication title and abstract → full text.
 
-Add the families to `docs/history/04-consistency-review.md`: date, viral interactors and descriptions reviewed, revisions written, and the open questions, which are settled together once every family is reviewed. No git commit unless the user asks.
+**Name vs coordinates disagree:**
+
+- The publications say which protein the curator meant: the named one → change the coordinates; the one of the region → change the generic name.
+- The publications say nothing → the region wins: change the generic name.
+
+**Scope:** only generic names and coordinates. If the fix needs anything else (another accession, another strain), settle what is in scope and note the rest.
+
+**Generic names:**
+
+- Change a name only when it is inconsistent, never for its form (case, spelling).
+- The new name is the one already used in Drakkar for that protein across the strains of the virus, never one from the publication.
+- No Drakkar name for that protein: follow the convention the strain group uses for its neighbours (UniProt product name form, ORF-number form). Never invent one when an existing name fits.
+
+**Leave alone:** differences of form, real biology (a protein that truly differs in one virus), fragments whose region matches their generic name.
+
+**Borderline cases:** decide them; note the ones worth it in the report.
+
+**Coordinate changes: recheck the mappings before proposing.**
+
+1. Count the mappings of the descriptions concerned.
+1. Check that `map_sequence` (`descriptions.py`) reproduces them on the current coordinates (positions on the canonical isoform are relative to the region). Any discrepancy: stop and show it.
+1. Recompute them on the proposed coordinates.
+   - All found again at the expected place → the proposal holds.
+   - Any lost, moved or below threshold → drop the proposal. Investigate that description (publication, entry, strain, other descriptions of the same interactor and publication), then keep it, propose something else, or keep it and note it if the answer is out of scope.
+
+Never write coordinates that break a mapping; never discard a mapping to fit a proposal.
+
+## Step 4: Write the report
+
+Every number and claim comes from a query run for it:
+
+- "identical" = compared residue by residue; otherwise give length, number of differences, identity, and whether the chain boundaries are the same residues;
+- mapping claims = a count of the mappings concerned, plus the recheck result;
+- lengths, identities, counts of descriptions, entries or mature proteins = query results;
+- a name used elsewhere in Drakkar = read from the database, with its interactor and number of descriptions.
+
+Content, nothing else:
+
+1. **Generic name revisions** (table): viral interactor, current name, new name, descriptions, why (one sentence: the inconsistency and what settles it).
+1. **Coordinate revisions** (table): viral interactor, current coordinates, new coordinates, descriptions, mappings concerned and recheck result, why.
+1. **Left alone**: one line per kind (form only, real biology, fragments, polyproteins, …) with one example each.
+1. **Unsettled**: one line each, with why.
+1. **Noted**: one line each, when something beyond this review may be wrong.
+1. **Totals**: viral interactors and descriptions revised.
+
+One sentence per case, two at most. No inventory of the family, no method, no virology, no questions.
+
+Before delivering, re-read each sentence and name the query behind each claim; query or remove any that has none.
+
+Give the report path and the same lists in chat. **Stop: write nothing to the database before the user validates.**
+
+## Step 5: Write the validated revisions
+
+Plain SQL, one transaction (no new function, not the guard functions of `descriptions.py`):
+
+- Select `FOR UPDATE` the live descriptions of each revised viral interactor only: viral side with that accession, generic name and coordinates.
+- Use one `now()::timestamp(0)` for the whole transaction.
+- Insert a copy of each live row with `version + 1`, the new generic name or coordinates, the recomputed mappings, and the description note `[<date> Claude] REVISED: <what changes and why> (consistency review of <family>)`.
+- Set `deleted_at` of the old row to the same instant.
+- Assert rows inserted = rows deleted = rows expected, per revision.
+
+Dry run first (no commit) and show: counts per revision, invariants V3, D3, D5, and each revised interactor read back (mature proteins of a polyprotein tile without hole or overlap). Commit only after the user validates, then run `uv run drakkar-check <report dir>` and report its result.
+
+No git commit unless asked.
+
+## Output
+
+End with:
+
+- date, families, viral interactors and descriptions reviewed, revisions written, report path;
+- cases noted;
+- generic names new to Drakkar: name, interactor, convention followed;
+- what went wrong in the pass (unchecked claim, slow query, unforeseen case), one or two lines.
