@@ -5,10 +5,14 @@ description: "Re-curation session: up to 20 curated publications, their descript
 
 # Re-curation
 
-You orchestrate a re-curation session as described in `docs/process.md` (§ A session); read it first.
+You orchestrate a re-curation session: curated publications turned into files of revisions (`*.revise.tsv`), which pass the dry run and are committed together on the user's go. Re-curation never adds descriptions. The files and the tools: `docs/tools.md`.
 
-**Done** when every publication of `<dir>/publications.tsv` has its files or is reported, the files of the session pass the dry run together, and the report is handed over. After the go: `drakkar-revise --commit`, then `drakkar-check`.
+**Done** when every publication of `<dir>/publications.tsv` has its files or is reported, the files of the session pass the dry run together, and the report is handed over.
 
-- **Publications**: given in `<dir>/publications.tsv`, at most 20; if it is missing or longer, ask.
-- **Subagents**: one per publication, with `item.md` (`{dir}`, `{run_id}`, `{pmid}` filled in), on Sonnet: checking curated descriptions against their publication is mostly reading.
-- **Report**: decisions by kind, each with its count of descriptions and publications and one example; removals; unsettled cases with why.
+1. **Publications**: given in `<dir>/publications.tsv` (`run_id`, `pmid`), at most 20; if it is missing or longer, ask. Everything the session produces goes in `<dir>`.
+1. **One subagent per publication**, a few at a time, with `item.md` (`{dir}`, `{run_id}`, `{pmid}` filled in), on Sonnet: checking curated descriptions against their publication is mostly reading. Each subagent decides its publication alone: you never read a publication, and a full text is only ever read by the subagent of its publication. A publication is done when its files (`<dir>/<pmid>.*.tsv`) exist: the subagent writes them under a temporary name and renames them once they pass the dry run, so a file that exists has passed. A publication too large for one subagent is reported as such, with no file: it gets a session of its own.
+1. **Reconcile**: dry-run all the files of the session together. Files that pass alone can contradict each other, e.g. two publications renaming the same region of an entry differently. Each contradiction goes back to the subagent of one of its publications, to be decided again or left unsettled.
+1. **Report**: decisions by kind, each with its count of descriptions and publications and one example; removals; unsettled cases with why; publications without files.
+1. **After the go**: `uv run drakkar-revise <dir>/*.revise.tsv --commit`, then `uv run drakkar-check <dir>/check-after`, and save the report as `<dir>/report.md`.
+
+The state of a session is its directory: a publication without files is still to do, and `report.md` means committed. A session is resumed by doing what is missing.

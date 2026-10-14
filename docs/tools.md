@@ -1,21 +1,6 @@
-# Curation process
+# Tools
 
-How curation and re-curation sessions run. What a right description is: `curation-rules.md`; what a write checks and does: `database.md` §2.
-
-## Goal
-
-Curation and re-curation produce files, not writes. **Curation** turns selected publications into files of descriptions to add. **Re-curation** turns curated publications into files of revisions; it never adds descriptions. A file is done when it passes the dry run; the files of a session are committed together, on the user's go.
-
-## A session
-
-A session is at most 20 publications, handled in one Claude session and chosen before it starts: choosing them is not the session's job. Each publication gets its own subagent, which decides it alone: the orchestrator never reads a publication, and a full text is only ever read by the subagent of its publication.
-
-1. **Start**: the work directory `<dir>` holds `publications.tsv` (`run_id`, `pmid`); everything the session produces goes in it.
-1. **One subagent per publication**, a few at a time, following the item instructions of the skill. A publication is **done** when its files (`<dir>/<pmid>.*.tsv`) exist and pass the dry run: the subagent that decided runs it and settles what it refuses, because only it has the evidence. It writes each file under a temporary name and renames it once it passes, so a file that exists has passed. A publication too large for one subagent (a high-throughput screen with more than it can decide) is reported as such, with no file: it gets a session of its own.
-1. **Reconcile**: dry-run all the files of the session together. Files that pass alone can contradict each other, e.g. two publications naming the same region of an entry differently. Each contradiction goes back to the subagent of one of its publications, to be decided again or left unsettled.
-1. **Report, then commit on the go**: the report covers the descriptions that pass, by kind of decision, with an example and a count each, the unsettled cases with why, and the publications without files. After the go: commit, then `uv run drakkar-check <dir>/check-after`, and save the report as `<dir>/report.md`.
-
-The state of a session is its directory: what has no file yet is still to do, and `report.md` means committed. A session is resumed by doing what is missing.
+Descriptions and publication states are written only through these tools, from files. What a write checks and does: `database.md` §2; what a right description is: `curation-rules.md`.
 
 ## Files
 

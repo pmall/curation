@@ -1,4 +1,4 @@
-"""Write descriptions and publication states (`docs/process.md`).
+"""Write descriptions and publication states (`docs/tools.md`).
 
 Three functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
 `update_publications`. Each takes a list and writes it in one transaction:

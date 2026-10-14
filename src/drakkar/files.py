@@ -1,4 +1,4 @@
-"""The files of a pass (`docs/process.md`) and the commands that write them.
+"""The files of a pass (`docs/tools.md`) and the commands that write them.
 
 Tab separated, one row per item; lines starting with `#` are ignored, so files concatenate.
 In a note, `\\n` is a line break. Lists (mappings, below_threshold) are separated by `,`.
@@ -209,7 +209,7 @@ def _command(
     write: Callable[..., Outcome],
 ) -> None:
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("files", type=Path, nargs="*", help="files of the format of process.md")
+    parser.add_argument("files", type=Path, nargs="*", help="files of the format of docs/tools.md")
     parser.add_argument("--commit", action="store_true", help="commit if everything passes")
     parser.add_argument("--header", action="store_true", help="print the header line and exit")
     args = parser.parse_args()

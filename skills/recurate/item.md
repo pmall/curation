@@ -4,7 +4,7 @@ Sent to one subagent per publication, with `{dir}`, `{run_id}` and `{pmid}` fill
 
 ______________________________________________________________________
 
-Re-curate the live virus–human descriptions of publication PMID {pmid} (run {run_id}): does each description still say what the publication shows? Read `docs/curation-rules.md` and `docs/glossary.md` first; `docs/process.md` gives the file formats and the tools.
+Re-curate the live virus–human descriptions of publication PMID {pmid} (run {run_id}): does each description still say what the publication shows? Read `docs/curation-rules.md` and `docs/glossary.md` first; `docs/tools.md` gives the file formats and the tools.
 
 Decide each description from the title, the abstract and its interactors' UniProt entries; read the full text only for what they leave open.
 
