@@ -1,0 +1,17 @@
+# Mappings: cases the rules cannot record
+
+Mapping sequences from real publications that the mapping rules and tools cannot record, dated, with what was done with them. The rules and tools are improved from them.
+
+## 2026-10-07, PMID 34799561: peptides across a cleavage site
+
+PMID 34799561 (run 56) maps coronavirus proteins with 16-residue peptides. Five of its peptides are exact on the polyprotein but cross the cleavage site between two mature proteins, so they fit neither interactor and had no occurrence. They were removed from the viral mappings of the 14 descriptions that carried them, the other mappings kept; 5 of these descriptions were left without a viral mapping. The peptides are listed in the publication note, which says the publication is to be reviewed.
+
+| Site        | Peptide            | Polyprotein positions          | Descriptions (human protein, interactor)                                                                                                                                                                                                                                |
+| ----------- | ------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| nsp8/nsp9   | `ASSAVTLQNNEIRPSG` | 4211–4226                      | EY27E3AE75 (USP7, P0C6T5 nsp9 4219–4328), EY5C39F912 (USP7, P0C6W4 nsp9 4219–4328)                                                                                                                                                                                      |
+| nsp9/nsp10  | `QAGSNTEFAINSSVLS` | 4328–4343                      | EYAE523C46 (USP7, P0C6T5 nsp10 4329–4467), EY54EDFA88 (USP7, P0C6W4 nsp10 4329–4467)                                                                                                                                                                                    |
+| nsp4/nsp5   | `TPPTVSYGSTLQAGLR` | 2954–2969                      | EY026760DC (USP7, P0C6U2 nsp4 2485–2965), EYB334C0AE (USP7, P0C6X1 nsp4 2485–2965)                                                                                                                                                                                      |
+| nsp4/nsp5   | `QPPQTSITSAVLQSGF` | by entry, with the description | EYBEE079A7 (USP7, P0C6U8 nsp4 2741–3240; 3228–3243), EYB4C087EE (USP7, P0C6X7 nsp4 2741–3240; 3228–3243), EYB8F6585D (USP7, P0C6W6 nsp4 2739–3238; 3226–3241), EYF74CEBA3 (USP7, P0DTC1 nsp4 2764–3263; 3251–3266), EYBDA89EB1 (USP7, P0DTD1 nsp4 2764–3263; 3251–3266) |
+| nsp13/nsp14 | `FFEIKHADLHSSQVCG` | 5558–5573                      | EY640D2918 (MSN), EY8683F8BE (RDX), EYE107E2BA (EZR), all P0C6X5 nsp13 4971–5567                                                                                                                                                                                        |
+
+On 2026-10-14 the extra end residues were settled (`curation-rules.md` §3): residues of the polyprotein past the end of a mature protein are recorded as `nter` or `cter`. A peptide across a cleavage site is still not recorded: it is skipped and listed in the publication note. These five peptides wait for that case to be settled.

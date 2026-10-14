@@ -64,7 +64,7 @@ A `discarded` publication without a Claude note may have been decided on the abs
 
 The underlying philosophy of the curation, and the reason mismatches are allowed.
 
-> **Fundamental rule.** A mapping may differ from its interactor (mismatches, gaps) for one reason only: the UniProt sequence is not exactly the one used in the experiment of the publication.
+> **Fundamental rule.** A mapping, its extra end residues aside (below), may differ from its interactor (mismatches, gaps) for one reason only: the UniProt sequence is not exactly the one used in the experiment of the publication.
 >
 > - **Viral:** the UniProt entry is not the publication's strain, but the closest one.
 > - **Human:** the Swiss-Prot sequence changed between versions.
@@ -76,6 +76,7 @@ The underlying philosophy of the curation, and the reason mismatches are allowed
    - the publication gives a strain and coordinates on that strain: the subsequence is extracted exactly from that strain's sequence. When UniProt has no entry for the strain, the strain's sequence is taken from GenBank, and the GenBank entry used is recorded in the description note (`Mapping` line, §5).
 1. **The interaction is anchored on UniProt.** The interactor is the UniProt entry of the publication's strain, or the closest entry when UniProt does not have that strain (C3).
 1. **The alignment links the two.** The mapping, which may come from another strain than the interactor, is aligned on the interactor and its isoforms with a **90 % identity** threshold (C4, a warning, not a hard limit), to tolerate the differences between strains. A single description then keeps both the UniProt reference and the exact mapping. The alignment only locates the mapping: it never changes it.
+1. **Extra end residues are named, not aligned.** The sequence used in the experiment can carry, at its N- or C-terminal end, residues that are not on its interactor: the protein's own residues just outside it (the initiator methionine before a mature protein, residues of the polyprotein past its end) or residues of the construct (a tag, a linker). The mapping keeps the whole sequence and names these residues in `nter` (at its start) and `cter` (at its end); its occurrences locate the rest. E.g. HCV Core is 2–191 of the polyprotein, so `MSTNPKPQRKTKRNT` gets `nter` M and is exact on Core. In the files they are written in lowercase (`mSTNPKPQRKTKRNT`, `tools.md`). A peptide across the cleavage site between two mature proteins cannot be recorded: it is skipped and listed in the publication note.
 
 At 90 %, a mapping of 10 residues or more can have one mismatch or gap; a shorter one must match exactly. Why 90 %: small mappings matter most, and UniProt keeps few strains (viral TrEMBL entries outside reference proteomes are deleted, `database.md` §3), so a publication whose exact strain was in an earlier release may now have to be mapped on the closest one.
 

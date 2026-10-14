@@ -2,7 +2,7 @@
 
 Next steps, in order.
 
-1. **Mapping pass**: across all isoforms, keep every occurrence that ties for the best identity. First settle how the extra N- and C-terminal residues count (`database.md` §5).
+1. **Mapping pass**: recompute the occurrences of every live mapping with the rule of the write tools (`database.md` §2).
 1. **Rerun the recurate test** on its test publications, with the subagents on Sonnet: if their decisions are weaker than the default model's, switch the skill back. Then the rest of the re-curation selection, one session at a time.
 1. **Try the curate skill** on a few selected publications.
 1. **At the next UniProt release, the versioning tool**: list the obsolete interactors of live descriptions, and the obvious moves; Claude writes the revision file. The revision tools then need a way to move an interactor to the current snapshot of the same accession.

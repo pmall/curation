@@ -27,9 +27,8 @@ from typing import Any, Literal, cast
 import psycopg
 
 from drakkar import check
-from drakkar.align import MIN_IDENTITY, map_sequence
+from drakkar.align import MIN_IDENTITY, best_identity, map_sequence, read_written, written
 
-AMINO_ACIDS = re.compile(r"[ACDEFGHIKLMNPQRSTVWYUOXBZJ]+")
 DATE = "[DATE Claude]"
 
 
@@ -46,9 +45,10 @@ class Description:
     `accession2` is viral in vh, human in hh. `start2`/`stop2` default to the full protein; a
     mature protein of a polyprotein gets its coordinates. `name2` is the generic name of a viral
     interactor (in hh, the gene name, derived). Human names and coordinates are derived from the
-    snapshots. Mappings are the domain sequences as described by the publication (C4); their
-    occurrences are computed. `below_threshold` lists the mapping sequences accepted below
-    `MIN_IDENTITY`, explained in the note; they are stored with their best alignment.
+    snapshots. Mappings are the domain sequences as described by the publication (C4), their
+    extra end residues in lowercase (`drakkar.align`); their occurrences are computed.
+    `below_threshold` lists the mapping sequences accepted below `MIN_IDENTITY`, explained in the
+    note; they are stored with their best occurrences.
     """
 
     method: str  # PSI-MI ID, e.g. "MI:0007"
@@ -305,33 +305,37 @@ def _build(
     if problems:
         raise InvalidRow(*problems)
 
-    unknown = set(item.below_threshold) - set(item.mappings1) - set(item.mappings2)
-    if unknown:
+    below = {b.upper() for b in item.below_threshold}
+    if unknown := below - {m.upper() for m in item.mappings1 + item.mappings2}:
         problems.append(f"below_threshold lists sequences that are not mappings: {sorted(unknown)}")
     mappings: list[list[dict[str, Any]]] = []
     for side, snapshot, sequences, start, stop in (
         (1, p1, item.mappings1, 1, p1.length),
         (2, p2, item.mappings2, start2, stop2),
     ):
-        if len(set(sequences)) != len(sequences):
+        if len({s.upper() for s in sequences}) != len(sequences):
             problems.append(f"protein {side}: duplicate mapping sequences")
         computed: list[dict[str, Any]] = []
-        for sequence in sequences:
-            if not AMINO_ACIDS.fullmatch(sequence):
+        for text in sequences:
+            try:
+                sequence, nter, cter = read_written(text)
+            except ValueError as e:
+                problems.append(f"protein {side}: {e}")
+                continue
+            if not check.AMINO_ACIDS.fullmatch(sequence):
                 problems.append(
                     f"protein {side}: mapping {sequence[:20]}… is not an amino acid sequence"
                 )
                 continue
-            mapping = map_sequence(sequence, snapshot.sequences, snapshot.accession, start, stop)
-            if not mapping["isoforms"] and sequence in item.below_threshold:
-                low = map_sequence(
-                    sequence, snapshot.sequences, snapshot.accession, start, stop, 0.0
-                )
-                best = max(
-                    low["isoforms"], key=lambda i: max(o["identity"] for o in i["occurrences"])
-                )
-                mapping["isoforms"] = [best]
+            mapping = map_sequence(
+                sequence, snapshot.sequences, snapshot.accession, start, stop, nter, cter
+            )
             if not mapping["isoforms"]:
+                problems.append(
+                    f"protein {side}: mapping {sequence[:20]}… ({len(sequence)} aa) aligns "
+                    f"nowhere on {snapshot.accession}[{start}-{stop}]"
+                )
+            elif best_identity(mapping) < MIN_IDENTITY and sequence not in below:
                 problems.append(
                     f"protein {side}: mapping {sequence[:20]}… ({len(sequence)} aa) is below "
                     f"{MIN_IDENTITY:g} % on every isoform of {snapshot.accession}[{start}-{stop}]: "
@@ -541,11 +545,7 @@ def live_revisions(cur: Any, run_id: int, pmid: int) -> list[Revision]:
     for stable_id, version, method, a1, a2, name2, start2, stop2, m1, m2, run_type in cur:
         mappings = [cast(list[dict[str, Any]], json.loads(m)) for m in (m1, m2)]
         below = tuple(
-            m["sequence"]
-            for side in mappings
-            for m in side
-            if max((o["identity"] for i in m["isoforms"] for o in i["occurrences"]), default=100)
-            < MIN_IDENTITY
+            written(m) for side in mappings for m in side if best_identity(m) < MIN_IDENTITY
         )
         hh = run_type.strip() == "hh"
         description = Description(
@@ -555,8 +555,8 @@ def live_revisions(cur: Any, run_id: int, pmid: int) -> list[Revision]:
             name2="" if hh else name2,
             start2=None if hh else start2,
             stop2=None if hh else stop2,
-            mappings1=tuple(m["sequence"] for m in mappings[0]),
-            mappings2=tuple(m["sequence"] for m in mappings[1]),
+            mappings1=tuple(written(m) for m in mappings[0]),
+            mappings2=tuple(written(m) for m in mappings[1]),
             below_threshold=below,
         )
         revisions.append(Revision(stable_id, version, run_id, pmid, "revise", description))
