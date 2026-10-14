@@ -1,33 +1,31 @@
 # Derived datasets
 
-Last updated: 2026-10-09. Terms are defined in `glossary.md`.
+Terms are defined in `glossary.md`.
 
-Drakkar is the curation database. Derived datasets are exported from it for other applications, which work on the latest human Swiss-Prot release. Many forms of datasets can be derived; this document gives the principles, and what they mean for curation.
+Drakkar is the curation database. Derived datasets are exported from it for other applications. This document gives what they are, and what they mean for curation.
 
-## Two things curated at once [confirmed 2026-10-09]
+## Drakkar is consistent at the UniProt entry level
 
-- **The vh interactome:** which viral protein interacts with which human protein. Only up-to-date descriptions count. Consuming applications rarely care about strains: they abstract a viral protein as (a common taxon, its generic name).
-- **The mappings:** the sequences of interaction domains, each recorded on a source interactor, which can be a strain. It says that this mapping was observed on this strain once. The source is kept up to date as long as possible, but viral UniProt entries are rarely updated: a new sequence usually gets a new entry, and the old one leaves UniProt. Dropping a recorded mapping because its entry left the latest release would make no sense. What consuming applications need is a human target that fits the latest Swiss-Prot.
+Each description is exact on its UniProt entries, whatever their version: the snapshot it points to keeps the interactions and the mappings as they were recorded at the time of curation. Drakkar does not reconcile entries or strains: the derived datasets do, when they need to.
 
-Example of a consumer: a graph database built from Drakkar, whose viral nodes are abstracted as (common taxon, generic name), and whose mappings point to their human target nodes.
+## How the datasets reconcile the entries
 
-## Principles [confirmed 2026-10-09]
+- **Human interactors** count only on the latest ingested Swiss-Prot release.
+- **Viral interactors** count on the latest snapshot they can be on, which may be an old one when the entry left UniProt (e.g. a patient isolate).
+- **Live descriptions only.** A deleted version is history, not data; a removed description never counts.
 
-- **Live descriptions only.** A deleted version never counts: a version replaced by a revision is history, not data. A removed description (no live version, e.g. the HLA descriptions) never counts.
-- **Obsolete is not deleted.** An obsolete description (at least one obsolete interactor) is live and counts: it was right on its snapshots when it was curated (`curation-rules.md` §1).
-- **The human target is always up to date**: on a current Swiss-Prot snapshot.
+## The four datasets
 
-## Descriptions dataset
+| Dataset         | What it holds                                                                                                                                                                             |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| hh descriptions | The pairs of human interactors, both up to date.                                                                                                                                          |
+| vh descriptions | The up-to-date human interactor and the generic viral protein: (the NCBI taxon ID of the species, one generic name), whatever the strain and the UniProt version of the viral interactor. |
+| hh mappings     | Both human interactors up to date; the mapping sequences, with all the isoforms as their source.                                                                                          |
+| vh mappings     | The up-to-date human interactor as the target, and the viral source of the mapping, whatever its UniProt version, strain or isoform.                                                      |
 
-The live descriptions with no obsolete interactor. It is always up to date.
-
-## Mappings dataset
-
-The mappings of the live descriptions whose human target is up to date. The interactor a mapping is recorded on may be on a current or an old snapshot: a mapping found only on a strain deleted from UniProt (e.g. a patient isolate) is kept, with its old release as its source. The same holds in hh: one human interactor up to date, the other on an old snapshot with a mapping.
-
-Mappings with no up-to-date human target are left out.
+**Generic viral proteins.** The vh descriptions dataset needs one generic name per viral protein of a species, across its strains (e.g. `orf14` and `orf9c` for the same protein). This is a viral curation pass of its own: list the species present in Drakkar and group their viral interactors under a single generic protein name. It is never done in the descriptions: curation keeps the names of Drakkar (`curation-rules.md` §1).
 
 ## What it means for curation
 
-- A description is revised whenever one of its human interactors can be updated to the latest Swiss-Prot, even when its other interactor cannot (`database.md` §3, versioning pass).
-- Drakkar is consistent at the accession level (hard: D6, D10) and at the strain level (soft, kept when curating) (`curation-rules.md` §1, C2). Consistency at the generic protein level is a concern of the derived datasets: across strains, the same protein can carry different generic names (e.g. `orf14` and `orf9c`), and grouping them under one name, to abstract the strains, is done when the datasets are built, not in Drakkar.
+- Every UniProt upgrade works on all the obsolete interactors: each one is moved to the latest snapshot it can be on, a human one whenever it can be (`database.md` §3, versioning pass).
+- A description with an obsolete interactor is live and counts: it was right on its snapshots when it was curated (`curation-rules.md` §1).

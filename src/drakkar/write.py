@@ -1,0 +1,644 @@
+"""Write descriptions and publication states (`docs/process.md`).
+
+Three functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
+`update_publications`. Each takes a list and writes it in one transaction:
+
+1. every row is applied in its own savepoint; a row with a problem is not written, and its
+   problems are reported with its number;
+2. every invariant is checked on the whole database as the transaction sees it (`check.py`);
+3. the transaction is committed only with `commit=True`, no row problem and no error. Otherwise
+   it is rolled back: a dry run is the same code as a commit.
+
+Rows are checked only for what they build on: the publication, the snapshots, the method, the
+coordinates, the mappings, the note. What involves other descriptions (duplicates, generic
+names) is left to the full check, on the result of the whole list: a rename carried by several
+descriptions passes through inconsistent states and is valid at the end.
+
+Notes may use `[DATE Claude]`: the date is set at write time.
+"""
+
+import json
+import re
+import secrets
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Literal, cast
+
+import psycopg
+
+from drakkar import check
+from drakkar.align import MIN_IDENTITY, map_sequence
+
+AMINO_ACIDS = re.compile(r"[ACDEFGHIKLMNPQRSTVWYUOXBZJ]+")
+DATE = "[DATE Claude]"
+
+
+class InvalidRow(ValueError):
+    def __init__(self, *problems: str) -> None:
+        super().__init__("; ".join(problems))
+        self.problems = list(problems)
+
+
+@dataclass(frozen=True)
+class Description:
+    """What a curator decides for one description.
+
+    `accession2` is viral in vh, human in hh. `start2`/`stop2` default to the full protein; a
+    mature protein of a polyprotein gets its coordinates. `name2` is the generic name of a viral
+    interactor (in hh, the gene name, derived). Human names and coordinates are derived from the
+    snapshots. Mappings are the domain sequences as described by the publication (C4); their
+    occurrences are computed. `below_threshold` lists the mapping sequences accepted below
+    `MIN_IDENTITY`, explained in the note; they are stored with their best alignment.
+    """
+
+    method: str  # PSI-MI ID, e.g. "MI:0007"
+    accession1: str
+    accession2: str
+    name2: str = ""
+    start2: int | None = None
+    stop2: int | None = None
+    mappings1: tuple[str, ...] = field(default=())
+    mappings2: tuple[str, ...] = field(default=())
+    below_threshold: tuple[str, ...] = field(default=())
+
+
+@dataclass(frozen=True)
+class NewDescription:
+    """A description to add to a publication of a vh run, with its `CREATED` note."""
+
+    run_id: int
+    pmid: int
+    description: Description
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Revision:
+    """A decision on the live `version` of a description.
+
+    `revise`: a new version holding `description`, with its note (`REVISED`, `FIXED` or
+    `UPDATED`). `remove`: no
+    successor, the `REMOVED` line added to the note of the live version. With `into`, the
+    removed description is a duplicate merged into that survivor: as it is, or as `description`
+    when it was decided to become the survivor, it has the same publication, method and
+    interactors, and the survivor holds all its mapping sequences.
+    """
+
+    stable_id: str
+    version: int
+    run_id: int
+    pmid: int
+    action: Literal["revise", "remove"]
+    description: Description | None = None
+    into: str = ""
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class PublicationUpdate:
+    """The state of a publication (`selected` or `curated`) and its whole note, after a pass."""
+
+    run_id: int
+    pmid: int
+    state: Literal["selected", "curated"]
+    note: str
+
+
+@dataclass
+class Outcome:
+    written: list[str]  # stable IDs, or `run_id/pmid` for publications
+    problems: list[str]  # rows not written, with why
+    results: list[check.Result]  # the full check on the result
+    committed: bool
+
+    @property
+    def errors(self) -> list[check.Result]:
+        return check.errors(self.results)
+
+    @property
+    def ok(self) -> bool:
+        return not self.problems and not self.errors
+
+
+# --- The transaction ----------------------------------------------------------------------------
+
+
+def write_rows[T](
+    conn: psycopg.Connection,
+    rows: Sequence[T],
+    apply: Callable[[Any, T, str], str],
+    commit: bool,
+    order: Callable[[T], int] = lambda _: 0,
+) -> Outcome:
+    """Apply each row in its own savepoint, check everything, commit or roll back."""
+    if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+        raise RuntimeError("the connection has a transaction in progress")
+    written: list[str] = []
+    problems: list[str] = []
+    committed = False
+    with conn.transaction() as tx:
+        cur = conn.cursor()
+        cur.execute("SELECT current_date::text")
+        today: str = cast(tuple[str], cur.fetchone())[0]
+        for number, row in sorted(enumerate(rows, 1), key=lambda n_row: order(n_row[1])):
+            try:
+                with conn.transaction():
+                    written.append(apply(cur, row, today))
+            except InvalidRow as e:
+                problems += [f"row {number}: {p}" for p in e.problems]
+        results = check.run_checks(cur)
+        committed = commit and not problems and not check.errors(results)
+        if not committed:
+            raise psycopg.Rollback(tx)
+    return Outcome(written, sorted(problems, key=_row_number), results, committed)
+
+
+def _row_number(problem: str) -> int:
+    return int(problem.split(":")[0].removeprefix("row "))
+
+
+# --- Shared checks ------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Snapshot:
+    id: int
+    accession: str
+    type: str
+    gene: str
+    sequences: dict[str, str]
+
+    @property
+    def length(self) -> int:
+        return len(self.sequences[self.accession])
+
+
+def _snapshot(cur: Any, accession: str, snapshot_id: int | None = None) -> _Snapshot:
+    """The current snapshot of an accession, or the given one (a revision keeps its own)."""
+    if snapshot_id is None:
+        cur.execute(
+            """
+            SELECT p.id, p.accession, p.type, p.name, p.sequences::text FROM proteins AS p
+            JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
+            WHERE p.accession = %s
+            """,
+            (accession,),
+        )
+    else:
+        cur.execute(
+            "SELECT id, accession, type, name, sequences::text FROM proteins WHERE id = %s",
+            (snapshot_id,),
+        )
+    rows = cur.fetchall()
+    if not rows:
+        raise InvalidRow(f"{accession} has no current snapshot")
+    if len(rows) > 1:
+        raise InvalidRow(f"{accession} has {len(rows)} current snapshots")
+    id_, accession, type_, gene, text = rows[0]
+    raw: Any = json.loads(text)
+    sequences = {k: v for k, v in cast(dict[str, Any], raw).items() if isinstance(v, str) and v}
+    if accession not in sequences or len(sequences) != len(raw):
+        raise InvalidRow(f"{accession} (snapshot {id_}) has a missing or empty sequence")
+    if type_ == "h" and not (gene or "").strip():
+        raise InvalidRow(f"{accession} (snapshot {id_}) is human without a gene name")
+    return _Snapshot(id_, accession, type_.strip(), gene or "", sequences)
+
+
+@dataclass(frozen=True)
+class _Association:
+    id: int
+    run_type: str
+    state: str
+
+
+def _association(cur: Any, run_id: int, pmid: int) -> _Association:
+    """A publication in a run, `selected` or `curated`: where descriptions are written."""
+    cur.execute(
+        "SELECT a.id, r.type, a.state FROM associations AS a JOIN runs AS r ON r.id = a.run_id "
+        "WHERE a.run_id = %s AND a.pmid = %s",
+        (run_id, pmid),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise InvalidRow(f"publication {pmid} is not in run {run_id}")
+    association = _Association(row[0], row[1].strip(), row[2])
+    if association.state not in ("selected", "curated"):
+        raise InvalidRow(f"publication {pmid} of run {run_id} is {association.state}")
+    return association
+
+
+CLAUDE_HEADER = re.compile(r"\[(\d{4}-\d{2}-\d{2}) Claude\] ([A-Z]+): (.+)")
+
+
+def _note(note: str, today: str, *actions: str, required: bool = False) -> str:
+    """A description note dated today, checked against the template (`curation-rules.md` §5)."""
+    note = note.replace(DATE, f"[{today} Claude]").strip()
+    if not note:
+        if required:
+            raise InvalidRow(f"the note must hold the {' or '.join(actions)} decision")
+        return note
+    problems: list[str] = []
+    lines = note.split("\n")
+    if CLAUDE_HEADER.fullmatch(lines[0]) is None:
+        problems.append("the note must start with `[DATE Claude] ACTION: summary`")
+    for line in lines:
+        if line.startswith("- ") and len(line) > 2:
+            continue
+        header = CLAUDE_HEADER.fullmatch(line)
+        if header is None:
+            problems.append(f"note line is neither a decision nor a `- ` detail: {line!r}")
+        elif header[1] != today:
+            problems.append(f"note decision dated {header[1]}, not today")
+        elif header[2] not in actions:
+            problems.append(f"note action {header[2]} is not {' or '.join(actions)}")
+    if problems:
+        raise InvalidRow(*problems)
+    return note
+
+
+def _build(
+    cur: Any,
+    association: _Association,
+    item: Description,
+    kept: tuple[tuple[str, int], tuple[str, int]] | None = None,
+) -> dict[str, Any]:
+    """The columns of a description; raise `InvalidRow` with every problem found.
+
+    `kept` is the (accession, snapshot ID) of each side of a revised description: a side that
+    keeps its accession keeps its snapshot, even obsolete; otherwise the current snapshot.
+    """
+    problems: list[str] = []
+    cur.execute("SELECT id FROM methods WHERE psimi_id = %s", (item.method,))
+    method = cur.fetchone()
+    if method is None:
+        problems.append(f"unknown method {item.method}")
+    snapshots: list[_Snapshot] = []
+    expected = ("h", "v" if association.run_type == "vh" else "h")
+    for side, accession in enumerate((item.accession1, item.accession2)):
+        pinned = kept[side][1] if kept and kept[side][0] == accession else None
+        try:
+            snapshot = _snapshot(cur, accession, pinned)
+        except InvalidRow as e:
+            problems += [f"protein {side + 1}: {p}" for p in e.problems]
+            continue
+        if snapshot.type != expected[side]:
+            problems.append(
+                f"protein {side + 1}: {accession} is {'human' if snapshot.type == 'h' else 'viral'}"
+            )
+        snapshots.append(snapshot)
+    if problems:
+        raise InvalidRow(*problems)
+    p1, p2 = snapshots
+
+    start2 = 1 if item.start2 is None else item.start2
+    stop2 = p2.length if item.stop2 is None else item.stop2
+    if association.run_type == "hh":
+        name2 = p2.gene
+        if (start2, stop2) != (1, p2.length):
+            problems.append(f"protein 2: a human interactor is 1-{p2.length}, not {start2}-{stop2}")
+    else:
+        name2 = item.name2.strip()
+        if not name2:
+            problems.append("protein 2: the generic name is empty")
+        if not 1 <= start2 <= stop2 <= p2.length:
+            problems.append(f"protein 2: {start2}-{stop2} is outside 1-{p2.length}")
+    if problems:
+        raise InvalidRow(*problems)
+
+    unknown = set(item.below_threshold) - set(item.mappings1) - set(item.mappings2)
+    if unknown:
+        problems.append(f"below_threshold lists sequences that are not mappings: {sorted(unknown)}")
+    mappings: list[list[dict[str, Any]]] = []
+    for side, snapshot, sequences, start, stop in (
+        (1, p1, item.mappings1, 1, p1.length),
+        (2, p2, item.mappings2, start2, stop2),
+    ):
+        if len(set(sequences)) != len(sequences):
+            problems.append(f"protein {side}: duplicate mapping sequences")
+        computed: list[dict[str, Any]] = []
+        for sequence in sequences:
+            if not AMINO_ACIDS.fullmatch(sequence):
+                problems.append(
+                    f"protein {side}: mapping {sequence[:20]}… is not an amino acid sequence"
+                )
+                continue
+            mapping = map_sequence(sequence, snapshot.sequences, snapshot.accession, start, stop)
+            if not mapping["isoforms"] and sequence in item.below_threshold:
+                low = map_sequence(
+                    sequence, snapshot.sequences, snapshot.accession, start, stop, 0.0
+                )
+                best = max(
+                    low["isoforms"], key=lambda i: max(o["identity"] for o in i["occurrences"])
+                )
+                mapping["isoforms"] = [best]
+            if not mapping["isoforms"]:
+                problems.append(
+                    f"protein {side}: mapping {sequence[:20]}… ({len(sequence)} aa) is below "
+                    f"{MIN_IDENTITY:g} % on every isoform of {snapshot.accession}[{start}-{stop}]: "
+                    "explain it in the note and list it in below_threshold"
+                )
+            computed.append(mapping)
+        mappings.append(computed)
+    if problems:
+        raise InvalidRow(*problems)
+    return {
+        "association_id": association.id,
+        "method_id": method[0],  # type: ignore[index]
+        "protein1_id": p1.id,
+        "name1": p1.gene,
+        "start1": 1,
+        "stop1": p1.length,
+        "mapping1": json.dumps(mappings[0]),
+        "protein2_id": p2.id,
+        "name2": name2,
+        "start2": start2,
+        "stop2": stop2,
+        "mapping2": json.dumps(mappings[1]),
+    }
+
+
+def _insert(cur: Any, stable_id: str, version: int, row: dict[str, Any], note: str) -> None:
+    cur.execute(
+        """
+        INSERT INTO descriptions (stable_id, version, association_id, method_id,
+            protein1_id, name1, start1, stop1, mapping1,
+            protein2_id, name2, start2, stop2, mapping2, annotation)
+        VALUES (%(stable_id)s, %(version)s, %(association_id)s, %(method_id)s,
+            %(protein1_id)s, %(name1)s, %(start1)s, %(stop1)s, %(mapping1)s,
+            %(protein2_id)s, %(name2)s, %(start2)s, %(stop2)s, %(mapping2)s, %(annotation)s)
+        """,
+        {**row, "stable_id": stable_id, "version": version, "annotation": note},
+    )
+
+
+# --- Adding -------------------------------------------------------------------------------------
+
+
+def new_stable_id(cur: Any) -> str:
+    """A `CW` stable ID unused by any row, live or deleted."""
+    while True:
+        candidate = "CW" + secrets.token_hex(4).upper()
+        cur.execute("SELECT 1 FROM descriptions WHERE stable_id = %s", (candidate,))
+        if cur.fetchone() is None:
+            return candidate
+
+
+def _add(cur: Any, item: NewDescription, today: str) -> str:
+    association = _association(cur, item.run_id, item.pmid)
+    if association.run_type != "vh":
+        raise InvalidRow(f"run {item.run_id} is an hh run: new descriptions go to a vh run")
+    note = _note(item.note, today, "CREATED")
+    row = _build(cur, association, item.description)
+    stable_id = new_stable_id(cur)
+    _insert(cur, stable_id, 1, row, note)
+    return stable_id
+
+
+def add_descriptions(
+    conn: psycopg.Connection, items: Sequence[NewDescription], *, commit: bool = False
+) -> Outcome:
+    """Add new descriptions, each with a new `CW` stable ID, version 1."""
+    return write_rows(conn, items, _add, commit)
+
+
+# --- Revising -----------------------------------------------------------------------------------
+
+
+def _live(cur: Any, revision: Revision) -> tuple[int, int, _Association]:
+    """The live row of a revision's stable ID, locked: its row ID, version and publication."""
+    cur.execute(
+        "SELECT id, version, association_id FROM descriptions "
+        "WHERE stable_id = %s AND deleted_at IS NULL FOR UPDATE",
+        (revision.stable_id,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise InvalidRow(f"{revision.stable_id} has no live version")
+    id_, version, association_id = row
+    if version != revision.version:
+        raise InvalidRow(
+            f"{revision.stable_id}: decided on version {revision.version}, "
+            f"but the live version is {version}"
+        )
+    association = _association(cur, revision.run_id, revision.pmid)
+    if association_id != association.id:
+        raise InvalidRow(
+            f"{revision.stable_id} is not a description of publication {revision.pmid} "
+            f"in run {revision.run_id}"
+        )
+    return id_, version, association
+
+
+# The live version of a stable ID: what a revision keeps, and what makes it a duplicate.
+LIVE_DESCRIPTION = """
+    SELECT d.association_id, d.method_id, p1.accession, p1.id, p2.accession, p2.id,
+           d.start2, d.stop2, d.mapping1::text, d.mapping2::text
+    FROM descriptions AS d
+    JOIN proteins AS p1 ON p1.id = d.protein1_id
+    JOIN proteins AS p2 ON p2.id = d.protein2_id
+    WHERE d.stable_id = %s AND d.deleted_at IS NULL
+"""
+
+# The columns `_build` gives.
+COLUMNS = """
+    SELECT association_id, method_id, protein1_id, name1, start1, stop1, mapping1,
+           protein2_id, name2, start2, stop2, mapping2
+    FROM descriptions WHERE id = %s
+"""
+
+
+def _sequences(mappings: str) -> set[str]:
+    return {m["sequence"] for m in json.loads(mappings)}
+
+
+def _check_merge(cur: Any, revision: Revision, removed: tuple[Any, ...]) -> None:
+    """The removed description (publication, method, interactors, mappings) is in its survivor."""
+    cur.execute(LIVE_DESCRIPTION, (revision.into,))
+    survivor = cur.fetchone()
+    if survivor is None:
+        raise InvalidRow(f"{revision.into}, the survivor, has no live version")
+    association_id, method_id, accession1, _, accession2, _, start2, stop2, m1, m2 = survivor
+    if removed[:6] != (association_id, method_id, accession1, accession2, start2, stop2):
+        raise InvalidRow(
+            f"{revision.stable_id} and {revision.into} differ in publication, method or "
+            "interactors: not duplicates"
+        )
+    for side, mine, theirs in ((1, removed[6], m1), (2, removed[7], m2)):
+        if missing := mine - _sequences(theirs):
+            raise InvalidRow(
+                f"{revision.into} lacks the mapping sequences of {revision.stable_id} "
+                f"on side {side}: {sorted(missing)}"
+            )
+
+
+def _revise(cur: Any, revision: Revision, today: str) -> str:
+    live_id, version, association = _live(cur, revision)
+    cur.execute(LIVE_DESCRIPTION, (revision.stable_id,))
+    _, method_id, a1, id1, a2, id2, start2, stop2, mappings1, mappings2 = cur.fetchone()
+    kept = ((a1, id1), (a2, id2))
+    item = revision.description
+
+    if revision.action == "remove":
+        note = _note(revision.note, today, "REMOVED", required=True)
+        if revision.into:
+            # The removed description, as it is or as it was decided to be, is its survivor.
+            if item is None:
+                removed = (association.id, method_id, a1, a2, start2, stop2)
+                removed += (_sequences(mappings1), _sequences(mappings2))
+            else:
+                row = _build(cur, association, item, kept)
+                removed = (association.id, row["method_id"], item.accession1, item.accession2)
+                removed += (row["start2"], row["stop2"])
+                removed += (_sequences(row["mapping1"]), _sequences(row["mapping2"]))
+            _check_merge(cur, revision, removed)
+        elif item is not None:
+            raise InvalidRow("a removal without `into` takes no description")
+        # The live version is deleted, its note gets the REMOVED line.
+        cur.execute(
+            "UPDATE descriptions SET deleted_at = now(), "
+            "annotation = concat_ws(E'\\n', nullif(annotation, ''), %s::text) WHERE id = %s",
+            (note, live_id),
+        )
+        return revision.stable_id
+
+    if item is None:
+        raise InvalidRow(f"{revision.stable_id}: a revision needs its description")
+    # REVISED in curation and re-curation, UPDATED in a versioning pass, FIXED for a fix.
+    note = _note(revision.note, today, "REVISED", "FIXED", "UPDATED")
+    row = _build(cur, association, item, kept)
+    cur.execute(COLUMNS, (live_id,))
+    old = dict(zip(row, cur.fetchone(), strict=True))  # same order; JSON columns come parsed
+    new = {**row, "mapping1": json.loads(row["mapping1"]), "mapping2": json.loads(row["mapping2"])}
+    if old == new:
+        raise InvalidRow(f"the revision of {revision.stable_id} changes nothing")
+    cur.execute("UPDATE descriptions SET deleted_at = now() WHERE id = %s", (live_id,))
+    _insert(cur, revision.stable_id, version + 1, row, note)
+    return revision.stable_id
+
+
+def live_revisions(cur: Any, run_id: int, pmid: int) -> list[Revision]:
+    """The live descriptions of a publication, each as a `revise` row to edit (empty note).
+
+    Accessions are those of the snapshots used, even obsolete: a revision keeps them unless the
+    accession changes. `below_threshold` lists the mappings stored below `MIN_IDENTITY`.
+    """
+    cur.execute(
+        """
+        SELECT d.stable_id, d.version, m.psimi_id, p1.accession, p2.accession, d.name2, d.start2,
+               d.stop2, d.mapping1::text, d.mapping2::text, r.type
+        FROM descriptions AS d
+        JOIN associations AS a ON a.id = d.association_id
+        JOIN runs AS r ON r.id = a.run_id
+        JOIN methods AS m ON m.id = d.method_id
+        JOIN proteins AS p1 ON p1.id = d.protein1_id
+        JOIN proteins AS p2 ON p2.id = d.protein2_id
+        WHERE a.run_id = %s AND a.pmid = %s AND d.deleted_at IS NULL
+        ORDER BY d.stable_id
+        """,
+        (run_id, pmid),
+    )
+    revisions: list[Revision] = []
+    for stable_id, version, method, a1, a2, name2, start2, stop2, m1, m2, run_type in cur:
+        mappings = [cast(list[dict[str, Any]], json.loads(m)) for m in (m1, m2)]
+        below = tuple(
+            m["sequence"]
+            for side in mappings
+            for m in side
+            if max((o["identity"] for i in m["isoforms"] for o in i["occurrences"]), default=100)
+            < MIN_IDENTITY
+        )
+        hh = run_type.strip() == "hh"
+        description = Description(
+            method=method,
+            accession1=a1,
+            accession2=a2,
+            name2="" if hh else name2,
+            start2=None if hh else start2,
+            stop2=None if hh else stop2,
+            mappings1=tuple(m["sequence"] for m in mappings[0]),
+            mappings2=tuple(m["sequence"] for m in mappings[1]),
+            below_threshold=below,
+        )
+        revisions.append(Revision(stable_id, version, run_id, pmid, "revise", description))
+    return revisions
+
+
+def revise_descriptions(
+    conn: psycopg.Connection, revisions: Sequence[Revision], *, commit: bool = False
+) -> Outcome:
+    """Revise or remove live descriptions; a stable ID appears once.
+
+    Revisions are applied before removals, so that a duplicate is compared with its survivor
+    as revised.
+    """
+    seen: dict[str, int] = {}
+    for number, revision in enumerate(revisions, 1):
+        if revision.stable_id in seen:
+            raise ValueError(
+                f"rows {seen[revision.stable_id]} and {number}: {revision.stable_id} twice"
+            )
+        seen[revision.stable_id] = number
+    return write_rows(conn, revisions, _revise, commit, order=lambda r: r.action == "remove")
+
+
+# --- Publications -------------------------------------------------------------------------------
+
+PASS_LINE = re.compile(r"- Pass (\d{4}-\d{2}-\d{2}): \S")
+CURATOR_BLOCK = "--- Curator note (before Claude) ---"
+
+
+def _publication_note_problems(old: str, note: str, today: str, state: str) -> list[str]:
+    """Problems of a publication note against the template of `curation-rules.md` §5.
+
+    `old` is the note before this pass: its pass history and its curator block are kept, and a
+    note not written by Claude becomes the curator block, verbatim.
+    """
+    problems: list[str] = []
+    body, _, block = note.partition(f"\n{CURATOR_BLOCK}\n")
+    lines = body.split("\n")
+    header = CLAUDE_HEADER.fullmatch(lines[0])
+    if header is None or header[1] != today or header[2] != state.upper():
+        problems.append(f"the note must start with `[{today} Claude] {state.upper()}: <summary>`")
+    passes = [line for line in lines if PASS_LINE.match(line)]
+    if not passes or not passes[-1].startswith(f"- Pass {today}:"):
+        problems.append(f"the note must end its pass history with `- Pass {today}: <outcome>`")
+    old = old.strip()
+    if CLAUDE_HEADER.match(old):
+        old_body, _, old_block = old.partition(f"\n{CURATOR_BLOCK}\n")
+        old_passes = [line for line in old_body.split("\n") if PASS_LINE.match(line)]
+        if passes[: len(old_passes)] != old_passes:
+            problems.append("the note must keep the previous `Pass` lines, unchanged and first")
+    else:
+        old_block = old
+    if block != old_block:
+        problems.append(
+            f"the note must end with `{CURATOR_BLOCK}` and the previous curator note, verbatim"
+            if old_block
+            else f"the note has a `{CURATOR_BLOCK}` block but there was no curator note"
+        )
+    return problems
+
+
+def _publication(cur: Any, update: PublicationUpdate, today: str) -> str:
+    association = _association(cur, update.run_id, update.pmid)
+    if association.run_type != "vh":
+        raise InvalidRow(f"run {update.run_id} is an hh run: hh curation is frozen")
+    if update.state not in ("selected", "curated"):
+        raise InvalidRow(f"state {update.state!r} is not selected or curated")
+    cur.execute("SELECT annotation FROM associations WHERE id = %s", (association.id,))
+    note = update.note.replace(DATE, f"[{today} Claude]").strip()
+    if problems := _publication_note_problems(cur.fetchone()[0], note, today, update.state):
+        raise InvalidRow(*problems)
+    cur.execute(
+        "UPDATE associations SET state = %s, annotation = %s, ai_pass_at = now(), "
+        "updated_at = now() WHERE id = %s",
+        (update.state, note, association.id),
+    )
+    return f"{update.run_id}/{update.pmid}"
+
+
+def update_publications(
+    conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
+) -> Outcome:
+    """Set the state and note of publications of vh runs at the end of a pass (`ai_pass_at`)."""
+    return write_rows(conn, updates, _publication, commit)

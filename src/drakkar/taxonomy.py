@@ -95,13 +95,13 @@ def load(release_directory: Path, *, dry_run: bool) -> None:
         inserted = cur.rowcount
         cur.execute("""
             UPDATE taxon AS t
-            SET parent_taxon_id = p.taxon_id, node_rank = n.node_rank,
+            SET parent_taxon_id = parent.taxon_id, node_rank = n.node_rank,
                 genetic_code = n.genetic_code, mito_genetic_code = n.mito_genetic_code
-            FROM tmp_nodes AS n, taxon AS p
+            FROM tmp_nodes AS n
+            JOIN taxon AS parent ON parent.ncbi_taxon_id = n.parent_ncbi_taxon_id
             WHERE t.ncbi_taxon_id = n.ncbi_taxon_id
-            AND p.ncbi_taxon_id = n.parent_ncbi_taxon_id
             AND (t.parent_taxon_id, t.node_rank, t.genetic_code, t.mito_genetic_code)
-                IS DISTINCT FROM (p.taxon_id, n.node_rank, n.genetic_code, n.mito_genetic_code)
+                IS DISTINCT FROM (parent.taxon_id, n.node_rank, n.genetic_code, n.mito_genetic_code)
         """)
         updated = cur.rowcount - inserted  # new nodes get their parent here too
         log(start, f"nodes: {inserted} inserted, {updated} updated")
@@ -170,19 +170,19 @@ def load(release_directory: Path, *, dry_run: bool) -> None:
             DELETE FROM taxon_name AS tn USING taxon AS t, tmp_nodes AS n
             WHERE tn.taxon_id = t.taxon_id AND t.ncbi_taxon_id = n.ncbi_taxon_id
             AND NOT EXISTS (
-                SELECT 1 FROM tmp_taxon_names AS x
-                WHERE x.taxon_id = tn.taxon_id AND x.name = tn.name
-                AND x.name_class = tn.name_class
+                SELECT 1 FROM tmp_taxon_names AS dump
+                WHERE dump.taxon_id = tn.taxon_id AND dump.name = tn.name
+                AND dump.name_class = tn.name_class
             )
         """)
         deleted_names = cur.rowcount
         cur.execute("""
             INSERT INTO taxon_name (taxon_id, name, name_class)
-            SELECT x.taxon_id, x.name, x.name_class FROM tmp_taxon_names AS x
+            SELECT dump.taxon_id, dump.name, dump.name_class FROM tmp_taxon_names AS dump
             WHERE NOT EXISTS (
                 SELECT 1 FROM taxon_name AS tn
-                WHERE tn.taxon_id = x.taxon_id AND tn.name = x.name
-                AND tn.name_class = x.name_class
+                WHERE tn.taxon_id = dump.taxon_id AND tn.name = dump.name
+                AND tn.name_class = dump.name_class
             )
         """)
         log(start, f"names: {deleted_names} deleted, {cur.rowcount} inserted")
