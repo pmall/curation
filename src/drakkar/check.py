@@ -87,8 +87,7 @@ TEMP_TABLES = """
 @dataclass
 class Invariant:
     id: str
-    severity: str  # "error", "warning", "upgrade" (obsolete snapshot: the upgrade job, not a fix)
-    # or "info" (good to know, not a violation)
+    severity: str  # "error", "warning", "upgrade" (an obsolete snapshot) or "info"
     title: str
     check: LiteralString | Callable[[Any], Rows]
 
@@ -288,7 +287,8 @@ SQL_INVARIANTS = [
 
 AMINO_ACIDS = re.compile(r"[ACDEFGHIKLMNPQRSTVWYUOXBZJ]+")
 OCCURRENCE_KEYS = ("start", "stop", "identity")
-# How far below its recorded identity a slice may align: legacy gap placement, up to 0.47 point.
+# How far below its recorded identity an occurrence may align on its segment: legacy gap
+# placement, up to 0.47 point.
 IDENTITY_TOLERANCE = 1.0
 # The threshold legacy descriptions were curated with; `MIN_IDENTITY` applies to Claude's (`CW`).
 # Both are warnings (D12), never errors.
@@ -477,7 +477,7 @@ def check_d12(cur: Any) -> Rows:
     """Mapping identity (warning): the best recorded identity of a mapping is below the threshold.
 
     `LEGACY_MIN_IDENTITY` (96 %) for legacy descriptions, `MIN_IDENTITY` (90 %) for Claude's
-    `CW` ones. A mapping below 90 % is explained in the note of its publication (C4).
+    `CW` ones. A mapping below 90 % is explained in its description note (C4).
     """
     cur.execute(MAPPING_SIDES)
     rows: list[tuple[Any, ...]] = []

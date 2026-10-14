@@ -7,7 +7,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 - `docs/`, the source of truth, read before acting: `glossary.md` (one meaning per term, used everywhere), `curation-rules.md` (what a right description is, and the evidence for it), `database.md` (structure, versioning, invariants, writes), `tools.md` (the files and the tools that write and read the database, the dry run, the tools that fetch and convert full texts), `derived-datasets.md` (what is exported, and what it means for curation), `todo.md` (the next steps).
 - `skills/`: the `curate` and `recurate` sessions (linked from `.claude/skills/` and `.agents/skills/`). Each skill holds the whole process of its session; the rules on descriptions, the database and the tools are in `docs/`, and the skill points to them.
 - `src/drakkar/`: the tools (`tools.md`; the release tools in `database.md` §3). `tests/`: their tests.
-- `docs/logs/`: cases spotted while the tools work on real publications (failures, wrong results, timings), dated, to improve the tools (`full-texts.md`: the fetch and the conversion). The reference docs and the skills never point to it.
+- `docs/logs/`: cases spotted while the tools work on real publications (failures, wrong results, timings), dated, to improve the tools (`full-texts.md`: the fetch and the conversion; `mappings.md`: mapping sequences the rules cannot record). The reference docs and the skills never point to it.
 - `docs/history/`: the history of the project: what was done and when, with its dates, counts and measurements, one file each. The reference docs never point to it.
 - `data/`, reports and scratch files are disposable: docs never point to them, what a reader needs is written in the doc itself.
 

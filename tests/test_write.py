@@ -26,10 +26,8 @@ def live(conn, run_id, pmid) -> dict[str, Revision]:
     return rows
 
 
-def count(conn, sql="SELECT count(*) FROM descriptions"):
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        result = cur.fetchone()[0]
+def count(conn) -> int:
+    result = conn.execute("SELECT count(*) FROM descriptions").fetchone()[0]
     conn.rollback()
     return result
 
@@ -86,7 +84,7 @@ def test_add_refuses_a_bad_row_and_writes_none(conn, new):
     before = count(conn)
     outcome = add_descriptions(conn, [new, bad], commit=True)
     assert not outcome.committed
-    assert [p.split(":")[0] for p in outcome.problems] == ["row 2"]
+    assert [number for number, _ in outcome.problems] == [2]
     assert count(conn) == before
 
 
@@ -99,17 +97,17 @@ def test_add_duplicate_is_caught_by_the_full_check(conn, new):
 
 def test_add_to_an_hh_run_is_refused(conn, new):
     outcome = add_descriptions(conn, [replace(new, run_id=31, pmid=15471871)])
-    assert "hh run" in outcome.problems[0]
+    assert "hh run" in outcome.problems[0][1]
 
 
 def test_add_checks_the_note(conn, new):
     outcome = add_descriptions(conn, [replace(new, note="anti-tag co-IP")])
-    assert "note" in outcome.problems[0]
+    assert "note" in outcome.problems[0][1]
 
 
 def test_mapping_below_threshold_needs_to_be_listed(conn, new):
     low = replace(new, description=replace(new.description, mappings2=("WWWWWWWWWWWWWWWWWWWW",)))
-    assert "below_threshold" in add_descriptions(conn, [low]).problems[0]
+    assert "below_threshold" in add_descriptions(conn, [low]).problems[0][1]
     listed = replace(
         low, description=replace(low.description, below_threshold=("WWWWWWWWWWWWWWWWWWWW",))
     )
@@ -143,18 +141,18 @@ def test_rename_one_of_two_breaks_one_name_per_interactor(conn):
 def test_revision_on_a_stale_version_is_refused(conn):
     revision = renamed(live(conn, *SARS)["EY73D2C965"], "orf6")
     outcome = revise_descriptions(conn, [replace(revision, version=revision.version + 1)])
-    assert "live version is" in outcome.problems[0]
+    assert "live version is" in outcome.problems[0][1]
 
 
 def test_revision_that_changes_nothing_is_refused(conn):
     revision = live(conn, *SARS)["EY73D2C965"]
-    assert "changes nothing" in revise_descriptions(conn, [revision]).problems[0]
+    assert "changes nothing" in revise_descriptions(conn, [revision]).problems[0][1]
 
 
 def test_revision_of_another_publication_is_refused(conn):
     revision = renamed(live(conn, *SARS)["EY73D2C965"], "orf6")
     outcome = revise_descriptions(conn, [replace(revision, run_id=69, pmid=38566321)])
-    assert "not a description of publication" in outcome.problems[0]
+    assert "not a description of publication" in outcome.problems[0][1]
 
 
 def test_stable_id_twice_is_refused(conn):
@@ -178,14 +176,7 @@ def test_merge_a_description_decided_to_be_a_duplicate(conn):
     )
     outcome = revise_descriptions(conn, [merge], commit=True)
     assert outcome.ok and outcome.committed
-    assert (
-        count(
-            conn,
-            "SELECT count(*) FROM descriptions WHERE stable_id = 'EYC9AE3284' "
-            "AND deleted_at IS NULL",
-        )
-        == 0
-    )
+    assert "EYC9AE3284" not in live(conn, *RABIES)
 
 
 def test_merge_of_different_descriptions_is_refused(conn):
@@ -197,12 +188,12 @@ def test_merge_of_different_descriptions_is_refused(conn):
         description=None,
         note="[DATE Claude] REMOVED: duplicate",
     )
-    assert "not duplicates" in revise_descriptions(conn, [merge]).problems[0]
+    assert "not duplicates" in revise_descriptions(conn, [merge]).problems[0][1]
 
 
 def test_removal_needs_its_note(conn):
     removed = replace(live(conn, *RABIES)["EYC9AE3284"], action="remove", description=None)
-    assert "REMOVED" in revise_descriptions(conn, [removed]).problems[0]
+    assert "REMOVED" in revise_descriptions(conn, [removed]).problems[0][1]
 
 
 # --- Publications -------------------------------------------------------------------------------
@@ -215,7 +206,7 @@ def today(conn) -> str:
 
 
 def test_publication_curated(conn):
-    note = f"[DATE Claude] CURATED: from PMC1234567, 0 descriptions\n- Pass {today(conn)}: curated"
+    note = f"[DATE Claude] CURATED: from PMC1234567, no description\n- Pass {today(conn)}: curated"
     outcome = update_publications(
         conn, [PublicationUpdate(*SELECTED, "curated", note)], commit=True
     )
@@ -227,9 +218,9 @@ def test_publication_curated(conn):
 
 
 def test_publication_keeps_the_curator_note(conn):
-    note = f"[DATE Claude] CURATED: 307 descriptions\n- Pass {today(conn)}: re-curated"
+    note = f"[DATE Claude] CURATED: from PMC1234567\n- Pass {today(conn)}: re-curated"
     update = PublicationUpdate(56, 34799561, "curated", note)
-    assert "curator note" in update_publications(conn, [update]).problems[0]
+    assert "curator note" in update_publications(conn, [update]).problems[0][1]
     kept = PublicationUpdate(
         56,
         34799561,
@@ -263,4 +254,4 @@ def test_the_same_sequence_with_other_extra_residues_is_a_duplicate(conn, new):
     [sequence] = new.description.mappings2
     twice = (sequence, sequence[0].lower() + sequence[1:])
     duplicated = replace(new, description=replace(new.description, mappings2=twice))
-    assert "duplicate" in add_descriptions(conn, [duplicated]).problems[0]
+    assert "duplicate" in add_descriptions(conn, [duplicated]).problems[0][1]

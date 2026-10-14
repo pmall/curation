@@ -45,10 +45,10 @@ class Description:
     `accession2` is viral in vh, human in hh. `start2`/`stop2` default to the full protein; a
     mature protein of a polyprotein gets its coordinates. `name2` is the generic name of a viral
     interactor (in hh, the gene name, derived). Human names and coordinates are derived from the
-    snapshots. Mappings are the domain sequences as described by the publication (C4), their
-    extra end residues in lowercase (`drakkar.align`); their occurrences are computed.
-    `below_threshold` lists the mapping sequences accepted below `MIN_IDENTITY`, explained in the
-    note; they are stored with their best occurrences.
+    snapshots. Mappings are the domain sequences as used in the publication
+    (`curation-rules.md` §3), their extra end residues in lowercase (`drakkar.align`); their
+    occurrences are computed. `below_threshold` lists the mapping sequences accepted below
+    `MIN_IDENTITY`, explained in the note; they are stored with their best occurrences.
     """
 
     method: str  # PSI-MI ID, e.g. "MI:0007"
@@ -77,11 +77,10 @@ class Revision:
     """A decision on the live `version` of a description.
 
     `revise`: a new version holding `description`, with its note (`REVISED`, `FIXED` or
-    `UPDATED`). `remove`: no
-    successor, the `REMOVED` line added to the note of the live version. With `into`, the
-    removed description is a duplicate merged into that survivor: as it is, or as `description`
-    when it was decided to become the survivor, it has the same publication, method and
-    interactors, and the survivor holds all its mapping sequences.
+    `UPDATED`). `remove`: no successor, the `REMOVED` line added to the note of the live version.
+    With `into`, the removed description is a duplicate merged into that survivor: as it is, or
+    as `description` when it was decided to become the survivor, it has the same publication,
+    method and interactors, and the survivor holds all its mapping sequences.
     """
 
     stable_id: str
@@ -107,7 +106,7 @@ class PublicationUpdate:
 @dataclass
 class Outcome:
     written: list[str]  # stable IDs, or `run_id/pmid` for publications
-    problems: list[str]  # rows not written, with why
+    problems: list[tuple[int, str]]  # (row number, why) for each problem of a row not written
     results: list[check.Result]  # the full check on the result
     committed: bool
 
@@ -123,7 +122,7 @@ class Outcome:
 # --- The transaction ----------------------------------------------------------------------------
 
 
-def write_rows[T](
+def _write_rows[T](
     conn: psycopg.Connection,
     rows: Sequence[T],
     apply: Callable[[Any, T, str], str],
@@ -134,8 +133,7 @@ def write_rows[T](
     if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
         raise RuntimeError("the connection has a transaction in progress")
     written: list[str] = []
-    problems: list[str] = []
-    committed = False
+    problems: list[tuple[int, str]] = []
     with conn.transaction() as tx:
         cur = conn.cursor()
         cur.execute("SELECT current_date::text")
@@ -145,16 +143,12 @@ def write_rows[T](
                 with conn.transaction():
                     written.append(apply(cur, row, today))
             except InvalidRow as e:
-                problems += [f"row {number}: {p}" for p in e.problems]
+                problems += [(number, p) for p in e.problems]
         results = check.run_checks(cur)
         committed = commit and not problems and not check.errors(results)
         if not committed:
             raise psycopg.Rollback(tx)
-    return Outcome(written, sorted(problems, key=_row_number), results, committed)
-
-
-def _row_number(problem: str) -> int:
-    return int(problem.split(":")[0].removeprefix("row "))
+    return Outcome(written, sorted(problems, key=lambda p: p[0]), results, committed)
 
 
 # --- Shared checks ------------------------------------------------------------------------------
@@ -378,7 +372,7 @@ def _insert(cur: Any, stable_id: str, version: int, row: dict[str, Any], note: s
 # --- Adding -------------------------------------------------------------------------------------
 
 
-def new_stable_id(cur: Any) -> str:
+def _new_stable_id(cur: Any) -> str:
     """A `CW` stable ID unused by any row, live or deleted."""
     while True:
         candidate = "CW" + secrets.token_hex(4).upper()
@@ -393,7 +387,7 @@ def _add(cur: Any, item: NewDescription, today: str) -> str:
         raise InvalidRow(f"run {item.run_id} is an hh run: new descriptions go to a vh run")
     note = _note(item.note, today, "CREATED")
     row = _build(cur, association, item.description)
-    stable_id = new_stable_id(cur)
+    stable_id = _new_stable_id(cur)
     _insert(cur, stable_id, 1, row, note)
     return stable_id
 
@@ -402,7 +396,7 @@ def add_descriptions(
     conn: psycopg.Connection, items: Sequence[NewDescription], *, commit: bool = False
 ) -> Outcome:
     """Add new descriptions, each with a new `CW` stable ID, version 1."""
-    return write_rows(conn, items, _add, commit)
+    return _write_rows(conn, items, _add, commit)
 
 
 # --- Revising -----------------------------------------------------------------------------------
@@ -578,7 +572,7 @@ def revise_descriptions(
                 f"rows {seen[revision.stable_id]} and {number}: {revision.stable_id} twice"
             )
         seen[revision.stable_id] = number
-    return write_rows(conn, revisions, _revise, commit, order=lambda r: r.action == "remove")
+    return _write_rows(conn, revisions, _revise, commit, order=lambda r: r.action == "remove")
 
 
 # --- Publications -------------------------------------------------------------------------------
@@ -641,4 +635,4 @@ def update_publications(
     conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
 ) -> Outcome:
     """Set the state and note of publications of vh runs at the end of a pass (`ai_pass_at`)."""
-    return write_rows(conn, updates, _publication, commit)
+    return _write_rows(conn, updates, _publication, commit)

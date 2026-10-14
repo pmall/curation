@@ -1,11 +1,10 @@
 -- dataset: one row per description (live or deleted), joining runs, associations, methods,
 -- proteins (with their current version) and taxa. For consultation and exports only.
 --
--- Same columns, order and types as the original view, with these changes (2026-10-05):
--- - taxon1, left_value1 and right_value1 come from the taxonomy instead of hard-coded values;
--- - a protein whose taxon is missing from `taxon` no longer hides its descriptions
---   (left/right values are NULL and the taxon name is 'Obsolete', as for missing names);
--- - indexes, including a unique one on description_id for REFRESH ... CONCURRENTLY.
+-- Its columns, their order and types are those its readers expect: keep them.
+-- A protein whose taxon is missing from `taxon` keeps its descriptions: its left/right values
+-- are NULL and its taxon name is 'Obsolete', as for a missing name.
+-- The unique index on description_id allows REFRESH ... CONCURRENTLY.
 
 BEGIN;
 
