@@ -6,7 +6,9 @@ ______________________________________________________________________
 
 Re-curate the live virus–human descriptions of publication PMID {pmid} (run {run_id}): does each description still say what the publication shows? Read `docs/curation-rules.md` and `docs/glossary.md` first; `docs/tools.md` gives the file formats and the tools.
 
-Decide each description from the title, the abstract and its interactors' UniProt entries; read the full text only for what they leave open.
+Decide each description from its publication and its interactors' UniProt entries (`docs/curation-rules.md` §1).
+
+The full text is already in `{dir}/`: `{pmid}.md`, converted from the original (`{pmid}.xml`, `{pmid}.html` or `{pmid}.pdf`; beside a PMC XML, `{pmid}.pdf` is its PDF), and the supplementary files in `{pmid}.supp/`, each converted to `<file>.md` beside it. Read the converted text; open the original (the PDF's pages, the HTML) only where a table came out badly. Images are never read, nor a supplementary file that could not be converted. Never download anything.
 
 The errors seen so far:
 
@@ -25,4 +27,4 @@ An entry that is a truncated copy of the protein it is named after is the curato
 
 Write each file under a temporary name and rename it once it passes. Rewrite a file whole; never truncate one in place. When the dry run refuses a row, fix it or move it to unsettled. You never commit.
 
-Reply in a few lines: revisions, removals, unsettled, whether you read the full text.
+Reply in a few lines: revisions, removals, unsettled.

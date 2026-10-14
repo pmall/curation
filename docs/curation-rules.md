@@ -5,10 +5,10 @@ The curation method is the one published in the PNAS 2024 SI appendix (doi:10.10
 ## 1. Context
 
 - Scope: **virus–human (vh) protein–protein interactions**. Human–human (hh) descriptions get no new curation.
-- **Full texts**, in order of priority: the **PMC open access subset** (structured XML through the APIs: Europe PMC `fullTextXML`, NCBI BioC, PMC OA), then **other legal open access copies** (publisher, repository or preprint server, found through OpenAlex; Claude parses HTML or PDF; downloads can fail). A publication in PMC outside the open access subset cannot be text-mined: Claude uses it only through an open access copy elsewhere. Without an accessible full text, a publication needs a manual pass (§2), or a curator file: an Excel file describing its interactions, which Claude interprets.
+- **Full texts**: a publication is read in its full text, with its supplementary files, from any copy at hand: PMC, the publisher, a repository, or a PDF the user provides; never a preprint, which is not peer-reviewed (§3). Images are never read. The license of a copy does not restrict curation: it is a question for the derived datasets (`derived-datasets.md`). How full texts are fetched and converted: `tools.md`. Without a full text, a publication needs a manual pass (§2), or a curator file: an Excel file describing its interactions, which Claude interprets.
 - **Curation is valid at its time**: a description was right on the UniProt snapshots it was curated on. Updating it to a new release is best effort; when a viral protein is gone from UniProt (e.g. a patient isolate), the description stays live on its old snapshot, and its mappings stay good data.
 - **Exact curation, not grouping**: the job is that each description is exactly right (accessions, coordinates, generic names, mappings). How the data is grouped (species, taxonomy levels, strains abstracted into one interactor) is the concern of the applications that consume it (`derived-datasets.md`). Grouping is only a tool to spot curation errors, never a problem to report.
-- **The publications are the truth, cheapest evidence first**: when an existing description is checked (re-curation, versioning, a fix), anything that does not match (a name, a region, a strain, an entry, a sequence) goes back to the curation. The order is fixed: the **UniProt entry** of the interactor (its name, its chains) and the **title and abstract** of the supporting publications first, and they settle most cases; the **full text is the last resort**, read only for what they leave open, and avoided otherwise. A curation mistake is never assumed from the database alone. What nothing settles is put aside, with the reason.
+- **The publications are the truth**: a description says what its publication shows, read in its full text, on its interactors' own UniProt entries (their names, chains and sequences). A description already in the database is held to the same: anything that does not match its publication (a name, a region, a strain, an entry, a sequence) goes back to the curation. A curation mistake is never assumed from the database alone. What nothing settles is put aside, with the reason.
 - **Claude is the curator**: Claude takes the decisions itself and reports them. Leaving a case unsettled is a valid decision: nothing is written for it, and it is reported as unsettled, with why.
 - **Unsettled is better than wrong**: a value is written only when the publication or the interactor's own UniProt entry (its sequence, its chain features) gives it. Never derived from another entry, from other Drakkar descriptions, from a document Claude wrote, or by computation (e.g. a mature protein's coordinates borrowed from another strain's chains and shifted): when the entry has no chain for a mature protein, its coordinates are not settled. A value Claude reads from free text (e.g. a name in an entry's description) is stated as Claude's reading, never as the source's. Borderline is unsettled, and a borderline case settled once never becomes a rule.
 - **Each description is judged on its own**: against its own publication, its own UniProt entries and the invariants, never by comparison with how another description was decided. A difference between two comparable descriptions only points at rows to look at again.
@@ -116,21 +116,21 @@ A header line, optional `- ` detail lines, the pass history (oldest first), then
 
 The header is fixed so the check script can parse it: the date of the last rewrite, `Claude`, the association state in capitals, then a one-line summary. The state in the header must match `associations.state`. A note never holds a number the database already gives, such as the count of descriptions: it would go stale with the next revision.
 
-| State       | Summary                                                                            | Detail lines                            |
-| ----------- | ---------------------------------------------------------------------------------- | --------------------------------------- |
-| `SELECTED`  | What the abstract suggests.                                                        | `Full text` once checked; `Pass`.       |
-| `DISCARDED` | `<reason code>`, then a short why.                                                 | —                                       |
-| `CURATED`   | Source: `from PMC1234567` or `from curator file <name>`; with no description, why. | `Strain`, `Not kept`, `Remark`; `Pass`. |
+| State       | Summary                                                                                                                             | Detail lines                            |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `SELECTED`  | What the abstract suggests.                                                                                                         | `Full text` once checked; `Pass`.       |
+| `DISCARDED` | `<reason code>`, then a short why.                                                                                                  | —                                       |
+| `CURATED`   | Source: `from PMC1234567`, `from <URL>`, `from a PDF provided by the user` or `from curator file <name>`; with no description, why. | `Strain`, `Not kept`, `Remark`; `Pass`. |
 
 Pre-curation discard reason codes: `no-viral-protein`, `no-human-protein`, `no-ppi` (no physical interaction suggested), `non-human-host`, `review`, `preprint`, `not-research` (editorial, erratum, protocol…), `other`.
 
 Detail line formats:
 
-- `Full text: PMC open access (PMCID)`, `Full text: <source> (<license>, <URL>)` for another open access copy, or `Full text: closed — <why>` (not open access anywhere, or open access at <URL> but download blocked)
+- `Full text:` the line written by the fetch (`tools.md`): `Full text: <PMCID> (<license>)`, `Full text: <source> (<license>, <URL>)` for another copy, or `Full text: closed — <why>` (e.g. not open access anywhere, or open access at <URL> but download blocked); `Full text: PDF provided by the user` for a PDF the user provides
 - `Strain: <strain> (<where in the publication>)`: the strain of the publication, when it holds for all its descriptions.
 - `Not kept: <pair or claim> — <reason>`
 - `Remark: <anything a reviewer should know>` (for a curator file: how ambiguous rows were interpreted)
-- `Pass YYYY-MM-DD: <outcome>`, one per curation pass, e.g. `not accessible (not open access)`, `curated from PMC1234567`, `curated from curator file <name>`. The date of the last `Pass` line equals `associations.ai_pass_at`.
+- `Pass YYYY-MM-DD: <outcome>`, one per curation pass, e.g. `not accessible (not open access)`, `curated from PMC1234567`, `curated from <URL>`, `curated from a PDF provided by the user`, `curated from curator file <name>`. The date of the last `Pass` line equals `associations.ai_pass_at`.
 
 ### Description note
 
@@ -143,15 +143,15 @@ Each decision is a header line, optionally followed by `- ` detail lines:
 - Label: detail
 ```
 
-| Action      | When                                                  | Example summary                                                           |
-| ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| `CREATED`   | New description (curation pass)                       | `anti-tag co-IP (MI:0007), Fig. 2B`                                       |
-| `REVISED`   | Revision during curation                              | `method MI:0007 → MI:0096, Fig. 3A is a pull-down`                        |
-| `FIXED`     | A fix of an error in the data                         | `name1 AES → TLE5, gene name of the snapshot`                             |
-| `UPDATED`   | Revision of the versioning pass                       | `UniProt 2026_03, Q77YF9 → P12520 (deleted; NL4-3 Vpr), 1–78 → 1–96`      |
-| `ASIDE`     | An interactor put aside, in place on the live version | `side 2 B0FAN5 deleted, HIV-1 patient isolate, no strain in the abstract` |
-| `CORRECTED` | In-place correction, no new version (not D11)         | `isoform renamed by UniProt, P01106-1 → P01106`                           |
-| `REMOVED`   | Description removed, in place on its last version     | `HLA protein (§3)`                                                        |
+| Action      | When                                                  | Example summary                                                              |
+| ----------- | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `CREATED`   | New description (curation pass)                       | `anti-tag co-IP (MI:0007), Fig. 2B`                                          |
+| `REVISED`   | Revision during curation                              | `method MI:0007 → MI:0096, Fig. 3A is a pull-down`                           |
+| `FIXED`     | A fix of an error in the data                         | `name1 AES → TLE5, gene name of the snapshot`                                |
+| `UPDATED`   | Revision of the versioning pass                       | `UniProt 2026_03, Q77YF9 → P12520 (deleted; NL4-3 Vpr), 1–78 → 1–96`         |
+| `ASIDE`     | An interactor put aside, in place on the live version | `side 2 B0FAN5 deleted, HIV-1 patient isolate, no strain in the publication` |
+| `CORRECTED` | In-place correction, no new version (not D11)         | `isoform renamed by UniProt, P01106-1 → P01106`                              |
+| `REMOVED`   | Description removed, in place on its last version     | `HLA protein (§3)`                                                           |
 
 `ASIDE` and `CORRECTED` are written in place, outside the write tools, with the user's permission.
 
@@ -213,5 +213,5 @@ version 2: [2026-11-02 Claude] UPDATED: UniProt 2026_04, new snapshot of P26662,
 
 ```
 version 3: [2026-10-08 Claude] UPDATED: UniProt 2026_03, human side only.
-           [2026-10-08 Claude] ASIDE: side 2 B0FAN5 deleted, HIV-1 patient isolate, no strain in the abstract.
+           [2026-10-08 Claude] ASIDE: side 2 B0FAN5 deleted, HIV-1 patient isolate, no strain in the publication.
 ```

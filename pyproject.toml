@@ -5,8 +5,14 @@ requires-python = ">=3.12"
 dependencies = [
     "biopython>=1.88",
     "lxml>=6.1.3",
+    "olefile>=0.47",
+    "openpyxl>=3.1.5",
     "psycopg[binary]>=3.3.6",
+    "pymupdf>=1.28.2",
+    "python-docx>=1.2.0",
     "python-dotenv>=1.2.4",
+    "trafilatura>=2.3.1",
+    "xlrd>=2.0.2",
 ]
 
 [project.scripts]
@@ -17,6 +23,8 @@ drakkar-add = "drakkar.files:add_main"
 drakkar-revise = "drakkar.files:revise_main"
 drakkar-publications = "drakkar.files:publications_main"
 drakkar-read = "drakkar.read:main"
+drakkar-fetch = "drakkar.fetch:main"
+drakkar-parse = "drakkar.parse:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
@@ -34,6 +42,8 @@ dev = [
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
+    "types-openpyxl>=3.1.5.20260827",
+    "xlwt>=1.3.0",
 ]
 
 [tool.ruff]
