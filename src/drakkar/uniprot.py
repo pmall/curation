@@ -272,20 +272,19 @@ REPORT_QUERIES: dict[str, LiteralString] = {
     "entries": """
         SELECT s.type, s.reviewed, count(*) AS entries,
                count(*) FILTER (WHERE m.id IS NOT NULL) AS unchanged,
-               count(*) FILTER (WHERE m.id IS NULL AND NOT EXISTS (
-                   SELECT 1 FROM proteins AS p WHERE p.accession = s.accession
-               )) AS new_accessions,
-               count(*) FILTER (WHERE m.id IS NULL AND EXISTS (
-                   SELECT 1 FROM proteins AS p WHERE p.accession = s.accession
-               )) AS changed
-        FROM staging AS s LEFT JOIN matched AS m USING (accession)
-        GROUP BY 1, 2 ORDER BY 1, 2
+               count(*) FILTER (WHERE m.id IS NULL AND known.accession IS NULL) AS new_accessions,
+               count(*) FILTER (WHERE m.id IS NULL AND known.accession IS NOT NULL) AS changed
+        FROM staging AS s
+        LEFT JOIN matched AS m USING (accession)
+        LEFT JOIN (SELECT DISTINCT accession FROM proteins) AS known USING (accession)
+        GROUP BY s.type, s.reviewed
+        ORDER BY s.type, s.reviewed
     """,
     "missing_taxa": """
         SELECT s.type, count(*) AS entries, count(DISTINCT s.ncbi_taxon_id) AS taxa
         FROM staging AS s
         WHERE NOT EXISTS (SELECT 1 FROM taxon AS t WHERE t.ncbi_taxon_id = s.ncbi_taxon_id)
-        GROUP BY 1 ORDER BY 1
+        GROUP BY s.type ORDER BY s.type
     """,
 }
 
@@ -345,10 +344,10 @@ def upgrade(release_directory: Path, *, dry_run: bool) -> None:
         cur.execute(
             """
             INSERT INTO proteins_versions (accession, version, current_version, names, features)
-            SELECT s.accession, coalesce(m.version, %s), %s, s.names, s.features
+            SELECT s.accession, coalesce(m.version, %(release)s), %(release)s, s.names, s.features
             FROM staging AS s LEFT JOIN matched AS m USING (accession)
             """,
-            (release, release),
+            {"release": release},
         )
         log(start, f"{cur.rowcount} current snapshots")
         cur.execute("""
@@ -365,12 +364,15 @@ def upgrade(release_directory: Path, *, dry_run: bool) -> None:
         log(start, "listing descriptions on obsolete snapshots")
         cur.execute("""
             CREATE TEMP TABLE secondary ON COMMIT DROP AS
-            SELECT unnest(secondary_accessions) AS secondary_accession, accession FROM staging
+            SELECT secondary_accession, string_agg(accession, ' ' ORDER BY accession) AS accessions
+            FROM (SELECT unnest(secondary_accessions) AS secondary_accession, accession
+                  FROM staging) AS pairs
+            GROUP BY secondary_accession
         """)
-        cur.execute("CREATE INDEX ON secondary (secondary_accession)")
+        cur.execute("ALTER TABLE secondary ADD PRIMARY KEY (secondary_accession)")
         cur.execute("""
             CREATE TEMP TABLE obsolete_uses ON COMMIT DROP AS
-            SELECT d.stable_id, a.pmid, r.type AS run_type, x.side, p.type, p.accession,
+            SELECT d.stable_id, a.pmid, r.type AS run_type, used.side, p.type, p.accession,
                    p.version AS old_version, s.accession IS NOT NULL AS in_release,
                    CASE
                      WHEN s.accession IS NULL THEN 'removed'
@@ -380,16 +382,17 @@ def upgrade(release_directory: Path, *, dry_run: bool) -> None:
                      WHEN p.sequences <> s.sequences THEN 'isoforms'
                      ELSE 'gene name'
                    END AS reason,
-                   (SELECT string_agg(x.accession, ' ') FROM secondary AS x
-                    WHERE x.secondary_accession = p.accession) AS now_secondary_of
+                   sec.accessions AS now_secondary_of
             FROM descriptions AS d
             JOIN associations AS a ON a.id = d.association_id
             JOIN runs AS r ON r.id = a.run_id
-            CROSS JOIN LATERAL (VALUES (1, d.protein1_id), (2, d.protein2_id)) AS x (side, id)
-            JOIN proteins AS p ON p.id = x.id
+            CROSS JOIN LATERAL (VALUES (1, d.protein1_id), (2, d.protein2_id))
+                AS used (side, protein_id)
+            JOIN proteins AS p ON p.id = used.protein_id
             LEFT JOIN staging AS s ON s.accession = p.accession
+            LEFT JOIN secondary AS sec ON sec.secondary_accession = p.accession
             WHERE d.deleted_at IS NULL
-            AND NOT EXISTS (
+            AND NOT EXISTS (  -- an obsolete snapshot
                 SELECT 1 FROM proteins_versions AS v
                 WHERE v.accession = p.accession AND v.version = p.version
             )
@@ -401,7 +404,9 @@ def upgrade(release_directory: Path, *, dry_run: bool) -> None:
                    count(DISTINCT accession) AS accessions,
                    count(DISTINCT accession) FILTER (WHERE now_secondary_of IS NOT NULL)
                      AS now_secondary
-            FROM obsolete_uses GROUP BY 1, 2, 3 ORDER BY 1, 2, 4 DESC
+            FROM obsolete_uses
+            GROUP BY run_type, type, reason
+            ORDER BY run_type, type, descriptions DESC
             """,
         )
         details_header, details = fetch_table(
