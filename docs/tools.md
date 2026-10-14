@@ -1,6 +1,6 @@
 # Tools
 
-Descriptions and publication states are written only through these tools, from files. What a write checks and does: `database.md` §2; what a right description is: `curation-rules.md`.
+Descriptions and publication states are written only through these tools, from files; full texts are fetched and converted by the tools of the last section. What a write checks and does: `database.md` §2; what a right description is: `curation-rules.md`.
 
 ## Files
 
@@ -51,3 +51,12 @@ Reading is read-only:
 - `uv run drakkar-read names <accession>`: the generic names used on the same strain, virus and family;
 - `uv run drakkar-read row <stable_id>...`: live descriptions as revision rows, to edit;
 - `drakkar.db.connect(readonly=True)` for anything else.
+
+## Full texts
+
+A full text is fetched and converted by these tools, then read from the files they write; nothing else downloads it.
+
+- `uv run drakkar-fetch <pmid> <dir>`: downloads the full text as published, from the first source that works: PMC (the XML, its PDF and its supplementary files from the PMC open access files, else the XML from Europe PMC), then the publisher at the DOI, then the other open access copies OpenAlex knows (repositories; never a preprint server); for each, an HTML full text before a PDF. It writes `<pmid>.xml`, `<pmid>.html` or `<pmid>.pdf`, the supplementary files in `<pmid>.supp/` (archives unpacked, videos and images left out), and last the manifest `<pmid>.json`, so a manifest means the fetch is done. The manifest holds `line`, the `Full text` line of the publication note (`curation-rules.md` §5); `file`, the full text (none when there is none, with `why`); `pdf`, the PDF beside a PMC XML; `pmcid`, `doi`, `source`, `url`, `license`; `supplements`, and `skipped_supplements` with why; `tried`, every URL asked with its outcome.
+- `uv run drakkar-parse <file> <out>`: converts one file to text, by its type: PMC XML to Markdown (title, abstract, sections, captions, tables and supplementary materials; references, acknowledgements, notes and peer reviews left out), HTML to the Markdown of its main text, a Word document (`.docx`, or `.doc` from Word 97-2003) to Markdown, a PDF to its text page by page (`--- page N ---`), a spreadsheet (`.xlsx`, `.xls`) to one TSV block per sheet, CSV and plain text as they are. A scanned PDF, a damaged file, an image or any other type is refused with the reason, and nothing is written. No network.
+
+In a session, the converted full text is `<dir>/<pmid>.md`, and each converted supplementary file is `<file>.md` beside its file.

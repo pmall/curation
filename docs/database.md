@@ -76,12 +76,12 @@ At each release, after the load, every obsolete interactor of a live description
 - **A human gene rename** follows `curation-rules.md` §3 (a name change must make sense).
 - **Human interactors are always updated when they can be**: a description, vh or hh, is revised whenever one of its human interactors can be moved to the latest Swiss-Prot. When the other interactor cannot (e.g. a viral protein gone from UniProt), the revision updates the human interactor only, and the description stays live with an obsolete interactor.
 - **An interactor that cannot be moved is put aside**, with its reason, on its old snapshot: it is left for re-curation.
-- **One name per viral protein:** a viral interactor carries one generic name (D6) and a generic name one region (D10). Conflicts revealed by a move are settled from the abstracts, else the UniProt gene name. Two descriptions that become identical are duplicates (§2).
+- **One name per viral protein:** a viral interactor carries one generic name (D6) and a generic name one region (D10). Conflicts revealed by a move are settled from the publications, else the UniProt gene name. Two descriptions that become identical are duplicates (§2).
 
 **Moving to another accession is re-curation**, decided case by case:
 
 - Human protein deleted by UniProt: moved only when nothing changes but the accession (same sequences, same gene name). An identical sequence in another gene's entry is no reason to move.
-- Viral protein deleted by UniProt: first an entry with the exact canonical sequence and a sensible taxon (same taxon, NCBI merge, parent, child or same species); otherwise a near match (MMseqs2, ≥ 70 % identity, ≥ 80 % coverage of both) in which the region is found again (whole protein → whole new protein, a part → its best match) and the mappings are found within the region at 90 % or more. Between equally good candidates: the strain named in the abstracts; otherwise highest identity, then a Swiss-Prot entry, then the reference strain or the most generic taxon (a name designating no strain or isolate, then the shallowest in the taxonomy), then the smallest accession. Patient isolates with no strain in the abstracts, matches below 90 % and matches only in another species are put aside.
+- Viral protein deleted by UniProt: first an entry with the exact canonical sequence and a sensible taxon (same taxon, NCBI merge, parent, child or same species); otherwise a near match (MMseqs2, ≥ 70 % identity, ≥ 80 % coverage of both) in which the region is found again (whole protein → whole new protein, a part → its best match) and the mappings are found within the region at 90 % or more. Between equally good candidates: the strain of the publications; otherwise highest identity, then a Swiss-Prot entry, then the reference strain or the most generic taxon (a name designating no strain or isolate, then the shallowest in the taxonomy), then the smallest accession. Patient isolates with no strain in the publications, matches below 90 % and matches only in another species are put aside.
 
 ## 4. Invariants
 
@@ -114,5 +114,4 @@ Checked by `uv run drakkar-check <report dir>` (`check.md` and one TSV per viola
 
 1. The PubMed query used to fill runs.
 1. Mappings with extra residues outside their interactor: the sequence used in the experiment can carry, at its N- or C-terminal end, residues that are not in the mature protein it is recorded on (the initiator methionine before HCV Core, a signal peptide, residues across a cleavage site). The extra residues count as differences on the mature protein, which lowers the identity, or the mapping cannot be recorded at all (e.g. the cleavage-site peptides of PMID 34799561, listed in its publication note). How to record such a mapping while keeping its exact sequence (`curation-rules.md` §3)?
-1. Licenses: many open access publications (including part of the PMC open access subset) are under non-commercial licenses (CC BY-NC, BY-NC-ND). Does Drakkar's use allow text-mining them?
 1. An Elsevier text-mining API key, to download Elsevier open access publications, which often fail to download?

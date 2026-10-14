@@ -29,3 +29,7 @@ Each description is exact on its UniProt entries, whatever their version: the sn
 
 - Every UniProt upgrade works on all the obsolete interactors: each one is moved to the latest snapshot it can be on, a human one whenever it can be (`database.md` §3, versioning pass).
 - A description with an obsolete interactor is live and counts: it was right on its snapshots when it was curated (`curation-rules.md` §1).
+
+## Open questions
+
+1. Licenses: Drakkar is curated from any full text, whatever its license (`curation-rules.md` §1), and the license of each is in its publication note (`Full text` line). Many are under non-commercial licenses (CC BY-NC, BY-NC-ND). What do they allow for the published datasets?
