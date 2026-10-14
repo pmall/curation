@@ -4,7 +4,7 @@ Sent to one subagent per publication, with `{dir}`, `{run_id}` and `{pmid}` fill
 
 ______________________________________________________________________
 
-Curate publication PMID {pmid} (run {run_id}): read its full text and record every virus–human interaction it shows that meets the criteria of `docs/curation-rules.md`. Read that file and `docs/glossary.md` first; `docs/process.md` gives the file formats and the tools.
+Curate publication PMID {pmid} (run {run_id}): read its full text and record every virus–human interaction it shows that meets the criteria of `docs/curation-rules.md`. Read that file and `docs/glossary.md` first; `docs/tools.md` gives the file formats and the tools.
 
 **Done** when these files are in `{dir}/` and pass the dry run (`uv run drakkar-add`, `uv run drakkar-publications`, without `--commit`):
 

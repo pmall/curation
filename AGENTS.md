@@ -4,17 +4,17 @@ Drakkar is the curation database of virus–human protein–protein interactions
 
 ## Where things are
 
-- `docs/`, the source of truth, read before acting: `glossary.md` (one meaning per term, used everywhere), `curation-rules.md` (what a right description is, and the evidence for it), `database.md` (structure, versioning, invariants, writes), `process.md` (how a curation or re-curation session runs: files, tools, dry run, commit), `derived-datasets.md` (what is exported, and what it means for curation), `todo.md` (the next steps).
-- `skills/`: the `curate` and `recurate` sessions (linked from `.claude/skills/` and `.agents/skills/`). A skill holds only what is specific to its session; the rules are in `docs/`.
-- `src/drakkar/`: the tools (`process.md` § Tools; the release tools in `database.md` §3). `tests/`: their tests.
+- `docs/`, the source of truth, read before acting: `glossary.md` (one meaning per term, used everywhere), `curation-rules.md` (what a right description is, and the evidence for it), `database.md` (structure, versioning, invariants, writes), `tools.md` (the files and the tools that write and read the database, the dry run), `derived-datasets.md` (what is exported, and what it means for curation), `todo.md` (the next steps).
+- `skills/`: the `curate` and `recurate` sessions (linked from `.claude/skills/` and `.agents/skills/`). Each skill holds the whole process of its session; the rules on descriptions, the database and the tools are in `docs/`, and the skill points to them.
+- `src/drakkar/`: the tools (`tools.md`; the release tools in `database.md` §3). `tests/`: their tests.
 - `docs/history/`: the history of the project: what was done and when, with its dates, counts and measurements, one file each. The reference docs never point to it.
 - `data/`, reports and scratch files are disposable: docs never point to them, what a reader needs is written in the doc itself.
 
 ## Docs
 
-- The reference docs are explanations, instructions and rules for the working agent, timeless and right at reading time: they describe the current state and the current process. Every paragraph is something the agent needs to act correctly now. No account of how things came to be (what changed, was added or removed, and when), no detail a tool or a database constraint already enforces, no dates, no counts, no results of a run, no status tags, no plans (`todo.md`). Every rule written is decided.
-- Each rule is written once, in its place; other places point to it. A rule found in a history file, a skill or a conversation goes into the reference docs; a fact about the past goes into `docs/history/`.
-- Keep the docs up to date with every decision. Project knowledge goes in the project, never in Claude's local memory.
+- The reference docs are explanations, instructions and rules for the working agent, timeless and right at reading time: they describe the current rules and the current state. Every paragraph is something the agent needs to act correctly now. No account of how things came to be (what changed, was added or removed, and when), no detail a tool or a database constraint already enforces, no dates, no counts, no results of a run, no status tags, no plans (`todo.md`). Every rule written is decided.
+- `docs/` holds the rules, each written once, in its place; other docs point to it. The skills hold the processes: each skill is self-contained, and two skills may give the same instruction. A fact about the past goes into `docs/history/`.
+- Keep the docs and the skills up to date with every decision.
 
 ## Working with the user
 
@@ -31,7 +31,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 - Every job that writes (curation and re-curation sessions, versioning passes, a fix) writes nothing to the database before the user's go on its report. A dry run writes nothing and needs no go.
 - The report leaves no open question to the user: what cannot be settled is unsettled, with why. After the go, the orchestrator commits in its own context, without asking again.
 - Subagents decide and write files, never to the database. A skill writes only where its prompt says; placing and aggregating its output is the orchestrator's job.
-- Writes go through the tools of `process.md`; plain SQL only when the user allows it for that write.
+- Writes go through the tools of `tools.md`; plain SQL only when the user allows it for that write.
 - Recomputed values (alignments, identities, coordinates) are written only if our code first reproduces the stored values on the cases that are right; any discrepancy: stop, show it, write nothing.
 
 ## Database queries
