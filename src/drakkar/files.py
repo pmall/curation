@@ -170,13 +170,9 @@ def format_revision(item: Revision) -> str:
 # --- Commands -----------------------------------------------------------------------------------
 
 
-def report(outcome: Outcome, rows: list[tuple[str, dict[str, str]]], commit: bool) -> str:
+def report(outcome: Outcome, rows: list[tuple[str, dict[str, str]]]) -> str:
     """What happened, short: refused rows, check errors, warnings on what was written."""
-    lines: list[str] = []
-    for problem in outcome.problems:
-        number, _, text = problem.partition(": ")
-        where = rows[int(number.removeprefix("row ")) - 1][0]
-        lines.append(f"refused {where}: {text}")
+    lines = [f"refused {rows[number - 1][0]}: {why}" for number, why in outcome.problems]
     for result in outcome.errors:
         lines.append(f"error {result.invariant.id}: {result.invariant.title}")
         lines.append("  " + "\t".join(result.header))
@@ -195,7 +191,7 @@ def report(outcome: Outcome, rows: list[tuple[str, dict[str, str]]], commit: boo
     if outcome.committed:
         verdict = "committed"
     elif outcome.ok:
-        verdict = "dry run passed, rolled back" if not commit else "not committed"
+        verdict = "dry run passed, rolled back"
     else:
         verdict = "failed, rolled back"
     lines.append(f"{len(rows)} rows, {len(outcome.written)} applied: {verdict}")
@@ -221,9 +217,9 @@ def _command(
         items = [parse(where, row) for where, row in rows]
         with connect() as conn:
             outcome = write(conn, items, commit=args.commit)
-    except (FileError, ValueError) as e:
+    except ValueError as e:  # a file error, or a stable ID given twice
         sys.exit(str(e))
-    print(report(outcome, rows, args.commit))
+    print(report(outcome, rows))
     sys.exit(0 if outcome.ok else 1)
 
 

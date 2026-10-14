@@ -51,7 +51,7 @@ A `discarded` publication without a Claude note may have been decided on the abs
 1. The method detects a **physical** interaction. Excluded: colocalization, functional interaction, citing an interaction shown elsewhere. Included: binary methods (co-crystal, Y2H) and complex-detection methods (co-IP…).
 1. Method from the PSI-MI **interaction detection method** branch (MI:0001).
 1. Interaction domains (mappings) are collected when clearly identified in the article. See *Mappings* below for how to get their exact sequence.
-1. **Tagged proteins** (GFP, FLAG, HA, GST fusions…) are curated as the wild-type protein: only the protein sequence is kept, never the tag.
+1. **Tagged proteins** (GFP, FLAG, HA, GST fusions…) are curated as the wild-type protein: the interactor never carries the tag, while a mapping keeps it as extra end residues (*Mappings* below).
 1. **Fragments** (truncated constructs used to locate the binding region) are accepted: the interactor is the protein, the fragment is recorded as a mapping.
 1. High-throughput publications: assess the rawest data available (e.g. ORF sequences) by alignment to assign the right accession. **Scoring thresholds are the authors' own** (their high-confidence list or cut-off).
 1. **No HLA proteins**: a description involving an HLA protein (any `HLA-` gene, vh or hh) is not curated.
@@ -115,7 +115,7 @@ A header line, optional `- ` detail lines, the pass history (oldest first), then
 <previous note, verbatim>
 ```
 
-The header is fixed so the check script can parse it: the date of the last rewrite, `Claude`, the association state in capitals, then a one-line summary. The state in the header must match `associations.state`. A note never holds a number the database already gives, such as the count of descriptions: it would go stale with the next revision.
+The header is fixed so the write tools can check it: the date of the last rewrite, `Claude`, the association state in capitals, then a one-line summary. The state in the header must match `associations.state`. A note never holds a number the database already gives, such as the count of descriptions: it would go stale with the next revision.
 
 | State       | Summary                                                                                                                             | Detail lines                            |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |

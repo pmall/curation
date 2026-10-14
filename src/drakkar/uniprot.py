@@ -39,8 +39,6 @@ from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
 
 from drakkar.db import connect
 
-HUMAN_TAXON_ID = 9606
-VIRUSES_TAXON_ID = 10239
 VARSPLIC = "uniprot_sprot_varsplic.fasta.gz"
 SOURCES = {
     "uniprot_sprot_human.xml.gz": "h",
@@ -120,7 +118,7 @@ class Entry:
         )
 
 
-def parse_entry(entry: _Element, ns: str, type: str, isoforms: dict[str, dict[str, str]]) -> Entry:
+def parse_entry(entry: _Element, ns: str, type_: str, isoforms: dict[str, dict[str, str]]) -> Entry:
     accessions = [a.text or "" for a in entry.iterfind(f"{ns}accession")]
     accession = accessions[0]
 
@@ -180,7 +178,7 @@ def parse_entry(entry: _Element, ns: str, type: str, isoforms: dict[str, dict[st
         accession=accession,
         secondary_accessions=accessions[1:],
         reviewed=entry.get("dataset") == "Swiss-Prot",
-        type=type,
+        type=type_,
         ncbi_taxon_id=int(taxon.get("id", "0")),
         name=name,
         description=description,
@@ -190,11 +188,11 @@ def parse_entry(entry: _Element, ns: str, type: str, isoforms: dict[str, dict[st
     )
 
 
-def parse_xml(path: Path, type: str, isoforms: dict[str, dict[str, str]]) -> Iterator[Entry]:
+def parse_xml(path: Path, type_: str, isoforms: dict[str, dict[str, str]]) -> Iterator[Entry]:
     with gzip.open(path, "rb") as f:
         for _, element in etree.iterparse(f, events=("end",), tag="{*}entry", huge_tree=True):
             ns = element.tag[: -len("entry")]
-            yield parse_entry(element, ns, type, isoforms)
+            yield parse_entry(element, ns, type_, isoforms)
             element.clear()
             while element.getprevious() is not None:
                 parent = element.getparent()

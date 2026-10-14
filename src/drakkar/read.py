@@ -242,9 +242,9 @@ def names(cur: Any, accession: str) -> str:
         if rank is None:
             head = f"{_taxon_name(cur, taxon)} ({taxon})"
         elif rank in own:
-            head = "{1} ({0}), other strains".format(*own[rank])
-            if label == "family":
-                head = head.replace("other strains", "other viruses")
+            ncbi_id, scientific_name = own[rank]
+            others = "other viruses" if rank == "family" else "other strains"
+            head = f"{scientific_name} ({ncbi_id}), {others}"
         else:
             lines += ["", f"{label.capitalize()}: not in the NCBI lineage"]
             continue

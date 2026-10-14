@@ -53,12 +53,11 @@ uv run drakkar-uniprot upgrade data/<release> [--dry-run]   # 3. import; the rel
 
 The matching logic:
 
-1. Stage the new release: FASTA (canonical + isoforms) and XML (gene names, features) into a temporary table.
-1. For each root taxon (human, then viruses), take the staged entries whose taxon is under it.
+1. Stage the new release into a temporary table: each XML entry (canonical sequence, gene names, features) with its isoforms from the varsplic FASTA, human or viral by its file.
 1. For each entry, look for an existing snapshot that is **unchanged**: same accession, same taxon, exactly the same isoform sequences, and (**human only**) the same primary gene name. Viral names are not compared because the curator sets the viral name (`name2`, generic name) independently of UniProt. The human gene name is compared because a curation can rely on it (`name1`, and the publication names the human protein by its gene). Description changes are ignored.
 1. Unchanged → the snapshot keeps its `proteins.id`. Descriptions using it stay valid with no change.
 1. Changed or new → a new `proteins` row. The old snapshot becomes obsolete, and the descriptions using it **need revision**.
-1. `proteins_versions` is fully rebuilt for the root taxon: every accession of the new release gets one row pointing to its snapshot (new or kept), with `current_version` set to the new release. Accessions removed from UniProt (deleted, merged, demerged) get no row: their snapshots become obsolete too.
+1. `proteins_versions` is fully rebuilt: every accession of the new release gets one row pointing to its snapshot (new or kept), with `current_version` set to the new release. Accessions removed from UniProt (deleted, merged, demerged) get no row: their snapshots become obsolete too.
 
 **An accession can have several snapshots, and several obsolete ones**: one per release where its entry changed. Different descriptions, or different versions of one description, can use different snapshots of the same accession. So any comparison about a description (sequence, length, gene name, taxon) uses the snapshot the description points to (`protein1_id`, `protein2_id`), never "the latest old snapshot" of the accession. Example: a protein with an older, longer snapshot used by a live description and a later, shorter one: comparing the later one with another entry can wrongly say "same sequence".
 

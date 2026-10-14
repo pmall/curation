@@ -45,18 +45,15 @@ def read_written(text: str) -> tuple[str, str, str]:
     return text.upper(), nter.upper(), cter.upper()
 
 
-def written(mapping: dict[str, Any]) -> str:
-    """A mapping JSON as written in the files: its extra end residues in lowercase."""
-    sequence: str = mapping["sequence"]
-    nter, cter = len(mapping.get("nter", "")), len(mapping.get("cter", ""))
-    middle = sequence[nter : len(sequence) - cter]
-    return sequence[:nter].lower() + middle + sequence[len(sequence) - cter :].lower()
-
-
 def core(mapping: dict[str, Any]) -> str:
     """The part of a mapping located on its interactor: the sequence without `nter` and `cter`."""
     sequence: str = mapping["sequence"]
     return sequence[len(mapping.get("nter", "")) : len(sequence) - len(mapping.get("cter", ""))]
+
+
+def written(mapping: dict[str, Any]) -> str:
+    """A mapping JSON as written in the files: its extra end residues in lowercase."""
+    return mapping.get("nter", "").lower() + core(mapping) + mapping.get("cter", "").lower()
 
 
 def _aligner(overhang: bool) -> Any:  # Biopython is not fully typed
