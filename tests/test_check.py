@@ -105,3 +105,38 @@ def test_checks_see_the_transaction_and_leave_it_usable(conn):
     assert counts(conn)["D5"] == before["D5"] + 1  # uncommitted, seen; temp tables dropped
     conn.rollback()
     assert counts(conn) == before
+
+
+def test_extra_end_residues_are_left_out_of_the_occurrences(conn):
+    before = counts(conn)
+    # WWWWW added before the first mapping, and named as its nter: its occurrences still fit
+    conn.execute(
+        """
+        UPDATE descriptions
+        SET mapping1 = jsonb_set(
+            jsonb_set(mapping1::jsonb, '{0,sequence}',
+                      to_jsonb('WWWWW' || (mapping1->0->>'sequence'))),
+            '{0,nter}', '"WWWWW"')::json
+        WHERE id = %(live)s
+        """,
+        ids(conn),
+    )
+    assert counts(conn)["D9"] == before["D9"]
+    conn.execute(
+        """
+        UPDATE descriptions SET mapping1 = jsonb_set(mapping1::jsonb, '{0,nter}', '"AAAAA"')::json
+        WHERE id = %(live)s
+        """,
+        ids(conn),
+    )
+    assert counts(conn)["D9"] == before["D9"] + 1
+
+
+def test_extra_end_residues_must_be_text(conn):
+    before = counts(conn)
+    conn.execute(
+        "UPDATE descriptions SET mapping1 = jsonb_set(mapping1::jsonb, '{0,nter}', '1')::json "
+        "WHERE id = %(live)s",
+        ids(conn),
+    )
+    assert counts(conn)["D11"] == before["D11"] + 1

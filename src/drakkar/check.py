@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, LiteralString, cast
 
-from drakkar.align import MIN_IDENTITY, segment_identity
+from drakkar.align import MIN_IDENTITY, core, segment_identity
 from drakkar.db import connect
 
 Rows = tuple[list[str], list[tuple[Any, ...]]]
@@ -319,9 +319,10 @@ def _number(value: Any, strict: bool = True) -> float | None:
 def mapping_structure(mappings: Any, strict: bool = True) -> list[str]:
     """Structure and type problems of a mapping column (D11), without looking at the content.
 
-    The structure is a list of objects `{"sequence": string, "isoforms": [{"accession": string,
-    "occurrences": [{"start": number, "stop": number, "identity": number}]}]}`. Unless `strict`,
-    numbers stored as text are accepted, so that D9 can read the content.
+    The structure is a list of objects `{"sequence": string, "nter": string, "cter": string,
+    "isoforms": [{"accession": string, "occurrences": [{"start": number, "stop": number,
+    "identity": number}]}]}`, `nter` and `cter` optional. Unless `strict`, numbers stored as text
+    are accepted, so that D9 can read the content.
     """
     if not isinstance(mappings, list):
         return ["not a list of mappings"]
@@ -333,6 +334,9 @@ def mapping_structure(mappings: Any, strict: bool = True) -> list[str]:
         fields = cast(dict[str, Any], mapping)
         if not isinstance(fields.get("sequence"), str):
             problems.add("a sequence is not a string")
+        for key in ("nter", "cter"):
+            if key in fields and not isinstance(fields[key], str):
+                problems.add(f"{key} is not a string")
         isoforms = fields.get("isoforms")
         if not isinstance(isoforms, list):
             problems.add("isoforms is not a list")
@@ -373,8 +377,9 @@ def _misfit(
     """Why the occurrences of a mapping do not fit the sequences of its snapshot, or "".
 
     Each stored occurrence is judged on its own, against the protein segment at its coordinates:
-    an occurrence recorded at 100 % must be exactly the mapping; otherwise the mapping aligned end
-    to end on the segment must be no more than `IDENTITY_TOLERANCE` below the recorded identity.
+    the mapping is located without its `nter` and `cter`. An occurrence recorded at 100 % must be
+    exactly the mapping; otherwise the mapping aligned end to end on the segment must be no more
+    than `IDENTITY_TOLERANCE` below the recorded identity.
     Low identities are warnings (D12), not misfits. Whether the mapping could also be found
     elsewhere, or on other isoforms, is not checked.
     """
@@ -394,9 +399,9 @@ def _misfit(
         if not 1 <= first <= last <= len(sequence):
             return f"occurrence {first:g}-{last:g} outside {isoform}"
         segment = sequence[int(first) - 1 : int(last)]
-        if stored == 100 and segment != mapping["sequence"]:
+        if stored == 100 and segment != core(mapping):
             return f"100 % occurrence {first:g}-{last:g} does not match {isoform}"
-        identity = segment_identity(mapping["sequence"], segment)
+        identity = segment_identity(core(mapping), segment)
         if identity < stored - IDENTITY_TOLERANCE:
             return (
                 f"occurrence {first:g}-{last:g} on {isoform} recorded at {stored:g} %, "
@@ -434,6 +439,11 @@ def check_d9(cur: Any) -> Rows:
                 problems.append("sequence is not an uppercase amino acid sequence")
             if sequence in seen:
                 problems.append("duplicate mapping sequence")
+            nter, cter = mapping.get("nter", ""), mapping.get("cter", "")
+            ends = sequence.startswith(nter) and sequence.endswith(cter)
+            named = "" not in (mapping.get("nter"), mapping.get("cter"))  # present, not empty
+            if not (ends and named and len(nter) + len(cter) < len(sequence)):
+                problems.append("nter and cter are not the ends of the sequence")
             seen.add(sequence)
             if misfit := _misfit(mapping, isoforms, accession, start, stop):
                 problems.append(misfit)
@@ -564,9 +574,9 @@ INVARIANTS = sorted(
         Invariant(
             "D9",
             "error",
-            "Mapping content: an amino acid sequence, once per side, with occurrences true to "
-            "their coordinates: exact at 100 %, otherwise within 1 point of the identity at "
-            "those coordinates.",
+            "Mapping content: an amino acid sequence, once per side, its nter and cter at its "
+            "ends, with occurrences of the rest true to their coordinates: exact at 100 %, "
+            "otherwise within 1 point of the identity at those coordinates.",
             check_d9,
         ),
         Invariant(

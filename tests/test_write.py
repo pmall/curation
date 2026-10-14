@@ -243,3 +243,24 @@ def test_open_transaction_is_refused(conn, new):
     conn.execute("SELECT 1")
     with pytest.raises(RuntimeError):
         add_descriptions(conn, [new])
+
+
+def test_extra_end_residues_in_lowercase_are_left_out_of_the_occurrences(conn, new):
+    [sequence] = new.description.mappings2
+    tagged = replace(new, description=replace(new.description, mappings2=("gst" + sequence,)))
+    outcome = add_descriptions(conn, [tagged], commit=True)
+    assert outcome.ok
+    [mapping] = conn.execute(
+        "SELECT mapping2 FROM descriptions WHERE stable_id = %s", outcome.written
+    ).fetchone()[0]
+    assert mapping["sequence"] == "GST" + sequence and mapping["nter"] == "GST"
+    assert mapping["isoforms"][0]["occurrences"][0] == {"start": 1, "stop": 20, "identity": 100}
+    row = {r.stable_id: r for r in live_revisions(conn.cursor(), *SELECTED)}[outcome.written[0]]
+    assert row.description is not None and row.description.mappings2 == ("gst" + sequence,)
+
+
+def test_the_same_sequence_with_other_extra_residues_is_a_duplicate(conn, new):
+    [sequence] = new.description.mappings2
+    twice = (sequence, sequence[0].lower() + sequence[1:])
+    duplicated = replace(new, description=replace(new.description, mappings2=twice))
+    assert "duplicate" in add_descriptions(conn, [duplicated]).problems[0]

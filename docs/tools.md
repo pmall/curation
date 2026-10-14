@@ -8,16 +8,16 @@ Tab separated. Lines starting with `#` are ignored (the header is one), so files
 
 **Descriptions to add** (`*.add.tsv`), one row per new description:
 
-| Column                          | Content                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `run_id`, `pmid`                | the publication                                                                |
-| `method`                        | PSI-MI ID                                                                      |
-| `accession1`                    | human interactor; gene name and full-length coordinates come from its snapshot |
-| `accession2`, `start2`, `stop2` | viral interactor                                                               |
-| `name2`                         | generic name                                                                   |
-| `mappings1`, `mappings2`        | mapping sequences; occurrences are computed at write time                      |
-| `below_threshold`               | mapping sequences kept below 90 % identity, explained in the note              |
-| `note`                          | the description note, `CREATED`                                                |
+| Column                          | Content                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `run_id`, `pmid`                | the publication                                                                                                 |
+| `method`                        | PSI-MI ID                                                                                                       |
+| `accession1`                    | human interactor; gene name and full-length coordinates come from its snapshot                                  |
+| `accession2`, `start2`, `stop2` | viral interactor                                                                                                |
+| `name2`                         | generic name                                                                                                    |
+| `mappings1`, `mappings2`        | mapping sequences, extra end residues in lowercase (`mSTNPK`: `nter` M); occurrences are computed at write time |
+| `below_threshold`               | mapping sequences kept below 90 % identity, explained in the note                                               |
+| `note`                          | the description note, `CREATED`                                                                                 |
 
 **Revisions** (`*.revise.tsv`), one row per revised description:
 
