@@ -441,7 +441,7 @@ def check_d9(cur: Any) -> Rows:
                 problems.append("duplicate mapping sequence")
             nter, cter = mapping.get("nter", ""), mapping.get("cter", "")
             ends = sequence.startswith(nter) and sequence.endswith(cter)
-            named = "" not in (mapping.get("nter"), mapping.get("cter"))  # present, not empty
+            named = "" not in (mapping.get("nter"), mapping.get("cter"))  # when present, not empty
             if not (ends and named and len(nter) + len(cter) < len(sequence)):
                 problems.append("nter and cter are not the ends of the sequence")
             seen.add(sequence)

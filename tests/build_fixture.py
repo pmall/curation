@@ -26,7 +26,7 @@ PUBLICATIONS = {
     (1, 8626429): "a mapping below 100 % with isoforms",
     (1, 9858596): "mappings below 100 % with isoforms",
     (1, 10777214): "a human interactor on an obsolete snapshot",
-    (12, 25031347): "selected, no description, no pass yet",
+    (12, 25031347): "selected, no pass yet",
     (56, 34799561): "curated with a curator note",
     (30, 24379396): "curated, empty note",
     (31, 15471871): "hh, several versions",

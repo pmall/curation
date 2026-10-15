@@ -5,20 +5,21 @@ Drakkar is the curation database of virus–human protein–protein interactions
 ## Where things are
 
 - `docs/`, the source of truth, read before acting: `glossary.md` (one meaning per term, used everywhere), `curation-rules.md` (what a right description is, and the evidence for it), `database.md` (structure, versioning, invariants, writes), `tools.md` (the files and the tools that write and read the database, the dry run, the tools that fetch and convert full texts), `derived-datasets.md` (what is exported, and what it means for curation), `todo.md` (the next steps).
-- `skills/`: the `curate` and `recurate` sessions (linked from `.claude/skills/` and `.agents/skills/`). Each skill holds the whole process of its session; the rules on descriptions, the database and the tools are in `docs/`, and the skill points to them.
+- `skills/`: the `curate` session, for publications new or already curated (linked from `.claude/skills/` and `.agents/skills/`). Each skill holds the whole process of its session; the rules on descriptions, the database and the tools are in `docs/`, and the skill points to them.
 - `src/drakkar/`: the tools (`tools.md`; the release tools in `database.md` §3). `tests/`: their tests.
 - `docs/logs/`: cases spotted while the tools work on real publications (failures, wrong results, timings), dated, to improve the tools (`full-texts.md`: the fetch and the conversion; `mappings.md`: mapping sequences the rules cannot record). The reference docs and the skills never point to it.
-- `docs/history/`: the history of the project: what was done and when, with its dates, counts and measurements, one file each. The reference docs never point to it.
+- `docs/history/`: the record of the move from manual curation to Claude's curation, with its dates, counts and measurements, one file each. Closed: nothing is added to it. The reference docs never point to it.
 - `data/`, reports and scratch files are disposable: docs never point to them, what a reader needs is written in the doc itself.
 
 ## Docs
 
 - The reference docs are explanations, instructions and rules for the working agent, timeless and right at reading time: they describe the current rules and the current state. Every paragraph is something the agent needs to act correctly now. No account of how things came to be (what changed, was added or removed, and when), no detail a tool or a database constraint already enforces, no dates, no counts, no results of a run, no status tags, no plans (`todo.md`). Every rule written is decided.
-- `docs/` holds the rules, each written once, in its place; other docs point to it. The skills hold the processes: each skill is self-contained, and two skills may give the same instruction. A fact about the past goes into `docs/history/`.
+- `docs/` holds the rules, each written once, in its place; other docs point to it. The skills hold the processes: each skill is self-contained, and two skills may give the same instruction. What is met while working goes into `docs/logs/`.
 - Keep the docs and the skills up to date with every decision.
 
 ## Working with the user
 
+- The skills and docs are instructions for an agent that curates publications and manages Drakkar, with the user supervising its results: not a pipeline where every detail is settled end to end. What matters is the instructions, the process, and data that is easy to use and manage. Not every detail or edge case needs a rule, and no error is dramatic: every version is kept, and a publication can always be curated again.
 - Use the user's definitions exactly as given (`docs/glossary.md`): never merge, regroup, relabel or extend a problem, term or rule; when one seems incomplete, ask one precise question.
 - When the user states a principle, apply it to every case it covers in one pass; ask only about cases it does not decide.
 - Be precise and short: say what is counted (descriptions, interactors, proteins, sides) and never mix units; one decision at a time; show the special cases, not the obvious ones; plain words, no invariant codes.
@@ -45,7 +46,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 ## Python
 
 - uv for environments and dependencies, ruff for linting and formatting, pyright for type checking, pytest for tests (`uv run pytest`: a test database, never Drakkar).
-- Markdown is formatted with `uv run mdformat --wrap no docs/ skills/ AGENTS.md`.
+- Markdown is formatted with `uv run mdformat --wrap no --number docs/ skills/ AGENTS.md`.
 
 ## Git
 

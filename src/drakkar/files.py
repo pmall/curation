@@ -6,8 +6,10 @@ In a note, `\\n` is a line break. Lists (mappings, below_threshold) are separate
     uv run drakkar-add <file>... [--commit]
     uv run drakkar-revise <file>... [--commit]
     uv run drakkar-publications <file>... [--commit]
+    uv run drakkar-diff <run_id> <pmid> <file>
 
-Without `--commit`, a dry run: everything is applied and checked, then rolled back.
+Without `--commit`, a dry run: everything is applied and checked, then rolled back. The diff is
+read-only: it writes the add, revise and delete files of a curated publication beside its file.
 """
 
 import argparse
@@ -17,6 +19,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from drakkar.db import connect
+from drakkar.diff import diff_descriptions
 from drakkar.write import (
     Description,
     NewDescription,
@@ -140,9 +143,29 @@ def publication(where: str, row: dict[str, str]) -> PublicationUpdate:
     )
 
 
+def _description_values(d: Description) -> dict[str, Any]:
+    return {
+        "method": d.method,
+        "accession1": d.accession1,
+        "accession2": d.accession2,
+        "start2": "" if d.start2 is None else d.start2,
+        "stop2": "" if d.stop2 is None else d.stop2,
+        "name2": d.name2,
+        "mappings1": ",".join(d.mappings1),
+        "mappings2": ",".join(d.mappings2),
+        "below_threshold": ",".join(d.below_threshold),
+    }
+
+
+def format_new_description(item: NewDescription) -> str:
+    """A new description as a row of an add file (the inverse of `new_description`)."""
+    values = {"run_id": item.run_id, "pmid": item.pmid, "note": _escape(item.note)}
+    values |= _description_values(item.description)
+    return "\t".join(str(values[c]) for c in ADD)
+
+
 def format_revision(item: Revision) -> str:
     """A revision as a row of a revision file (the inverse of `revision`)."""
-    d = item.description
     values: dict[str, Any] = {
         "stable_id": item.stable_id,
         "version": item.version,
@@ -152,19 +175,14 @@ def format_revision(item: Revision) -> str:
         "into": item.into,
         "note": _escape(item.note),
     }
-    if d is not None:
-        values |= {
-            "method": d.method,
-            "accession1": d.accession1,
-            "accession2": d.accession2,
-            "start2": "" if d.start2 is None else d.start2,
-            "stop2": "" if d.stop2 is None else d.stop2,
-            "name2": d.name2,
-            "mappings1": ",".join(d.mappings1),
-            "mappings2": ",".join(d.mappings2),
-            "below_threshold": ",".join(d.below_threshold),
-        }
+    if item.description is not None:
+        values |= _description_values(item.description)
     return "\t".join(str(values.get(c, "")) for c in REVISE)
+
+
+def write_rows(path: Path, columns: list[str], rows: Sequence[str]) -> None:
+    """A file of `columns`: its header line, then the rows."""
+    path.write_text("\n".join([header(columns), *rows]) + "\n")
 
 
 # --- Commands -----------------------------------------------------------------------------------
@@ -235,3 +253,32 @@ def publications_main() -> None:
     _command(
         "Set the state and note of publications.", PUBLICATIONS, publication, update_publications
     )
+
+
+def diff_main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Diff the curated descriptions of a publication against its live ones."
+    )
+    parser.add_argument("run_id", type=int)
+    parser.add_argument("pmid", type=int)
+    parser.add_argument("file", type=Path, help="the publication's descriptions, add format")
+    args = parser.parse_args()
+    path = cast(Path, args.file)
+    try:
+        items = [new_description(where, row) for where, row in read_rows([path], ADD)]
+        with connect(readonly=True) as conn, conn.cursor() as cur:
+            cur.execute("SET statement_timeout = '30s'")
+            diff = diff_descriptions(cur, args.run_id, args.pmid, items)
+    except ValueError as e:  # a file error, or a description of another publication
+        sys.exit(str(e))
+    stem = path.with_suffix("")
+    outputs = (
+        ("add", ADD, [format_new_description(d) for d in diff.added]),
+        ("revise", REVISE, [format_revision(r) for r in diff.revised]),
+        ("delete", REVISE, [format_revision(r) for r in diff.deleted]),
+    )
+    print(f"PMID {args.pmid}, run {args.run_id}: {len(diff.same)} same")
+    for kind, columns, rows in outputs:
+        out = stem.with_name(f"{stem.name}.{kind}.tsv")
+        write_rows(out, columns, rows)
+        print(f"{len(rows)} to {kind}: {out}")

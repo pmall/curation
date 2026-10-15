@@ -28,18 +28,18 @@
 ## Checks for "moves automatically"
 
 1. The accession has a 2026_03 snapshot (not deleted).
-1. Human gene name, if changed: the old name is not the gene name or a synonym of another current human entry, and the new name was never the gene name of another accession before 2026_03.
-1. Viral taxon, if changed: both taxa are in the taxonomy, and the change is an NCBI merge, a move to a parent or a child, or both are in the same species.
-1. Viral coordinates: the residues between `start2` and `stop2` are identical in the new sequence.
-1. Mappings, only when the sequences changed (decided 2026-10-08, replaces the rule of 2026-10-07): no mapping or occurrence is ever added. Each existing mapping is realigned, and its best matches must be its recorded occurrences: same isoform, same start and stop. Only the identity may change: it is updated to the new value. Only the isoforms whose sequence changed are realigned; the others keep their occurrences as they are, and the old sequence is never realigned. A description is put aside if a best match is not at its recorded position or falls below 90 % (warning). The occurrences of an isoform that no longer exists are removed, as long as every mapping keeps at least one occurrence; otherwise the description is put aside. Isoforms without a recorded occurrence do not matter. **Shift rule (decided 2026-10-08):** a mapping whose best matches are its recorded occurrences shifted by one constant amount, over exactly the same residues, moves with them (start and stop shifted, identity updated). The decision is per description.
+2. Human gene name, if changed: the old name is not the gene name or a synonym of another current human entry, and the new name was never the gene name of another accession before 2026_03.
+3. Viral taxon, if changed: both taxa are in the taxonomy, and the change is an NCBI merge, a move to a parent or a child, or both are in the same species.
+4. Viral coordinates: the residues between `start2` and `stop2` are identical in the new sequence.
+5. Mappings, only when the sequences changed (decided 2026-10-08, replaces the rule of 2026-10-07): no mapping or occurrence is ever added. Each existing mapping is realigned, and its best matches must be its recorded occurrences: same isoform, same start and stop. Only the identity may change: it is updated to the new value. Only the isoforms whose sequence changed are realigned; the others keep their occurrences as they are, and the old sequence is never realigned. A description is put aside if a best match is not at its recorded position or falls below 90 % (warning). The occurrences of an isoform that no longer exists are removed, as long as every mapping keeps at least one occurrence; otherwise the description is put aside. Isoforms without a recorded occurrence do not matter. **Shift rule (decided 2026-10-08):** a mapping whose best matches are its recorded occurrences shifted by one constant amount, over exactly the same residues, moves with them (start and stop shifted, identity updated). The decision is per description.
 
 ## Steps
 
 The pass goes step by step, the obvious first, counted in proteins:
 
 1. Proteins with the same sequences (canonical and isoforms): human with only a gene name change, viral with only a taxon change.
-1. Proteins with new sequences that pass the protein checks: the mapping check.
-1. What is left: non-obvious protein changes and mappings that change position, one group at a time.
+2. Proteins with new sequences that pass the protein checks: the mapping check.
+3. What is left: non-obvious protein changes and mappings that change position, one group at a time.
 
 A description is revised once, when every obsolete protein it uses is decided.
 
@@ -146,8 +146,8 @@ Mappings of the deleted viral proteins put aside (64 distinct sequences, 105 des
 ## Next steps
 
 1. Re-curation of the 992 descriptions put aside (above), and the coordinates of the HBV core protein on P0C6H5 (1–212 is the precore protein; the core protein is 30–212).
-1. At the end of the update: check all viral proteins against UniProt to normalize them (names, chains, coordinates; raised by the user on 2026-10-08, after the name and chain conflicts of step 4).
-1. Then the mature proteins against UniProt chains, and the deletion of the snapshots left unused by the versioning pass (`../database.md` §3).
+2. At the end of the update: check all viral proteins against UniProt to normalize them (names, chains, coordinates; raised by the user on 2026-10-08, after the name and chain conflicts of step 4).
+3. Then the mature proteins against UniProt chains, and the deletion of the snapshots left unused by the versioning pass (`../database.md` §3).
 
 Scripts of this pass (not versioned, `data/` is ignored by git), in `data/2026_03/scripts/`:
 

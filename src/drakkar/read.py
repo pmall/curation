@@ -3,6 +3,8 @@
 uv run drakkar-read publication <run_id> <pmid>   title, abstract, note, live descriptions
 uv run drakkar-read entry <accession>             snapshots, sequences, names, chains
 uv run drakkar-read names <accession>             generic names used near a viral protein
+uv run drakkar-read curation-names <pmid> <accession>
+                                                  the same, for the curation of a publication
 uv run drakkar-read row <stable_id>...            live descriptions as revision rows
 """
 
@@ -186,10 +188,12 @@ def _lineages(cur: Any, taxa: set[int]) -> dict[int, dict[str, tuple[int, str]]]
 LEVELS = (("strain", None), ("virus", "species"), ("family", "family"))
 
 
-def names(cur: Any, accession: str) -> str:
+def names(cur: Any, accession: str, exclude: int | None = None) -> str:
     """The generic names of the live vh descriptions on the same strain, virus and family.
 
-    Viral interactors on current snapshots only.
+    Viral interactors on current snapshots only. `exclude` leaves out the descriptions of that
+    PMID, in every run: a curation sees the names of the other publications, never those of the
+    publication it curates (curated again blind in a re-curation).
 
     Strain: the NCBI taxon of the entry; virus: its species; family: its family. Each name with
     its descriptions and viral interactors, the most used first.
@@ -215,9 +219,10 @@ def names(cur: Any, accession: str) -> str:
         JOIN runs AS r ON r.id = a.run_id
         JOIN proteins AS p ON p.id = d.protein2_id
         JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
-        WHERE d.deleted_at IS NULL AND r.type = 'vh'
+        WHERE d.deleted_at IS NULL AND r.type = 'vh' AND a.pmid IS DISTINCT FROM %s
         GROUP BY p.ncbi_taxon_id, p.accession, d.start2, d.stop2, d.name2
-        """
+        """,
+        (exclude,),
     )
     uses = cur.fetchall()
     lineages = _lineages(cur, {u[0] for u in uses} | {taxon})
@@ -288,6 +293,11 @@ def main() -> None:
     e.add_argument("accession")
     n = commands.add_parser("names", help="generic names used near a viral protein")
     n.add_argument("accession")
+    c = commands.add_parser(
+        "curation-names", help="the same, without the descriptions of the publication curated"
+    )
+    c.add_argument("pmid", type=int)
+    c.add_argument("accession")
     r = commands.add_parser("row", help="live descriptions as revision rows, to edit")
     r.add_argument("stable_ids", nargs="+")
     args = parser.parse_args()
@@ -299,5 +309,7 @@ def main() -> None:
             print(entry(cur, args.accession))
         elif args.command == "names":
             print(names(cur, args.accession))
+        elif args.command == "curation-names":
+            print(names(cur, args.accession, exclude=args.pmid))
         else:
             print(rows(cur, args.stable_ids))
