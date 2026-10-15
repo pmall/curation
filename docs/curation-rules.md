@@ -14,17 +14,19 @@ The curation method is the one published in the PNAS 2024 SI appendix (doi:10.10
 - **Each description is judged on its own**: against its own publication, its own UniProt entries and the invariants, never by comparison with how another description was decided. A difference between two comparable descriptions only points at rows to look at again.
 - **Ambiguous cases: the original curator's choice stands**: when the rules leave a case open (an open convention, or evidence that does not settle it), the curated value is kept and the case is reported as unsettled.
 - **An interactor is one protein everywhere**: renaming an interactor that other publications also carry is unsettled, since one interactor cannot be one protein in one publication and another protein in the next.
-- **Generic names follow the Drakkar naming**: the generic name names the protein the publication tested, written as Drakkar already names it. Before naming a viral interactor, look at the names already used for the strain, then the virus, then the family (`uv run drakkar-read names <accession>`), and follow them: reuse the existing name of that protein rather than the publication's spelling (`orf6`, not `orf-6`), and for a new protein follow the form its neighbours use. Consistency is hard at the accession level (one generic name per region of an entry, one region per generic name: D6, D10) and soft at the strain level (within one strain, the same protein keeps one generic name when curating; not checked). Consistency at the generic protein level (the same protein under one name across the strains of a virus) is a concern of the derived datasets (`derived-datasets.md`): curated descriptions are not revised for it.
+- **Generic names follow the Drakkar naming**: the generic name names the protein the publication tested, written as Drakkar already names it. Before naming a viral interactor, look at the names already used for the strain, then the virus, then the family (`uv run drakkar-read curation-names <pmid> <accession>`, which leaves out the publication curated), and follow them: reuse the existing name of that protein rather than the publication's spelling (`orf6`, not `orf-6`), and for a new protein follow the form its neighbours use. Consistency is hard at the accession level (one generic name per region of an entry, one region per generic name: D6, D10) and soft at the strain level (within one strain, the same protein keeps one generic name when curating; not checked). Consistency at the generic protein level (the same protein under one name across the strains of a virus) is a concern of the derived datasets (`derived-datasets.md`): curated descriptions are not revised for it.
 
 ## 2. Process
 
 1. A PubMed query collects new PMIDs since the last run. One run per batch. Every publication starts `pending` (not pre-curated).
 
-1. **Pre-curation** on title and abstract, by Claude, for every publication: `selected` or `discarded`. The goal is to remove the query's false positives. A publication is `selected` as soon as the abstract suggests it may contain a virus–human PPI: **the goal is exhaustiveness**, so in doubt, select. `discarded` is a pre-curation decision only.
+2. **Pre-curation** on title and abstract, by Claude, for every publication: `selected` or `discarded`. The goal is to remove the query's false positives. A publication is `selected` as soon as the abstract suggests it may contain a virus–human PPI: **the goal is exhaustiveness**, so in doubt, select. `discarded` is a pre-curation decision only.
 
-1. **Curation pass** by Claude on each selected publication, from its full text (§1). Once the full text has been read, the publication is `curated`, **whether descriptions were found or not**. A curated publication with zero descriptions is a valid outcome: the publication was reviewed and reports no interaction that meets the criteria. The note says why.
+3. **Curation pass** by Claude on each selected publication, from its full text (§1). Once the full text has been read, the publication is `curated`, **whether descriptions were found or not**. A curated publication with zero descriptions is a valid outcome: the publication was reviewed and reports no interaction that meets the criteria. The note says why.
 
-1. Every selected publication Claude went through gets the date of the pass in `associations.ai_pass_at` (`database.md` §1), curated or not. A publication still `selected` with a date needs a **manual pass**: curated by hand, or handed to Claude as a curator file. Its note says why Claude could not curate it (e.g. no accessible full text, with the URL when there is one).
+4. Every selected publication Claude went through gets the date of the pass in `associations.ai_pass_at` (`database.md` §1), curated or not. A publication still `selected` with a date needs a **manual pass**: curated by hand, or handed to Claude as a curator file. Its note says why Claude could not curate it (e.g. no accessible full text, with the URL when there is one).
+
+5. **Re-curation** of a curated publication: curated again from its full text, without looking at its current curation, and diffed against its live descriptions (`tools.md`).
 
 **Tracking:**
 
@@ -42,23 +44,23 @@ A `discarded` publication without a Claude note may have been decided on the abs
 
 ## 3. Acceptance criteria
 
-1. Peer-reviewed article with a PMID. Reviews without experimental evidence are discarded.
-1. Host protein is **human and wild type** (check cell lines, plasmids, cDNA library origin, primers). No evidence → discard.
-1. Human identifier from the **Swiss-Prot human reference proteome**.
-1. Viral taxon clearly identified, viral protein **wild type**. Strain recorded when clearly described.
-1. Viral protein identified in UniProt, with a **standard generic name** (all "non-structural protein 1" variants → `NS1`).
-1. Mature proteins from polyproteins are interactors with coordinates (e.g. DENV1 NS5 = `B5AGU1[2494-3392]`).
-1. The method detects a **physical** interaction. Excluded: colocalization, functional interaction, citing an interaction shown elsewhere. Included: binary methods (co-crystal, Y2H) and complex-detection methods (co-IP…).
-1. Method from the PSI-MI **interaction detection method** branch (MI:0001).
-1. Interaction domains (mappings) are collected when clearly identified in the article. See *Mappings* below for how to get their exact sequence.
-1. **Tagged proteins** (GFP, FLAG, HA, GST fusions…) are curated as the wild-type protein: the interactor never carries the tag, while a mapping keeps it as extra end residues (*Mappings* below).
-1. **Fragments** (truncated constructs used to locate the binding region) are accepted: the interactor is the protein, the fragment is recorded as a mapping.
-1. High-throughput publications: assess the rawest data available (e.g. ORF sequences) by alignment to assign the right accession. **Scoring thresholds are the authors' own** (their high-confidence list or cut-off).
-1. **No HLA proteins**: a description involving an HLA protein (any `HLA-` gene, vh or hh) is not curated.
-1. Viral strain: when the publication gives none, the choice is arbitrary: prefer a **Swiss-Prot** entry; if still undecided, the entry most used in Drakkar for the same virus and generic name.
-1. **Swiss-Prot over TrEMBL** whenever both fit.
-1. **A name change of a human interactor must make sense**: the new name is the gene name of the snapshot in the database, and the change is checked, e.g. the old name is a synonym of the same UniProt entry, and the old name designated this entry when the publication came out (curators chose the protein from the name they read; `database.md` §3, versioning pass). When it does not make sense, it is not renamed: the case is reported as unsettled.
-1. Existing notes are not a source of rules: they can be outdated or wrong. Only the criteria written here apply.
+01. Peer-reviewed article with a PMID. Reviews without experimental evidence are discarded.
+02. Host protein is **human and wild type** (check cell lines, plasmids, cDNA library origin, primers). No evidence → discard.
+03. Human identifier from the **Swiss-Prot human reference proteome**.
+04. Viral taxon clearly identified, viral protein **wild type**. Strain recorded when clearly described.
+05. Viral protein identified in UniProt, with a **standard generic name** (all "non-structural protein 1" variants → `NS1`).
+06. Mature proteins from polyproteins are interactors with coordinates (e.g. DENV1 NS5 = `B5AGU1[2494-3392]`).
+07. The method detects a **physical** interaction. Excluded: colocalization, functional interaction, citing an interaction shown elsewhere. Included: binary methods (co-crystal, Y2H) and complex-detection methods (co-IP…).
+08. Method from the PSI-MI **interaction detection method** branch (MI:0001).
+09. Interaction domains (mappings) are collected when clearly identified in the article. See *Mappings* below for how to get their exact sequence.
+10. **Tagged proteins** (GFP, FLAG, HA, GST fusions…) are curated as the wild-type protein: the interactor never carries the tag, while a mapping keeps it as extra end residues (*Mappings* below).
+11. **Fragments** (truncated constructs used to locate the binding region) are accepted: the interactor is the protein, the fragment is recorded as a mapping.
+12. High-throughput publications: assess the rawest data available (e.g. ORF sequences) by alignment to assign the right accession. **Scoring thresholds are the authors' own** (their high-confidence list or cut-off).
+13. **No HLA proteins**: a description involving an HLA protein (any `HLA-` gene, vh or hh) is not curated.
+14. Viral strain: when the publication gives none, the choice is arbitrary: prefer a **Swiss-Prot** entry; if still undecided, the entry most used in Drakkar for the same virus and generic name.
+15. **Swiss-Prot over TrEMBL** whenever both fit.
+16. **A name change of a human interactor must make sense**: the new name is the gene name of the snapshot in the database, and the change is checked, e.g. the old name is a synonym of the same UniProt entry, and the old name designated this entry when the publication came out (curators chose the protein from the name they read; `database.md` §3, versioning pass). When it does not make sense, it is not renamed: the case is reported as unsettled.
+17. Existing notes are not a source of rules: they can be outdated or wrong. Only the criteria written here apply.
 
 ### Mappings: the exact sequence on the closest UniProt entry
 
@@ -74,9 +76,9 @@ The underlying philosophy of the curation, and the reason mismatches are allowed
 1. **The mapping comes first, especially a short one**: mappings of 20 residues or less get special attention, and a mapping is at least 4 residues (a small motif). Drakkar stores the exact sequence used in the experiment of the publication, and the downstream work uses these sequences. The mapping is taken from the publication's own strain, never from the UniProt entry:
    - the publication gives the sequence: it is taken as written;
    - the publication gives a strain and coordinates on that strain: the subsequence is extracted exactly from that strain's sequence. When UniProt has no entry for the strain, the strain's sequence is taken from GenBank, and the GenBank entry used is recorded in the description note (`Mapping` line, §5).
-1. **The interaction is anchored on UniProt.** The interactor is the UniProt entry of the publication's strain, or the closest entry when UniProt does not have that strain (C3).
-1. **The alignment links the two.** The mapping, which may come from another strain than the interactor, is aligned on the interactor and its isoforms with a **90 % identity** threshold (C4, a warning, not a hard limit), to tolerate the differences between strains. A single description then keeps both the UniProt reference and the exact mapping. The alignment only locates the mapping: it never changes it.
-1. **Extra end residues are named, not aligned.** The sequence used in the experiment can carry, at its N- or C-terminal end, residues that are not on its interactor: the protein's own residues just outside it (the initiator methionine before a mature protein, residues of the polyprotein past its end) or residues of the construct (a tag, a linker). The mapping keeps the whole sequence and names these residues in `nter` (at its start) and `cter` (at its end); its occurrences locate the rest. E.g. HCV Core is 2–191 of the polyprotein, so `MSTNPKPQRKTKRNT` gets `nter` M and is exact on Core. In the files they are written in lowercase (`mSTNPKPQRKTKRNT`, `tools.md`). A peptide across the cleavage site between two mature proteins cannot be recorded: it is skipped and listed in the publication note.
+2. **The interaction is anchored on UniProt.** The interactor is the UniProt entry of the publication's strain, or the closest entry when UniProt does not have that strain (C3).
+3. **The alignment links the two.** The mapping, which may come from another strain than the interactor, is aligned on the interactor and its isoforms with a **90 % identity** threshold (C4, a warning, not a hard limit), to tolerate the differences between strains. A single description then keeps both the UniProt reference and the exact mapping. The alignment only locates the mapping: it never changes it.
+4. **Extra end residues are named, not aligned.** The sequence used in the experiment can carry, at its N- or C-terminal end, residues that are not on its interactor: the protein's own residues just outside it (the initiator methionine before a mature protein, residues of the polyprotein past its end) or residues of the construct (a tag, a linker). The mapping keeps the whole sequence and names these residues in `nter` (at its start) and `cter` (at its end); its occurrences locate the rest. E.g. HCV Core is 2–191 of the polyprotein, so `MSTNPKPQRKTKRNT` gets `nter` M and is exact on Core. In the files they are written in lowercase (`mSTNPKPQRKTKRNT`, `tools.md`). A peptide across the cleavage site between two mature proteins cannot be recorded: it is skipped and listed in the publication note.
 
 At 90 %, a mapping of 10 residues or more can have one mismatch or gap; a shorter one must match exactly. Why 90 %: small mappings matter most, and UniProt keeps few strains (viral TrEMBL entries outside reference proteomes are deleted, `database.md` §3), so a publication whose exact strain was in an earlier release may now have to be mapped on the closest one.
 
@@ -131,7 +133,7 @@ Detail line formats:
 - `Strain: <strain> (<where in the publication>)`: the strain of the publication, when it holds for all its descriptions.
 - `Not kept: <pair or claim> — <reason>`
 - `Remark: <anything a reviewer should know>` (for a curator file: how ambiguous rows were interpreted)
-- `Pass YYYY-MM-DD: <outcome>`, one per curation pass, e.g. `not accessible (not open access)`, `curated from PMC1234567`, `curated from <URL>`, `curated from a PDF provided by the user`, `curated from curator file <name>`. The date of the last `Pass` line equals `associations.ai_pass_at`.
+- `Pass YYYY-MM-DD: <outcome>`, one per curation pass, e.g. `not accessible (not open access)`, `curated from PMC1234567`, `curated from <URL>`, `curated from a PDF provided by the user`, `curated from curator file <name>`, `re-curated from PMC1234567`. The date of the last `Pass` line equals `associations.ai_pass_at`.
 
 ### Description note
 

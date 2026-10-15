@@ -27,11 +27,11 @@ dataset: materialized view joining everything (the export / analysis view)
 ### Workflow inferred from the data
 
 1. A **run** is a batch of PubMed hits from a keyword search (`keywords`: interaction term × virus term). Runs are numbered (`name` = "81", "82", …), typed `vh` (virus–human) or `hh` (human–human).
-1. Each hit is an **association** (run, pmid) — triage state: `selected` (to curate), `discarded` (with an optional free-text reason in `annotation`), `curated` (done).
-1. Curating a publication = creating **descriptions**: one binary interaction = (human protein + region, partner protein + region, PSI-MI detection method).
-1. Edits are **versioned**: the old row gets `deleted_at`, a new row with the same `stable_id` and `version + 1` is created. Deleting an interaction = setting `deleted_at` with no successor.
-1. Polyproteins: `name2` + `start2/stop2` give the mature chain (e.g. `NS3` 1503–2119 of a flavivirus genome polyprotein). `mapping1/2` hold peptide/fragment sequences mapped onto isoforms (10,491 rows non-empty).
-1. `peptides` carry extra info for short viral peptides (free-text `info`, affinity, hotspots — mostly empty).
+2. Each hit is an **association** (run, pmid) — triage state: `selected` (to curate), `discarded` (with an optional free-text reason in `annotation`), `curated` (done).
+3. Curating a publication = creating **descriptions**: one binary interaction = (human protein + region, partner protein + region, PSI-MI detection method).
+4. Edits are **versioned**: the old row gets `deleted_at`, a new row with the same `stable_id` and `version + 1` is created. Deleting an interaction = setting `deleted_at` with no successor.
+5. Polyproteins: `name2` + `start2/stop2` give the mature chain (e.g. `NS3` 1503–2119 of a flavivirus genome polyprotein). `mapping1/2` hold peptide/fragment sequences mapped onto isoforms (10,491 rows non-empty).
+6. `peptides` carry extra info for short viral peptides (free-text `info`, affinity, hotspots — mostly empty).
 
 ### Volumes
 
@@ -75,34 +75,34 @@ dataset: materialized view joining everything (the export / analysis view)
 ### Scope and semantics
 
 1. **Is `hh` in scope?** Should I focus only on `vh`, or are human–human interactions also curated manually now (last `hh` run is from 2020)?
-1. **Unit of a description**: one row = one (protein pair × method × publication)? If a paper shows the same pair by co-IP and pull-down, is that two rows? And the same pair by co-IP with two different constructs (regions)?
-1. **Direct vs indirect**: does a co-IP / AP-MS association count, or only "direct" interactions? Discard reasons like *"No direct VH-PPI described"* suggest a rule — what exactly is it?
-1. **Bait/prey or host/viral orientation**: protein1 is always human; for `hh` is there any meaning to which protein is 1 vs 2?
-1. **Regions**: when the paper uses full-length proteins, is `start=1, stop=length` the rule? For a mature viral chain, should the coordinates match the UniProt `chain` feature exactly?
-1. **`name2`**: is it free text or should it follow a controlled vocabulary (UniProt chain name, gene name)?
-1. **`mapping1/2` and `peptides`**: when are they required? Only for synthetic peptides / fragments shorter than a domain?
-1. **Large-scale screens (AP-MS, proteomics)**: what thresholds do you apply (e.g. *"threshold at difference = 4"*)? Is there a generic rule or is it decided per paper?
+2. **Unit of a description**: one row = one (protein pair × method × publication)? If a paper shows the same pair by co-IP and pull-down, is that two rows? And the same pair by co-IP with two different constructs (regions)?
+3. **Direct vs indirect**: does a co-IP / AP-MS association count, or only "direct" interactions? Discard reasons like *"No direct VH-PPI described"* suggest a rule — what exactly is it?
+4. **Bait/prey or host/viral orientation**: protein1 is always human; for `hh` is there any meaning to which protein is 1 vs 2?
+5. **Regions**: when the paper uses full-length proteins, is `start=1, stop=length` the rule? For a mature viral chain, should the coordinates match the UniProt `chain` feature exactly?
+6. **`name2`**: is it free text or should it follow a controlled vocabulary (UniProt chain name, gene name)?
+7. **`mapping1/2` and `peptides`**: when are they required? Only for synthetic peptides / fragments shorter than a domain?
+8. **Large-scale screens (AP-MS, proteomics)**: what thresholds do you apply (e.g. *"threshold at difference = 4"*)? Is there a generic rule or is it decided per paper?
 
 ### Triage
 
-9. What are the selection criteria between `selected` and `discarded`? Is there a list of standard discard reasons (paper unavailable, non-human host, no direct PPI, structure-only, …)?
-1. Are the 25 live descriptions on `selected`/`discarded` associations work in progress, or errors?
-1. Is `pending` still used? Today no association is in that state.
+09. What are the selection criteria between `selected` and `discarded`? Is there a list of standard discard reasons (paper unavailable, non-human host, no direct PPI, structure-only, …)?
+10. Are the 25 live descriptions on `selected`/`discarded` associations work in progress, or errors?
+11. Is `pending` still used? Today no association is in that state.
 
 ### Proteins and versions
 
 12. How do you plan to handle proteins newer than UniProt 2021_02? Should I propose an update of `proteins` / `proteins_versions`, or must I only use what exists?
-01. Should a description be migrated to a new `proteins.id` when UniProt changes (the 2019 rows on obsolete entries), and is that what versions 2+ mostly represent?
-01. For viral proteins, which strain/entry do you pick when the paper only says "ZIKV NS5"? Reference proteome? Swiss-Prot first?
+13. Should a description be migrated to a new `proteins.id` when UniProt changes (the 2019 rows on obsolete entries), and is that what versions 2+ mostly represent?
+14. For viral proteins, which strain/entry do you pick when the paper only says "ZIKV NS5"? Reference proteome? Swiss-Prot first?
 
 ### Operations
 
 15. Is there an application (web UI / API) writing to this DB? I'd like to know how it generates `stable_id` (`EY` + 8 hex; `EYU` prefix only for 58k `hh` rows) and refreshes `dataset`.
-01. This database name has a date (2026-09-09): is it a copy dedicated to me? Am I allowed to write in it, and should my descriptions be distinguishable (e.g. a dedicated run, a marker column, a curator field)?
-01. Do you have access to full texts (PMC OA, institutional access), or should I work from abstracts only to start?
+16. This database name has a date (2026-09-09): is it a copy dedicated to me? Am I allowed to write in it, and should my descriptions be distinguishable (e.g. a dedicated run, a marker column, a curator field)?
+17. Do you have access to full texts (PMC OA, institutional access), or should I work from abstracts only to start?
 
 ## 4. Proposed next steps (to discuss)
 
 1. **Invariants**: turn section 2 + your answers into a written list of invariants, then a `uv` Python tool (`ruff`, `pyright`, `mdformat`) that checks them read-only and produces a report.
-1. **Benchmark**: use the 6,042 curated `vh` publications as a gold standard — re-curate a sample blindly and measure precision/recall on (pair, method, region) to calibrate the automatic curation.
-1. **Ingestion**: start on the 744 `selected` publications of runs 81–87, producing *proposals* (in a staging table or files) that you validate before anything goes into `descriptions`.
+2. **Benchmark**: use the 6,042 curated `vh` publications as a gold standard — re-curate a sample blindly and measure precision/recall on (pair, method, region) to calibrate the automatic curation.
+3. **Ingestion**: start on the 744 `selected` publications of runs 81–87, producing *proposals* (in a staging table or files) that you validate before anything goes into `descriptions`.
