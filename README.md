@@ -19,8 +19,8 @@ Three layers make the harness:
 | Layer        | Where                                              | What it holds                                                                                                                                                 |
 | ------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Instructions | [`AGENTS.md`](AGENTS.md), [`docs/`](docs/)         | How the agent works with the user, writes and queries; the curation rules, the database, the tools.                                                           |
-| Processes    | [`skills/`](skills/)                               | The `curate` skill: the orchestration of a batch ([`SKILL.md`](skills/curate/SKILL.md)) and the prompt of each subagent ([`item.md`](skills/curate/item.md)). |
 | Tools        | [`src/drakkar/`](src/drakkar/), [`tests/`](tests/) | Python commands that fetch, convert, read, diff, check and write; the only way to write to Drakkar.                                                           |
+| Processes    | [`skills/`](skills/)                               | The `curate` skill: the orchestration of a batch ([`SKILL.md`](skills/curate/SKILL.md)) and the prompt of each subagent ([`item.md`](skills/curate/item.md)). |
 
 The rules are written once, in `docs/`, and the skills point to them. A skill holds a whole process, start to end. What the tools meet on real publications (failed fetches, bad conversions, mappings the rules cannot record) goes into [`docs/logs/`](docs/logs/), to improve the tools.
 
@@ -28,14 +28,14 @@ The rules are written once, in `docs/`, and the skills point to them. A skill ho
 
 All are commands of the project (`uv run <command>`), described in [`docs/tools.md`](docs/tools.md).
 
-| Purpose     | Commands                                                                | What they do                                                                                                   |
-| ----------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Full texts  | `drakkar-fetch`, `drakkar-parse`                                        | Download a full text with its supplementary files and a manifest; convert XML, HTML, PDF, Word, spreadsheets.  |
-| Reading     | `drakkar-read`                                                          | A publication, a UniProt entry, the generic names in use, live descriptions as revision rows.                  |
-| Re-curation | `drakkar-diff`                                                          | A re-curated publication's descriptions against its live ones, as files to add, revise and remove.             |
-| Writing     | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-move` | Descriptions, revisions and removals, publication states and notes, moves to the special run.                  |
-| Checking    | `drakkar-check`                                                         | Every invariant on the whole database, read-only.                                                              |
-| Releases    | `drakkar-taxonomy`, `drakkar-uniprot`                                   | Load the NCBI taxonomy and a UniProt release ([`docs/database.md` §3](docs/database.md#3-uniprot-versioning)). |
+| Purpose     | Commands                                                                                 | What they do                                                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Full texts  | `drakkar-fetch`, `drakkar-parse`                                                         | Download a full text with its supplementary files and a manifest; convert XML, HTML, PDF, Word, spreadsheets.                   |
+| Reading     | `drakkar-read`                                                                           | A publication, a UniProt entry, the generic names in use, live descriptions as revision rows.                                   |
+| Re-curation | `drakkar-diff`                                                                           | A re-curated publication's descriptions against its live ones, as files to add, revise and remove.                              |
+| Writing     | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-move`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; a whole batch in one transaction. |
+| Checking    | `drakkar-check`                                                                          | Every invariant on the whole database, read-only.                                                                               |
+| Releases    | `drakkar-taxonomy`, `drakkar-uniprot`                                                    | Load the NCBI taxonomy and a UniProt release ([`docs/database.md` §3](docs/database.md#3-uniprot-versioning)).                  |
 
 Every write follows the same path ([`docs/database.md` §2](docs/database.md#2-descriptions-and-versioning)). Each row is checked on what it builds on (the publication, the snapshots, the method, the coordinates, the mappings, the note), then every invariant is checked on the whole database inside the same transaction. Without `--commit` the transaction is rolled back: a dry run is the same code as a commit, writes nothing and needs no go. With `--commit`, it commits only when no row is refused and no error is found. What is derived (human names, full-length coordinates, mapping occurrences) is computed by the tools, never given by the agent.
 
@@ -51,15 +51,17 @@ orchestrator (curate skill)
                       reads the converted full text and the UniProt entries
                       writes its descriptions, curation notes, unsettled descriptions
   4. merge          batch files: descriptions to add, revise and delete, publications.tsv
-  5. report         to the curator                                    ── nothing written yet
+  5. dry run        drakkar-batch: the whole batch checked in one transaction, rolled back
+  6. report         to the curator, with the errors of the dry run    ── nothing written yet
      ── go ──
-  6. commit         drakkar-revise, drakkar-add, drakkar-publications, drakkar-move --commit
-                      the move last: publications left selected go to the special run
+  7. commit         drakkar-batch --commit: descriptions, publications, then the move
+                      of the publications left selected to the special run
 ```
 
 - **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC, Europe PMC, NCBI, then open access copies (OpenAlex, Unpaywall, Crossref), and converts them to text. A subagent never downloads anything. When no source works, the curator can provide a PDF.
 - **One subagent per publication**, with its own context: it reads the publication, decides each description by the rules and writes files. It never writes to the database.
 - **Unsettled is said, not guessed.** A description the subagent cannot settle goes to `descriptions.unsettled.tsv` with why ([`item.md`](skills/curate/item.md)); the publication stays `selected`.
+- **A dry run before the report.** `drakkar-batch` applies the merged files in one transaction, checks every invariant on the result and rolls back. Its refused rows and errors, inconsistencies between publications among them, go to the report as they are, not fixed.
 - **The report leaves no open question**: what each file holds, the publications without a full text or not curated, with why.
 - **The go.** After it, the orchestrator commits the batch files, the last write moving the publications the agent could not curate fully (no full text, a file it could not read, an unsettled description) to the open special run, so the run they came from can be complete. Their manual pass happens there.
 
@@ -90,7 +92,7 @@ The skill is linked from [`.claude/skills/`](.claude/skills/) and [`.agents/skil
 uv run pytest                    # on a test database built from tests/schema.sql and tests/fixture.sql, never Drakkar
 uv run ruff check && uv run ruff format
 uv run pyright
-uv run mdformat --wrap no --number docs/ skills/ AGENTS.md
+uv run mdformat --wrap no --number docs/ skills/ AGENTS.md README.md
 ```
 
 ## Layout

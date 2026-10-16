@@ -7,6 +7,7 @@ The template is `schema.sql` and `fixture.sql` (`build_fixture.py`), loaded into
 
 import os
 import subprocess
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -25,9 +26,18 @@ os.environ["POSTGRES_DB"] = TEMPLATE.removesuffix("_template")
 
 
 def _admin(sql: str) -> None:
-    with connect(dbname="postgres") as conn:
-        conn.autocommit = True
-        conn.execute(sql)  # type: ignore[arg-type]
+    """Run a database command on the server, retried while another session holds the database:
+    autovacuum analyzes a fresh copy within seconds, and our role cannot terminate its worker."""
+    for attempt in range(50):
+        try:
+            with connect(dbname="postgres") as conn:
+                conn.autocommit = True
+                conn.execute(sql)  # type: ignore[arg-type]
+            return
+        except (psycopg.errors.ObjectInUse, psycopg.errors.InsufficientPrivilege):
+            if attempt == 49:
+                raise
+            time.sleep(0.1)
 
 
 @pytest.fixture(scope="session")

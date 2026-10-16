@@ -1,12 +1,24 @@
 """The file formats, and the commands run end to end on the test database."""
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from drakkar.files import REVISE, FileError, format_revision, header, read_rows, revision
-from drakkar.write import live_revisions
+from drakkar.files import (
+    ADD,
+    PUBLICATIONS,
+    REVISE,
+    FileError,
+    format_new_description,
+    format_revision,
+    header,
+    read_rows,
+    revision,
+    write_rows,
+)
+from drakkar.write import Description, NewDescription, live_revisions
 
 SARS = (1, 22046132)
 
@@ -71,3 +83,29 @@ def test_add_command_reports_the_refused_row(dbname, tmp_path: Path):
     result = run("drakkar-add", str(path))
     assert result.returncode == 1
     assert f"refused {path}:2: protein 2: NOTANACC" in result.stdout
+
+
+def test_batch_command(conn, tmp_path: Path):
+    """The merged files of a batch: two renames, an addition that relies on them (no delete
+    file), and a publication left `selected`, moved last."""
+    note = "[DATE Claude] REVISED: name2 N → orf6"
+    renames = [
+        replace(r, description=replace(r.description, name2="orf6"), note=note)
+        for r in live_revisions(conn.cursor(), *SARS)
+        if r.description is not None and r.description.name2 == "N"
+    ]
+    day = conn.execute("SELECT current_date::text").fetchone()[0]
+    conn.rollback()
+    added = NewDescription(
+        *SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "[DATE Claude] CREATED: Fig. 2B"
+    )
+    selected = f"[DATE Claude] SELECTED: no full text\\n- Pass {day}: not accessible"
+    write_rows(tmp_path / "descriptions.revise.tsv", REVISE, [format_revision(r) for r in renames])
+    write_rows(tmp_path / "descriptions.add.tsv", ADD, [format_new_description(added)])
+    write_rows(tmp_path / "publications.tsv", PUBLICATIONS, [f"12\t25031347\tselected\t{selected}"])
+
+    dry = run("drakkar-batch", str(tmp_path))
+    assert dry.returncode == 0 and "dry run passed" in dry.stdout, dry.stdout + dry.stderr
+    done = run("drakkar-batch", str(tmp_path), "--commit")
+    assert done.returncode == 0 and "committed" in done.stdout, done.stdout
+    assert "move 32/25031347 to the special run" in done.stdout

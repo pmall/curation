@@ -14,6 +14,7 @@ from drakkar.write import (
     move_publications,
     revise_descriptions,
     update_publications,
+    write_batch,
 )
 
 SARS = (1, 22046132)  # Q6VA95 `N` carried by EY73D2C965 and EYF737084C
@@ -319,3 +320,43 @@ def test_the_same_sequence_with_other_extra_residues_is_a_duplicate(conn, new):
     twice = (sequence, sequence[0].lower() + sequence[1:])
     duplicated = replace(new, description=replace(new.description, mappings2=twice))
     assert "duplicate" in add_descriptions(conn, [duplicated]).problems[0][1]
+
+
+# --- A curation batch ---------------------------------------------------------------------------
+
+
+def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationUpdate]]:
+    """SARS's `N` renamed `orf6` with a new `orf6` description, which holds only after the
+    renames; SELECTED left `selected`, which the batch then moves."""
+    rows = live(conn, *SARS)
+    note = "[DATE Claude] REVISED: name2 N → orf6, Drakkar name of the protein"
+    revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
+    added = NewDescription(
+        *SARS,
+        Description("MI:0007", "P46934", "Q6VA95", "orf6"),
+        "[DATE Claude] CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
+    )
+    note = f"[DATE Claude] SELECTED: no full text\n- Pass {today(conn)}: not accessible"
+    return revisions, [added], [PublicationUpdate(*SELECTED, "selected", note)]
+
+
+def test_batch_writes_everything_in_one_transaction(conn):
+    revisions, additions, updates = batch(conn)
+    assert [r.invariant.id for r in add_descriptions(conn, additions).errors] == ["D6"]  # alone
+    before = count(conn)
+    moves, outcome = write_batch(conn, revisions, additions, updates)  # a dry run
+    assert outcome.ok and not outcome.committed and [m.pmid for m in moves] == [SELECTED[1]]
+    assert count(conn) == before and run_of(conn, SELECTED[1])[1] == "32"
+    moves, outcome = write_batch(conn, revisions, additions, updates, commit=True)
+    assert outcome.committed and count(conn) == before + 3
+    names = {r.description.name2 for r in live(conn, *SARS).values() if r.description}
+    assert "orf6" in names and "N" not in names
+    _, name, note = run_of(conn, SELECTED[1])
+    assert name == "special-1" and note.endswith(f"- Moved {today(conn)}: from run 32")
+
+
+def test_batch_numbers_rows_across_its_lists(conn):
+    revisions, additions, updates = batch(conn)
+    bad = replace(additions[0], description=replace(additions[0].description, accession2="X"))
+    _, outcome = write_batch(conn, revisions, [bad], updates, commit=True)
+    assert [number for number, _ in outcome.problems] == [3] and not outcome.committed

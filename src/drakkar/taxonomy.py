@@ -10,7 +10,7 @@ Python port of BioSQL's `load_ncbi_taxonomy.pl --nodelete`, as used by drakkar-t
 - the names of the nodes present in the dump are replaced. Unlike the Perl script, the names
   of retired nodes are kept, so old proteins keep a scientific name.
 
-Everything runs in one transaction. With --dry-run, it is rolled back.
+Everything runs in one transaction. Without --commit, a dry run: it is rolled back.
 """
 
 import argparse
@@ -66,7 +66,7 @@ def nested_set(rows: list[tuple[int, int | None, int]], root: int) -> dict[int, 
     return values
 
 
-def load(release_directory: Path, *, dry_run: bool) -> None:
+def load(release_directory: Path, *, commit: bool) -> None:
     start = time.time()
     directory = release_directory / "taxonomy"
     with connect() as conn:
@@ -206,12 +206,12 @@ def load(release_directory: Path, *, dry_run: bool) -> None:
             f" ({sum(1 for taxon, _ in used if taxon in merged)} merged into another node)",
         )
 
-        if dry_run:
-            conn.rollback()
-            log(start, "dry run: rolled back")
-        else:
+        if commit:
             conn.commit()
             log(start, "committed")
+        else:
+            conn.rollback()
+            log(start, "dry run: rolled back")
 
 
 def main() -> None:
@@ -219,6 +219,6 @@ def main() -> None:
     parser.add_argument(
         "release_directory", type=Path, help="e.g. data/2026_03, with the taxdump in taxonomy/"
     )
-    parser.add_argument("--dry-run", action="store_true", help="roll back at the end")
+    parser.add_argument("--commit", action="store_true", help="commit at the end")
     args = parser.parse_args()
-    load(args.release_directory, dry_run=args.dry_run)
+    load(args.release_directory, commit=args.commit)
