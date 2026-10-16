@@ -42,6 +42,7 @@ Writes go through these commands. Without `--commit`, a command is a dry run: it
 
 They take several files at once, and `--header` prints the header line of their format.
 
+- `uv run drakkar-move <file>... [--new-run] [--commit]`: takes publications files (`*.publications.tsv`, only `run_id` and `pmid` are read) and moves those that are `selected` with a pass date in a vh run of the PubMed query to the open special run, the one with the highest number (`curation-rules.md` §2), adding its `Moved` line to each note; the others stay where they are. `--new-run` opens the next special run first, and the first move opens `special-1`. Their descriptions move with them.
 - `uv run drakkar-diff <run_id> <pmid> <file>`: read-only. Diffs the descriptions of the file (`*.add.tsv` format, all of one publication) against the live descriptions of that publication, and writes beside the file `<name>.add.tsv`, the descriptions that are not live; `<name>.revise.tsv`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.tsv`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein; `below_threshold` follows from the mappings and is not compared. An empty file puts every live description of the publication in `<name>.delete.tsv`.
 - `uv run drakkar-check <dir>`: checks every invariant, read-only.
 
