@@ -84,13 +84,6 @@ PREPRINT_DOIS = ("10.1101/", "10.64898/", "10.21203/", "10.20944/", "10.2139/", 
 PMC_HOSTS = ("ncbi.nlm.nih.gov", "europepmc.org")
 
 
-def _setting(name: str) -> str | None:
-    """A setting of the project's `.env`, absent when it is not configured: a request that
-    needs it is not made at all, so nothing of the user is sent without being configured."""
-    load_dotenv()
-    return os.environ.get(name) or None
-
-
 @dataclass
 class Response:
     url: str  # after redirects
@@ -376,7 +369,8 @@ class Fetch:
     def unpaywall(self, doi: str) -> list[dict[str, Any]]:
         """Unpaywall's open access copies, in its own order (best first). It answers only a
         request that carries an address, so it is asked only when one is configured."""
-        email = _setting("UNPAYWALL_EMAIL")
+        load_dotenv()
+        email = os.environ.get("UNPAYWALL_EMAIL")
         if not email:
             return []
         record = _json(self.get, f"{UNPAYWALL}/{quote(doi)}?email={quote(email)}")

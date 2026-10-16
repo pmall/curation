@@ -292,7 +292,7 @@ def fetch_table(cur: Any, sql: LiteralString) -> tuple[list[str], list[tuple[Any
     return [c.name for c in cur.description], cur.fetchall()
 
 
-def upgrade(release_directory: Path, *, dry_run: bool) -> None:
+def upgrade(release_directory: Path, *, commit: bool) -> None:
     start = time.time()
     release = release_directory.resolve().name
     directory = release_directory / "uniprot"
@@ -416,21 +416,21 @@ def upgrade(release_directory: Path, *, dry_run: bool) -> None:
             """,
         )
 
-        write_report(reports / "uniprot_upgrade.md", release, dry_run, headers, report)
+        write_report(reports / "uniprot_upgrade.md", release, not commit, headers, report)
         with (reports / "obsolete_vh_descriptions.tsv").open("w") as f:
             writer = csv.writer(f, delimiter="\t", lineterminator="\n")
             writer.writerow(details_header)
             writer.writerows(details)
 
-        if dry_run:
-            conn.rollback()
-            log(start, "dry run: rolled back")
-        else:
+        if commit:
             conn.commit()
             log(start, "committed")
             conn.execute("REFRESH MATERIALIZED VIEW dataset")
             conn.commit()
             log(start, "dataset refreshed")
+        else:
+            conn.rollback()
+            log(start, "dry run: rolled back")
 
 
 def write_report(
@@ -465,9 +465,9 @@ def main() -> None:
     upgrade_parser.add_argument(
         "release_directory", type=Path, help="e.g. data/2026_03 (its name is the release)"
     )
-    upgrade_parser.add_argument("--dry-run", action="store_true", help="roll back at the end")
+    upgrade_parser.add_argument("--commit", action="store_true", help="commit at the end")
     args = parser.parse_args()
     if args.command == "parse":
         parse(args.release_directory)
     else:
-        upgrade(args.release_directory, dry_run=args.dry_run)
+        upgrade(args.release_directory, commit=args.commit)

@@ -1,7 +1,8 @@
 """Write descriptions and publication states (`docs/tools.md`).
 
 Four functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
-`update_publications`, `move_publications`. Each takes a list and writes it in one transaction:
+`update_publications`, `move_publications`; `write_batch` runs the four on a curation batch.
+Each writes its lists in one transaction:
 
 1. every row is applied in its own savepoint; a row with a problem is not written, and its
    problems are reported with its number;
@@ -122,30 +123,38 @@ class Outcome:
 # --- The transaction ----------------------------------------------------------------------------
 
 
-def _write_rows[T](
-    conn: psycopg.Connection,
+Applied = tuple[list[str], list[tuple[int, str]]]  # what was written, the problems of the rows
+
+
+def _apply_rows[T](
+    cur: Any,
     rows: Sequence[T],
     apply: Callable[[Any, T, str], str],
-    commit: bool,
+    today: str,
+    first: int = 1,
     order: Callable[[T], int] = lambda _: 0,
-    before: Callable[[Any], None] = lambda _: None,
-) -> Outcome:
-    """Run `before`, apply each row in its own savepoint, check everything, commit or roll back."""
-    if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
-        raise RuntimeError("the connection has a transaction in progress")
+) -> Applied:
+    """Apply each row in its own savepoint; rows are numbered from `first` in their problems."""
     written: list[str] = []
     problems: list[tuple[int, str]] = []
+    for number, row in sorted(enumerate(rows, first), key=lambda n_row: order(n_row[1])):
+        try:
+            with cur.connection.transaction():
+                written.append(apply(cur, row, today))
+        except InvalidRow as e:
+            problems += [(number, p) for p in e.problems]
+    return written, problems
+
+
+def _write(conn: psycopg.Connection, commit: bool, apply: Callable[[Any, str], Applied]) -> Outcome:
+    """Apply the rows in one transaction, check everything, commit or roll back."""
+    if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+        raise RuntimeError("the connection has a transaction in progress")
     with conn.transaction() as tx:
         cur = conn.cursor()
         cur.execute("SELECT current_date::text")
         today: str = cast(tuple[str], cur.fetchone())[0]
-        before(cur)
-        for number, row in sorted(enumerate(rows, 1), key=lambda n_row: order(n_row[1])):
-            try:
-                with conn.transaction():
-                    written.append(apply(cur, row, today))
-            except InvalidRow as e:
-                problems += [(number, p) for p in e.problems]
+        written, problems = apply(cur, today)
         results = check.run_checks(cur)
         committed = commit and not problems and not check.errors(results)
         if not committed:
@@ -398,7 +407,7 @@ def add_descriptions(
     conn: psycopg.Connection, items: Sequence[NewDescription], *, commit: bool = False
 ) -> Outcome:
     """Add new descriptions, each with a new `CW` stable ID, version 1."""
-    return _write_rows(conn, items, _add, commit)
+    return _write(conn, commit, lambda cur, today: _apply_rows(cur, items, _add, today))
 
 
 # --- Revising -----------------------------------------------------------------------------------
@@ -567,6 +576,14 @@ def revise_descriptions(
     Revisions are applied before removals, so that a duplicate is compared with its survivor
     as revised.
     """
+    _once(revisions)
+    return _write(
+        conn, commit, lambda cur, today: _apply_rows(cur, revisions, _revise, today, order=_removal)
+    )
+
+
+def _once(revisions: Sequence[Revision]) -> None:
+    """Raise `ValueError` for a stable ID given twice."""
     seen: dict[str, int] = {}
     for number, revision in enumerate(revisions, 1):
         if revision.stable_id in seen:
@@ -574,7 +591,10 @@ def revise_descriptions(
                 f"rows {seen[revision.stable_id]} and {number}: {revision.stable_id} twice"
             )
         seen[revision.stable_id] = number
-    return _write_rows(conn, revisions, _revise, commit, order=lambda r: r.action == "remove")
+
+
+def _removal(revision: Revision) -> bool:
+    return revision.action == "remove"
 
 
 # --- Publications -------------------------------------------------------------------------------
@@ -641,7 +661,7 @@ def update_publications(
     conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
 ) -> Outcome:
     """Set the state and note of publications of vh runs at the end of a pass (`ai_pass_at`)."""
-    return _write_rows(conn, updates, _publication, commit)
+    return _write(conn, commit, lambda cur, today: _apply_rows(cur, updates, _publication, today))
 
 
 # --- Moving to a special run --------------------------------------------------------------------
@@ -710,19 +730,28 @@ def move_publications(
     Raises `ValueError` for a publication that is not in its run.
     """
     with conn.transaction(), conn.cursor() as cur:
-        cur.execute(
-            "SELECT given.run_id, given.pmid, a.id, r.name, r.type, a.state, a.ai_pass_at "
-            "FROM unnest(%s::int[], %s::bigint[]) AS given (run_id, pmid) "
-            "LEFT JOIN associations AS a ON a.run_id = given.run_id AND a.pmid = given.pmid "
-            "LEFT JOIN runs AS r ON r.id = a.run_id "
-            "ORDER BY given.run_id, given.pmid",
-            ([run_id for run_id, _ in publications], [pmid for _, pmid in publications]),
-        )
-        rows = cur.fetchall()
-    if missing := [
-        f"{run_id}/{pmid}" for run_id, pmid, association_id, *_ in rows if association_id is None
-    ]:
+        moves, missing = _movable(cur, publications)
+    if missing:
         raise ValueError(f"publications not in their run: {', '.join(missing)}")
+    if not moves:
+        return moves, Outcome([], [], [], False)
+    return moves, _write(conn, commit, lambda cur, today: _apply_moves(cur, moves, new_run, today))
+
+
+def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> tuple[list[Move], list[str]]:
+    """The publications given as (run_id, pmid) that a move takes, and those not in their run."""
+    cur.execute(
+        "SELECT given.run_id, given.pmid, a.id, r.name, r.type, a.state, a.ai_pass_at "
+        "FROM unnest(%s::int[], %s::bigint[]) AS given (run_id, pmid) "
+        "LEFT JOIN associations AS a ON a.run_id = given.run_id AND a.pmid = given.pmid "
+        "LEFT JOIN runs AS r ON r.id = a.run_id "
+        "ORDER BY given.run_id, given.pmid",
+        ([run_id for run_id, _ in publications], [pmid for _, pmid in publications]),
+    )
+    rows = cur.fetchall()
+    missing = [
+        f"{run_id}/{pmid}" for run_id, pmid, association_id, *_ in rows if association_id is None
+    ]
     moves = sorted(
         {
             Move(association_id, pmid, run)
@@ -734,13 +763,51 @@ def move_publications(
         },
         key=lambda move: (move.run, move.pmid),
     )
-    if not moves:
-        return moves, Outcome([], [], [], False)
-    target: list[tuple[int, str]] = []
-    return moves, _write_rows(
-        conn,
-        moves,
-        lambda cur, move, today: _move(cur, move, *target[0], today),
-        commit,
-        before=lambda cur: target.append(_special_run(cur, new_run)),
+    return moves, missing
+
+
+def _apply_moves(
+    cur: Any, moves: Sequence[Move], new_run: bool, today: str, first: int = 1
+) -> Applied:
+    target_id, target = _special_run(cur, new_run)
+    return _apply_rows(
+        cur, moves, lambda c, move, day: _move(c, move, target_id, target, day), today, first
     )
+
+
+# --- A curation batch ---------------------------------------------------------------------------
+
+
+def write_batch(
+    conn: psycopg.Connection,
+    revisions: Sequence[Revision],
+    additions: Sequence[NewDescription],
+    updates: Sequence[PublicationUpdate],
+    *,
+    new_run: bool = False,
+    commit: bool = False,
+) -> tuple[list[Move], Outcome]:
+    """Write a curation batch in one transaction, in this order: the revisions and removals, the
+    new descriptions, the publication updates, then the move of the updated publications left
+    `selected` to the special run, as `move_publications` does. Every invariant is checked once,
+    on the result, so a row can rely on an earlier one (an addition on a rename).
+
+    Rows are numbered across the three lists, in that order, then the moves.
+    """
+    _once(revisions)
+    moves: list[Move] = []
+
+    def apply(cur: Any, today: str) -> Applied:
+        stages = [
+            _apply_rows(cur, revisions, _revise, today, order=_removal),
+            _apply_rows(cur, additions, _add, today, len(revisions) + 1),
+            _apply_rows(cur, updates, _publication, today, len(revisions) + len(additions) + 1),
+        ]
+        # A publication not in its run is already refused by its update.
+        moves.extend(_movable(cur, [(u.run_id, u.pmid) for u in updates])[0])
+        if moves:
+            first = len(revisions) + len(additions) + len(updates) + 1
+            stages.append(_apply_moves(cur, moves, new_run, today, first))
+        return [w for s in stages for w in s[0]], [p for s in stages for p in s[1]]
+
+    return moves, _write(conn, commit, apply)

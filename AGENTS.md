@@ -46,7 +46,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 ## Python
 
 - uv for environments and dependencies, ruff for linting and formatting, pyright for type checking, pytest for tests (`uv run pytest`: a test database, never Drakkar).
-- Markdown is formatted with `uv run mdformat --wrap no --number docs/ skills/ AGENTS.md`.
+- Markdown is formatted with `uv run mdformat --wrap no --number docs/ skills/ AGENTS.md README.md`.
 
 ## Git
 

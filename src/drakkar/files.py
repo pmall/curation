@@ -8,10 +8,12 @@ In a note, `\\n` is a line break. Lists (mappings, below_threshold) are separate
     uv run drakkar-publications <file>... [--commit]
     uv run drakkar-diff <run_id> <pmid> <file>
     uv run drakkar-move <file>... [--new-run] [--commit]
+    uv run drakkar-batch <dir> [--new-run] [--commit]
 
 Without `--commit`, a dry run: everything is applied and checked, then rolled back. The diff is
 read-only: it writes the add, revise and delete files of a curated publication beside its file.
 The move takes publications files: it moves those Claude could not curate fully to a special run.
+The batch writes the merged files of a curation batch, the move last, in one transaction.
 """
 
 import argparse
@@ -32,6 +34,7 @@ from drakkar.write import (
     move_publications,
     revise_descriptions,
     update_publications,
+    write_batch,
 )
 
 DESCRIPTION = [
@@ -48,6 +51,10 @@ DESCRIPTION = [
 ADD = ["run_id", "pmid", *DESCRIPTION, "note"]
 REVISE = ["stable_id", "version", "run_id", "pmid", "action", "into", *DESCRIPTION, "note"]
 PUBLICATIONS = ["run_id", "pmid", "state", "note"]
+# The merged files of a curation batch (`skills/curate`); a descriptions file may be missing.
+BATCH_REVISIONS = ["descriptions.revise.tsv", "descriptions.delete.tsv"]
+BATCH_ADDITIONS = ["descriptions.add.tsv"]
+BATCH_PUBLICATIONS = "publications.tsv"
 
 
 class FileError(ValueError):
@@ -282,6 +289,42 @@ def move_main() -> None:
         return
     print("\n".join(outcome.written))
     print(report(outcome, [(f"{move.run}/{move.pmid}", {}) for move in moves]))
+    sys.exit(0 if outcome.ok else 1)
+
+
+def batch_main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Write a curation batch: its descriptions, its publications, then the move."
+    )
+    parser.add_argument("dir", type=Path, help="the batch directory, with its merged files")
+    parser.add_argument("--new-run", action="store_true", help="open a new special run first")
+    parser.add_argument("--commit", action="store_true", help="commit if everything passes")
+    args = parser.parse_args()
+    directory = cast(Path, args.dir)
+
+    def present(names: list[str]) -> list[Path]:
+        return [directory / name for name in names if (directory / name).exists()]
+
+    try:
+        revision_rows = read_rows(present(BATCH_REVISIONS), REVISE)
+        addition_rows = read_rows(present(BATCH_ADDITIONS), ADD)
+        publication_rows = read_rows([directory / BATCH_PUBLICATIONS], PUBLICATIONS)
+        with connect() as conn:
+            moves, outcome = write_batch(
+                conn,
+                [revision(where, row) for where, row in revision_rows],
+                [new_description(where, row) for where, row in addition_rows],
+                [publication(where, row) for where, row in publication_rows],
+                new_run=args.new_run,
+                commit=args.commit,
+            )
+    except ValueError as e:  # a file error, or a stable ID given twice
+        sys.exit(str(e))
+    rows = [*revision_rows, *addition_rows, *publication_rows]
+    rows += [(f"{move.run}/{move.pmid}", {}) for move in moves]
+    for move in moves:
+        print(f"move {move.run}/{move.pmid} to the special run")
+    print(report(outcome, rows))
     sys.exit(0 if outcome.ok else 1)
 
 
