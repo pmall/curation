@@ -18,7 +18,7 @@ The curation method is the one published in the PNAS 2024 SI appendix (doi:10.10
 
 ## 2. Process
 
-1. A PubMed query collects new PMIDs since the last run. One run per batch. Every publication starts `pending` (not pre-curated).
+1. A PubMed query collects new PMIDs since the last run, into a new run. Every publication starts `pending` (not pre-curated).
 
 2. **Pre-curation** on title and abstract, by Claude, for every publication: `selected` or `discarded`. The goal is to remove the query's false positives. A publication is `selected` as soon as the abstract suggests it may contain a virus–human PPI: **the goal is exhaustiveness**, so in doubt, select. `discarded` is a pre-curation decision only.
 
@@ -26,7 +26,9 @@ The curation method is the one published in the PNAS 2024 SI appendix (doi:10.10
 
 4. Every selected publication Claude went through gets the date of the pass in `associations.ai_pass_at` (`database.md` §1), curated or not. A publication still `selected` with a date needs a **manual pass**: curated by hand, or handed to Claude as a curator file. Its note says why Claude could not curate it fully (e.g. no accessible full text, or supplementary files it needs that no accessible copy holds, with the URL when there is one).
 
-5. **Re-curation** of a curated publication: curated again from its full text, without looking at its current curation, and diffed against its live descriptions (`tools.md`).
+5. **Move**: on the go of a batch, after its commit, its publications left `selected` with a date are moved to the open special run (`tools.md`), whatever the reason (no full text, a file that could not be read, an unsettled description): the run they leave can then be complete without a manual pass. The note records the run left (`Moved` line, §5). The manual pass happens in the special run. A new special run is opened when the user says so.
+
+6. **Re-curation** of a curated publication: curated again from its full text, without looking at its current curation, and diffed against its live descriptions (`tools.md`).
 
 **Tracking:**
 
@@ -101,18 +103,19 @@ Two notes, each fact in one place:
 | Publication note (`associations.annotation`) | Decisions about the publication: full-text source, its strain, what was not kept and why, remarks, passes. | At each curation pass, rewritten whole.                       |
 | Description note (`descriptions.annotation`) | Claude's decisions about one description: its evidence, a closest entry, its mappings, fixes and updates.  | With each decision, one note per version, empty when obvious. |
 
-Both are for a future human reviewer, and both stay **short**: a few words per decision, never an essay. A versioning pass or a fix writes only description notes, never the publication note.
+Both are for a future human reviewer, and both stay **short**: a few words per decision, never an essay. A versioning pass or a fix writes only description notes, never the publication note; a move only adds its `Moved` line to the publication note.
 
 ### Publication note
 
-**The note holds the latest state**: each time Claude acts on a publication, it rewrites the whole note, so it always describes the current state. The only exception is the **pass history** at the end: one short `Pass` line per curation pass, kept across rewrites. **Curator note:** on Claude's first pass (`ai_pass_at` null), a non-empty existing note was written by a curator (e.g. a past curation Claude now reviews). Claude keeps it **verbatim** in a final block, never edited, and kept across every rewrite.
+**The note holds the latest state**: each time Claude acts on a publication, it rewrites the whole note, so it always describes the current state. The only exception is the **history** at the end: one short `Pass` line per curation pass and one `Moved` line per move, oldest first, kept across rewrites. **Curator note:** on Claude's first pass (`ai_pass_at` null), a non-empty existing note was written by a curator (e.g. a past curation Claude now reviews). Claude keeps it **verbatim** in a final block, never edited, and kept across every rewrite.
 
-A header line, optional `- ` detail lines, the pass history (oldest first), then the curator note if there was one:
+A header line, optional `- ` detail lines, the history (oldest first), then the curator note if there was one:
 
 ```
 [YYYY-MM-DD Claude] STATE: summary
 - Label: detail
 - Pass YYYY-MM-DD: outcome
+- Moved YYYY-MM-DD: from run <name>
 --- Curator note (before Claude) ---
 <previous note, verbatim>
 ```
@@ -134,6 +137,7 @@ Detail line formats:
 - `Not kept: <pair or claim> — <reason>`
 - `Remark: <anything a reviewer should know>` (for a curator file: how ambiguous rows were interpreted)
 - `Pass YYYY-MM-DD: <outcome>`, one per curation pass, e.g. `not accessible (not open access)`, `curated from PMC1234567`, `curated from <URL>`, `curated from a PDF provided by the user`, `curated from curator file <name>`, `re-curated from PMC1234567`. The date of the last `Pass` line equals `associations.ai_pass_at`.
+- `Moved YYYY-MM-DD: from run <name>`, written by the move (§2): the run the publication left.
 
 ### Description note
 

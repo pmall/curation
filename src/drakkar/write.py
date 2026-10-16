@@ -1,7 +1,7 @@
 """Write descriptions and publication states (`docs/tools.md`).
 
-Three functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
-`update_publications`. Each takes a list and writes it in one transaction:
+Four functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
+`update_publications`, `move_publications`. Each takes a list and writes it in one transaction:
 
 1. every row is applied in its own savepoint; a row with a problem is not written, and its
    problems are reported with its number;
@@ -105,7 +105,7 @@ class PublicationUpdate:
 
 @dataclass
 class Outcome:
-    written: list[str]  # stable IDs, or `run_id/pmid` for publications
+    written: list[str]  # stable IDs, `run_id/pmid` for publications, `run/pmid → run` for moves
     problems: list[tuple[int, str]]  # (row number, why) for each problem of a row not written
     results: list[check.Result]  # the full check on the result
     committed: bool
@@ -128,8 +128,9 @@ def _write_rows[T](
     apply: Callable[[Any, T, str], str],
     commit: bool,
     order: Callable[[T], int] = lambda _: 0,
+    before: Callable[[Any], None] = lambda _: None,
 ) -> Outcome:
-    """Apply each row in its own savepoint, check everything, commit or roll back."""
+    """Run `before`, apply each row in its own savepoint, check everything, commit or roll back."""
     if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
         raise RuntimeError("the connection has a transaction in progress")
     written: list[str] = []
@@ -138,6 +139,7 @@ def _write_rows[T](
         cur = conn.cursor()
         cur.execute("SELECT current_date::text")
         today: str = cast(tuple[str], cur.fetchone())[0]
+        before(cur)
         for number, row in sorted(enumerate(rows, 1), key=lambda n_row: order(n_row[1])):
             try:
                 with conn.transaction():
@@ -578,14 +580,15 @@ def revise_descriptions(
 # --- Publications -------------------------------------------------------------------------------
 
 PASS_LINE = re.compile(r"- Pass (\d{4}-\d{2}-\d{2}): \S")
+HISTORY_LINE = re.compile(r"- (Pass|Moved) \d{4}-\d{2}-\d{2}: \S")
 CURATOR_BLOCK = "--- Curator note (before Claude) ---"
 
 
 def _publication_note_problems(old: str, note: str, today: str, state: str) -> list[str]:
     """Problems of a publication note against the template of `curation-rules.md` §5.
 
-    `old` is the note before this pass: its pass history and its curator block are kept, and a
-    note not written by Claude becomes the curator block, verbatim.
+    `old` is the note before this pass: its history (`Pass` and `Moved` lines) and its curator
+    block are kept, and a note not written by Claude becomes the curator block, verbatim.
     """
     problems: list[str] = []
     body, _, block = note.partition(f"\n{CURATOR_BLOCK}\n")
@@ -599,9 +602,12 @@ def _publication_note_problems(old: str, note: str, today: str, state: str) -> l
     old = old.strip()
     if CLAUDE_HEADER.match(old):
         old_body, _, old_block = old.partition(f"\n{CURATOR_BLOCK}\n")
-        old_passes = [line for line in old_body.split("\n") if PASS_LINE.match(line)]
-        if passes[: len(old_passes)] != old_passes:
-            problems.append("the note must keep the previous `Pass` lines, unchanged and first")
+        old_history = [line for line in old_body.split("\n") if HISTORY_LINE.match(line)]
+        history = [line for line in lines if HISTORY_LINE.match(line)]
+        if history[: len(old_history)] != old_history:
+            problems.append(
+                "the note must keep the previous `Pass` and `Moved` lines, unchanged and first"
+            )
     else:
         old_block = old
     if block != old_block:
@@ -636,3 +642,105 @@ def update_publications(
 ) -> Outcome:
     """Set the state and note of publications of vh runs at the end of a pass (`ai_pass_at`)."""
     return _write_rows(conn, updates, _publication, commit)
+
+
+# --- Moving to a special run --------------------------------------------------------------------
+
+SPECIAL_RUN = re.compile(r"special-(\d+)")
+SPECIAL_INFO = (
+    "Publications Claude could not curate fully, moved from their runs of the PubMed query."
+)
+
+
+@dataclass(frozen=True)
+class Move:
+    """A publication Claude could not curate fully, in the run it leaves."""
+
+    association_id: int
+    pmid: int
+    run: str
+
+
+def _special_run(cur: Any, new: bool) -> tuple[int, str]:
+    """The open special run, the one with the highest number; a new one when asked or when none."""
+    cur.execute("SELECT id, name FROM runs WHERE type = 'vh' AND name ~ '^special-[0-9]+$'")
+    runs = sorted(
+        (int(cast(re.Match[str], SPECIAL_RUN.fullmatch(name))[1]), run_id, name)
+        for run_id, name in cur.fetchall()
+    )
+    if runs and not new:
+        return runs[-1][1], runs[-1][2]
+    name = f"special-{runs[-1][0] + 1 if runs else 1}"
+    cur.execute(
+        "INSERT INTO runs (type, name, populated, info) VALUES ('vh', %s, true, %s) RETURNING id",
+        (name, SPECIAL_INFO),
+    )
+    return cur.fetchone()[0], name
+
+
+def _move(cur: Any, move: Move, target_id: int, target: str, today: str) -> str:
+    cur.execute(
+        "SELECT 1 FROM associations WHERE run_id = %s AND pmid = %s", (target_id, move.pmid)
+    )
+    if cur.fetchone() is not None:
+        raise InvalidRow(f"publication {move.pmid} is already in run {target}")
+    cur.execute("SELECT annotation FROM associations WHERE id = %s", (move.association_id,))
+    body, block, curator = cur.fetchone()[0].strip().partition(f"\n{CURATOR_BLOCK}\n")
+    if CLAUDE_HEADER.match(body) is None:
+        raise InvalidRow("the note does not start with a Claude header")
+    note = f"{body}\n- Moved {today}: from run {move.run}{block}{curator}"
+    cur.execute(
+        "UPDATE associations SET run_id = %s, annotation = %s, updated_at = now() WHERE id = %s",
+        (target_id, note, move.association_id),
+    )
+    return f"{move.run}/{move.pmid} → {target}"
+
+
+def move_publications(
+    conn: psycopg.Connection,
+    publications: Sequence[tuple[int, int]],
+    *,
+    new_run: bool = False,
+    commit: bool = False,
+) -> tuple[list[Move], Outcome]:
+    """Move the publications given as (run_id, pmid) that are `selected` with a pass date in a vh
+    run of the PubMed query to the open special run (a new one with `new_run`), each with a
+    `Moved` line in its note. The others are left where they are.
+
+    Raises `ValueError` for a publication that is not in its run.
+    """
+    with conn.transaction(), conn.cursor() as cur:
+        cur.execute(
+            "SELECT given.run_id, given.pmid, a.id, r.name, r.type, a.state, a.ai_pass_at "
+            "FROM unnest(%s::int[], %s::bigint[]) AS given (run_id, pmid) "
+            "LEFT JOIN associations AS a ON a.run_id = given.run_id AND a.pmid = given.pmid "
+            "LEFT JOIN runs AS r ON r.id = a.run_id "
+            "ORDER BY given.run_id, given.pmid",
+            ([run_id for run_id, _ in publications], [pmid for _, pmid in publications]),
+        )
+        rows = cur.fetchall()
+    if missing := [
+        f"{run_id}/{pmid}" for run_id, pmid, association_id, *_ in rows if association_id is None
+    ]:
+        raise ValueError(f"publications not in their run: {', '.join(missing)}")
+    moves = sorted(
+        {
+            Move(association_id, pmid, run)
+            for _, pmid, association_id, run, run_type, state, ai_pass_at in rows
+            if run_type.strip() == "vh"
+            and not SPECIAL_RUN.fullmatch(run)
+            and state == "selected"
+            and ai_pass_at is not None
+        },
+        key=lambda move: (move.run, move.pmid),
+    )
+    if not moves:
+        return moves, Outcome([], [], [], False)
+    target: list[tuple[int, str]] = []
+    return moves, _write_rows(
+        conn,
+        moves,
+        lambda cur, move, today: _move(cur, move, *target[0], today),
+        commit,
+        before=lambda cur: target.append(_special_run(cur, new_run)),
+    )

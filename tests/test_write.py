@@ -11,6 +11,7 @@ from drakkar.write import (
     Revision,
     add_descriptions,
     live_revisions,
+    move_publications,
     revise_descriptions,
     update_publications,
 )
@@ -228,6 +229,69 @@ def test_publication_keeps_the_curator_note(conn):
         note + "\n--- Curator note (before Claude) ---\nDone. Pierre to upload",
     )
     assert update_publications(conn, [kept]).ok
+
+
+# --- Moving to a special run --------------------------------------------------------------------
+
+
+def not_accessible(conn) -> str:
+    """SELECTED left `selected` by a pass: what a move takes. Its note."""
+    note = (
+        f"[{today(conn)} Claude] SELECTED: may hold a PPI, no full text\n"
+        "- Full text: closed — not open access anywhere\n"
+        f"- Pass {today(conn)}: not accessible (not open access)"
+    )
+    update = PublicationUpdate(*SELECTED, "selected", note)
+    assert update_publications(conn, [update], commit=True).committed
+    return note
+
+
+def run_of(conn, pmid) -> tuple[int, str, str]:
+    result = conn.execute(
+        "SELECT r.id, r.name, a.annotation FROM associations AS a "
+        "JOIN runs AS r ON r.id = a.run_id WHERE a.pmid = %s",
+        (pmid,),
+    ).fetchone()
+    conn.rollback()
+    return result
+
+
+def test_move_to_the_special_run(conn, new):
+    [stable_id] = add_descriptions(conn, [new], commit=True).written
+    note = not_accessible(conn)
+    assert move_publications(conn, [SELECTED])[1].ok  # a dry run
+    assert run_of(conn, SELECTED[1])[1] == "32"
+    moves, outcome = move_publications(conn, [SARS, SELECTED], commit=True)
+    assert [move.pmid for move in moves] == [SELECTED[1]] and outcome.committed
+    run_id, name, moved = run_of(conn, SELECTED[1])
+    assert name == "special-1" and moved == f"{note}\n- Moved {today(conn)}: from run 32"
+    assert stable_id in live(conn, run_id, SELECTED[1])
+    day = today(conn)
+    header = "[DATE Claude] CURATED: from a PDF provided by the user"
+    passed = f"- Pass {day}: curated from a PDF provided by the user"
+    lost = PublicationUpdate(run_id, SELECTED[1], "curated", f"{header}\n{passed}")
+    assert "`Moved`" in update_publications(conn, [lost]).problems[0][1]
+    history = f"- Pass {day}: not accessible (not open access)\n- Moved {day}: from run 32"
+    kept = replace(lost, note=f"{header}\n{history}\n{passed}")
+    assert update_publications(conn, [kept]).ok
+
+
+def test_move_to_a_new_special_run(conn):
+    conn.execute("INSERT INTO runs (type, name) VALUES ('vh', 'special-1')")
+    conn.commit()
+    not_accessible(conn)
+    assert move_publications(conn, [SELECTED], new_run=True, commit=True)[1].committed
+    assert run_of(conn, SELECTED[1])[1] == "special-2"
+
+
+def test_move_leaves_the_others(conn):
+    assert move_publications(conn, [SELECTED, SARS])[0] == []  # no pass, curated
+    with pytest.raises(ValueError):
+        move_publications(conn, [(12, 1)])
+    not_accessible(conn)
+    assert move_publications(conn, [SELECTED], commit=True)[1].committed
+    run_id = run_of(conn, SELECTED[1])[0]
+    assert move_publications(conn, [(run_id, SELECTED[1])])[0] == []  # already in a special run
 
 
 def test_open_transaction_is_refused(conn, new):
