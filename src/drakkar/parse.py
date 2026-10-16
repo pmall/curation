@@ -299,7 +299,7 @@ def _xls_value(cell: Any, datemode: Literal[0, 1]) -> Any:
 
 
 def xls(path: Path) -> str:
-    book: Any = xlrd.open_workbook(str(path))  # pyright: ignore[reportUnknownMemberType]
+    book: Any = xlrd.open_workbook(str(path))
     sheets: list[tuple[str, list[list[Any]]]] = []
     for sheet in book.sheets():
         rows = [[_xls_value(c, book.datemode) for c in sheet.row(i)] for i in range(sheet.nrows)]

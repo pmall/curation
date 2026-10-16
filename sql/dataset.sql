@@ -1,4 +1,4 @@
--- dataset: one row per description (live or deleted), joining runs, associations, methods,
+-- dataset: one row per description version (live or deleted), joining runs, associations, methods,
 -- proteins (with their current version) and taxa. For consultation and exports only.
 --
 -- Its columns, their order and types are those its readers expect: keep them.

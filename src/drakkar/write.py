@@ -21,7 +21,7 @@ import json
 import re
 import secrets
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 import psycopg
@@ -57,9 +57,9 @@ class Description:
     name2: str = ""
     start2: int | None = None
     stop2: int | None = None
-    mappings1: tuple[str, ...] = field(default=())
-    mappings2: tuple[str, ...] = field(default=())
-    below_threshold: tuple[str, ...] = field(default=())
+    mappings1: tuple[str, ...] = ()
+    mappings2: tuple[str, ...] = ()
+    below_threshold: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -197,7 +197,7 @@ def _snapshot(cur: Any, accession: str, snapshot_id: int | None = None) -> _Snap
         raise InvalidRow(f"{accession} (snapshot {id_}) has a missing or empty sequence")
     if type_ == "h" and not (gene or "").strip():
         raise InvalidRow(f"{accession} (snapshot {id_}) is human without a gene name")
-    return _Snapshot(id_, accession, type_.strip(), gene or "", sequences)
+    return _Snapshot(id_, accession, type_, gene or "", sequences)
 
 
 @dataclass(frozen=True)
@@ -217,7 +217,7 @@ def _association(cur: Any, run_id: int, pmid: int) -> _Association:
     row = cur.fetchone()
     if row is None:
         raise InvalidRow(f"publication {pmid} is not in run {run_id}")
-    association = _Association(row[0], row[1].strip(), row[2])
+    association = _Association(*row)
     if association.state not in ("selected", "curated"):
         raise InvalidRow(f"publication {pmid} of run {run_id} is {association.state}")
     return association
@@ -543,7 +543,7 @@ def live_revisions(cur: Any, run_id: int, pmid: int) -> list[Revision]:
         below = tuple(
             written(m) for side in mappings for m in side if best_identity(m) < MIN_IDENTITY
         )
-        hh = run_type.strip() == "hh"
+        hh = run_type == "hh"
         description = Description(
             method=method,
             accession1=a1,
@@ -727,7 +727,7 @@ def move_publications(
         {
             Move(association_id, pmid, run)
             for _, pmid, association_id, run, run_type, state, ai_pass_at in rows
-            if run_type.strip() == "vh"
+            if run_type == "vh"
             and not SPECIAL_RUN.fullmatch(run)
             and state == "selected"
             and ai_pass_at is not None
