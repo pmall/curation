@@ -2,7 +2,7 @@
 
 Next steps, in order.
 
-1. **Re-curate the re-curation test publications** with the curate skill, and decide from their diffs how a re-curation commits. Then the rest of the re-curation selection, one batch at a time.
+1. **Re-curate the re-curation test publications** with the curate skill. Then the rest of the re-curation selection, one batch at a time.
 2. **Try the curate skill** on a few selected publications.
 3. **At the next UniProt release, the versioning tool**: list the obsolete interactors of live descriptions, and the obvious moves; Claude writes the revision file. The revision tools then need a way to move an interactor to the current snapshot of the same accession.
 4. **Generic viral proteins**: a viral pass that lists the species in Drakkar and groups the viral interactors of each species under one generic name, for the vh datasets (`derived-datasets.md`).

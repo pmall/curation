@@ -51,7 +51,7 @@ def no_address(monkeypatch: pytest.MonkeyPatch):
 
 
 def getter(responses: dict[str, Response], asked: list[str]):
-    def get(url: str, headers: dict[str, str] | None = None) -> Response:
+    def get(url: str) -> Response:
         asked.append(url)
         r = responses.get(url, Response(url, 404, "", b""))
         return Response(r.url or url, r.status, r.content_type, r.body)

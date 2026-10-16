@@ -50,20 +50,20 @@ orchestrator (curate skill)
   3. curate         one subagent per publication (item.md)
                       reads the converted full text and the UniProt entries
                       writes its descriptions, curation notes, unsettled descriptions
-  4. merge          batch files: descriptions to add, publications.tsv
+  4. merge          batch files: descriptions to add, revise and delete, publications.tsv
   5. report         to the curator                                    ── nothing written yet
      ── go ──
-  6. commit         drakkar-add, drakkar-publications --commit
-  7. move           drakkar-move: publications left selected go to the special run
+  6. commit         drakkar-revise, drakkar-add, drakkar-publications, drakkar-move --commit
+                      the move last: publications left selected go to the special run
 ```
 
 - **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC, Europe PMC, NCBI, then open access copies (OpenAlex, Unpaywall, Crossref), and converts them to text. A subagent never downloads anything. When no source works, the curator can provide a PDF.
 - **One subagent per publication**, with its own context: it reads the publication, decides each description by the rules and writes files. It never writes to the database.
 - **Unsettled is said, not guessed.** A description the subagent cannot settle goes to `descriptions.unsettled.tsv` with why ([`item.md`](skills/curate/item.md)); the publication stays `selected`.
 - **The report leaves no open question**: what each file holds, the publications without a full text or not curated, with why.
-- **The go.** After it, the orchestrator commits the batch files, then moves the publications the agent could not curate fully (no full text, a file it could not read, an unsettled description) to the open special run, so the run they came from can be complete. Their manual pass happens there.
+- **The go.** After it, the orchestrator commits the batch files, the last write moving the publications the agent could not curate fully (no full text, a file it could not read, an unsettled description) to the open special run, so the run they came from can be complete. Their manual pass happens there.
 
-**Re-curation.** A publication already curated goes through the same batch. The subagent curates it again from its full text, without looking at its current curation, then `drakkar-diff` compares the result with its live descriptions: the descriptions to add, to revise and to remove, committed with `drakkar-add` and `drakkar-revise`.
+**Re-curation.** A publication already curated goes through the same batch. The subagent curates it again from its full text, without looking at its current curation, then `drakkar-diff` compares the result with its live descriptions: the descriptions to add, to revise and to remove. They are committed as a new publication's are, by the agent after the curator's go.
 
 Batches are independent: each takes its own publications, works in its own directory and writes only them. Many could run in parallel, given distinct publications; the default pick, the next publications of the oldest run, serves one batch at a time.
 

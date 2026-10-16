@@ -31,10 +31,11 @@ import re
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, cast
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import trafilatura
@@ -98,12 +99,11 @@ class Response:
     body: bytes
 
 
-class Get(Protocol):
-    def __call__(self, url: str, headers: dict[str, str] | None = None) -> Response: ...
+Get = Callable[[str], Response]
 
 
-def http_get(url: str, headers: dict[str, str] | None = None) -> Response:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
+def http_get(url: str) -> Response:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as r:
             return Response(r.geturl(), r.status, r.headers.get_content_type(), r.read())
@@ -266,8 +266,8 @@ class Fetch:
         self.tried: list[dict[str, str]] = []
         self.taken: set[str] = set()
 
-    def _try(self, url: str, headers: dict[str, str] | None = None) -> Response:
-        r = self.get(url, headers)
+    def _try(self, url: str) -> Response:
+        r = self.get(url)
         self.tried.append({"url": url, "outcome": _outcome(r)})
         return r
 
@@ -306,7 +306,9 @@ class Fetch:
         """The PMC open access files (XML, PDF, supplementary files); else the XML alone, from
         Europe PMC and then from `efetch`, with the supplementary files asked for on their own."""
         if not self.pmc_files(pmcid):
-            if not (self.europe_pmc(pmcid) or self.efetch(pmcid)):
+            europe_pmc = f"{EUROPE_PMC}/{pmcid}/fullTextXML"
+            efetch = f"{EFETCH}?db=pmc&id={pmcid}&rettype=xml"
+            if not (self.pmc_xml(europe_pmc) or self.pmc_xml(efetch)):
                 return False
             self.pmc_supplements(pmcid)
         url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/"
@@ -316,19 +318,11 @@ class Fetch:
             self.manifest["line"] += ", supplementary files not offered by this source"
         return True
 
-    def europe_pmc(self, pmcid: str) -> bool:
-        xml = self._try(f"{EUROPE_PMC}/{pmcid}/fullTextXML")
-        if xml.status != 200 or b"<body" not in xml.body:
-            if xml.status == 200:
-                self.tried[-1]["outcome"] += ", no full text"
-            return False
-        self._save(xml, ".xml")
-        return True
-
-    def efetch(self, pmcid: str) -> bool:
-        """NCBI `efetch`: it serves the body of PMC articles outside the open access files,
-        and answers an article with no body (the front matter alone) when it serves none."""
-        xml = self._try(f"{EFETCH}?db=pmc&id={pmcid}&rettype=xml")
+    def pmc_xml(self, url: str) -> bool:
+        """A PMC XML alone, from Europe PMC `fullTextXML` or NCBI `efetch`, kept when it holds a
+        body: `efetch` serves the body of PMC articles outside the open access files, and answers
+        an article with no body (the front matter alone) when it serves none."""
+        xml = self._try(url)
         if xml.status != 200 or b"<body" not in xml.body:
             if xml.status == 200:
                 self.tried[-1]["outcome"] += ", no full text"
@@ -339,15 +333,14 @@ class Fetch:
     def pmc_supplements(self, pmcid: str) -> None:
         """Europe PMC's supplementary files service (a zip), the only source for them once the
         text comes from `fullTextXML` or `efetch`. It is slow, so it is asked once, here."""
-        r = self._try(f"{EUROPE_PMC}/{pmcid}/supplementaryFiles")
+        url = f"{EUROPE_PMC}/{pmcid}/supplementaryFiles"
+        r = self._try(url)
         offered = r.status == 200 and r.body[:2] == b"PK"
         self.manifest["supplements_offered"] = offered
         if offered:
-            self._supplement(
-                f"{pmcid}.zip", r.body, r.url or f"{EUROPE_PMC}/{pmcid}/supplementaryFiles"
-            )
+            self._supplement(f"{pmcid}.zip", r.body, r.url)
         else:
-            self._skip(f"{EUROPE_PMC}/{pmcid}/supplementaryFiles", f"{_outcome(r)}, none offered")
+            self._skip(url, f"{_outcome(r)}, none offered")
 
     def pmc_files(self, pmcid: str) -> bool:
         listing = self._try(f"{PMC_AWS}/?list-type=2&prefix={pmcid}.")

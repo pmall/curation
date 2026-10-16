@@ -49,7 +49,7 @@ def publication(cur: Any, run_id: int, pmid: int) -> str:
     article = cast(dict[str, Any], article or {})
     pass_at = f", Claude's pass {ai_pass_at:%Y-%m-%d}" if ai_pass_at else ""
     lines = [
-        f"# PMID {pmid}, run {run_id} ({run_type.strip()}), {state}{pass_at}",
+        f"# PMID {pmid}, run {run_id} ({run_type}), {state}{pass_at}",
         "",
         f"Title: {_text(article.get('ArticleTitle'))}",
         "",
