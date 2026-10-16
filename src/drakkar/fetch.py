@@ -2,37 +2,50 @@
 
 uv run drakkar-fetch <pmid> <dir>
 
-Sources, the first that works:
-1. PMC: the XML, its PDF and its supplementary files from the PMC open access files, else the
-   XML alone from Europe PMC. Every PMCID Europe PMC or OpenAlex knows is tried.
-2. The publisher, at the DOI of the publication: an HTML full text, else a PDF.
-3. The other open access copies OpenAlex knows (repositories; never a preprint server), best
-   first: an HTML full text, else a PDF.
+Sources, the first that works. Every PMCID Europe PMC or OpenAlex knows is tried on 1 to 3:
+1. The PMC open access files: the XML, its PDF and its supplementary files, the only source
+   that holds them all.
+2. Europe PMC `fullTextXML`: the XML alone.
+3. NCBI `efetch db=pmc`: the XML alone, for a PMC copy outside the open access files.
+4. After 2 or 3, Europe PMC's supplementary files service, the one source left for them; when
+   it holds none, the manifest says the supplementary files were not offered, which is not the
+   same as a publication that has none.
+5. A copy elsewhere, from the open access locations of OpenAlex, Unpaywall and Crossref: the
+   publisher at the DOI first, then the repositories (never a preprint server), an HTML full
+   text before a PDF.
+6. Failing all of them: a PDF the user provides, saved as `<pmid>.pdf` outside this tool.
 Nothing is converted (`drakkar-parse`). Writes `<pmid>.xml|html|pdf`, the supplementary files
 in `<pmid>.supp/` (no video, no image), and last the manifest `<pmid>.json`: where the full
 text comes from, or why there is none.
+
+Configuration, in the project's `.env`: `UNPAYWALL_EMAIL`, the address Unpaywall asks for to
+answer a request. Without it Unpaywall is not asked at all.
 """
 
 import argparse
 import io
 import json
 import mimetypes
+import os
 import re
 import urllib.error
 import urllib.request
 import zipfile
-from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import trafilatura
+from dotenv import load_dotenv
 from lxml import etree
 
 EUROPE_PMC = "https://www.ebi.ac.uk/europepmc/webservices/rest"
+EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 OPENALEX = "https://api.openalex.org/works"
+UNPAYWALL = "https://api.unpaywall.org/v2"
+CROSSREF = "https://api.crossref.org/works"
 PMC_AWS = "https://pmc-oa-opendata.s3.amazonaws.com"
 XLINK = "{http://www.w3.org/1999/xlink}href"
 # Publishers refuse requests without a browser user agent.
@@ -66,8 +79,15 @@ PREPRINT_HOSTS = (
     "arxiv.org",
 )
 PREPRINT_DOIS = ("10.1101/", "10.64898/", "10.21203/", "10.20944/", "10.2139/", "10.48550/")
-# The PMC website refuses downloads: its copies are fetched as PMC (step 1), never as pages.
+# The PMC website refuses downloads: its copies are fetched as PMC (steps 1 to 3), never as pages.
 PMC_HOSTS = ("ncbi.nlm.nih.gov", "europepmc.org")
+
+
+def _setting(name: str) -> str | None:
+    """A setting of the project's `.env`, absent when it is not configured: a request that
+    needs it is not made at all, so nothing of the user is sent without being configured."""
+    load_dotenv()
+    return os.environ.get(name) or None
 
 
 @dataclass
@@ -78,11 +98,12 @@ class Response:
     body: bytes
 
 
-Get = Callable[[str], Response]
+class Get(Protocol):
+    def __call__(self, url: str, headers: dict[str, str] | None = None) -> Response: ...
 
 
-def http_get(url: str) -> Response:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+def http_get(url: str, headers: dict[str, str] | None = None) -> Response:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as r:
             return Response(r.geturl(), r.status, r.headers.get_content_type(), r.read())
@@ -245,8 +266,8 @@ class Fetch:
         self.tried: list[dict[str, str]] = []
         self.taken: set[str] = set()
 
-    def _try(self, url: str) -> Response:
-        r = self.get(url)
+    def _try(self, url: str, headers: dict[str, str] | None = None) -> Response:
+        r = self.get(url, headers)
         self.tried.append({"url": url, "outcome": _outcome(r)})
         return r
 
@@ -282,19 +303,51 @@ class Fetch:
         self.manifest.setdefault("skipped_supplements", []).append({"url": url, "why": why})
 
     def pmc(self, pmcid: str, license_: str) -> bool:
-        """The PMC open access files (XML, PDF, supplementary files); else the XML alone from
-        Europe PMC, whose supplementary files service is too slow to use."""
+        """The PMC open access files (XML, PDF, supplementary files); else the XML alone, from
+        Europe PMC and then from `efetch`, with the supplementary files asked for on their own."""
         if not self.pmc_files(pmcid):
-            xml = self._try(f"{EUROPE_PMC}/{pmcid}/fullTextXML")
-            if xml.status != 200 or b"<body" not in xml.body:
-                if xml.status == 200:
-                    self.tried[-1]["outcome"] += ", no full text"
+            if not (self.europe_pmc(pmcid) or self.efetch(pmcid)):
                 return False
-            self._save(xml, ".xml")
+            self.pmc_supplements(pmcid)
         url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/"
         self.manifest.update(source=pmcid, url=url, license=license_)
         self.manifest["line"] = f"Full text: {pmcid} ({license_})"
+        if self.manifest.get("supplements_offered") is False:
+            self.manifest["line"] += ", supplementary files not offered by this source"
         return True
+
+    def europe_pmc(self, pmcid: str) -> bool:
+        xml = self._try(f"{EUROPE_PMC}/{pmcid}/fullTextXML")
+        if xml.status != 200 or b"<body" not in xml.body:
+            if xml.status == 200:
+                self.tried[-1]["outcome"] += ", no full text"
+            return False
+        self._save(xml, ".xml")
+        return True
+
+    def efetch(self, pmcid: str) -> bool:
+        """NCBI `efetch`: it serves the body of PMC articles outside the open access files,
+        and answers an article with no body (the front matter alone) when it serves none."""
+        xml = self._try(f"{EFETCH}?db=pmc&id={pmcid}&rettype=xml")
+        if xml.status != 200 or b"<body" not in xml.body:
+            if xml.status == 200:
+                self.tried[-1]["outcome"] += ", no full text"
+            return False
+        self._save(xml, ".xml")
+        return True
+
+    def pmc_supplements(self, pmcid: str) -> None:
+        """Europe PMC's supplementary files service (a zip), the only source for them once the
+        text comes from `fullTextXML` or `efetch`. It is slow, so it is asked once, here."""
+        r = self._try(f"{EUROPE_PMC}/{pmcid}/supplementaryFiles")
+        offered = r.status == 200 and r.body[:2] == b"PK"
+        self.manifest["supplements_offered"] = offered
+        if offered:
+            self._supplement(
+                f"{pmcid}.zip", r.body, r.url or f"{EUROPE_PMC}/{pmcid}/supplementaryFiles"
+            )
+        else:
+            self._skip(f"{EUROPE_PMC}/{pmcid}/supplementaryFiles", f"{_outcome(r)}, none offered")
 
     def pmc_files(self, pmcid: str) -> bool:
         listing = self._try(f"{PMC_AWS}/?list-type=2&prefix={pmcid}.")
@@ -327,17 +380,65 @@ class Fetch:
                 self._skip(link, _outcome(r))
         return True
 
-    def open_access(self, work: dict[str, Any]) -> bool:
+    def unpaywall(self, doi: str) -> list[dict[str, Any]]:
+        """Unpaywall's open access copies, in its own order (best first). It answers only a
+        request that carries an address, so it is asked only when one is configured."""
+        email = _setting("UNPAYWALL_EMAIL")
+        if not email:
+            return []
+        record = _json(self.get, f"{UNPAYWALL}/{quote(doi)}?email={quote(email)}")
+        locations = cast(list[dict[str, Any]], (record or {}).get("oa_locations") or [])
+        return [
+            {
+                "is_oa": True,
+                "landing_page_url": x.get("url_for_landing_page") or x.get("url"),
+                "pdf_url": x.get("url_for_pdf"),
+                "license": x.get("license"),
+                "source": {"display_name": x.get("repository_institution") or "Unpaywall"},
+            }
+            for x in locations
+        ]
+
+    def crossref(self, doi: str) -> list[dict[str, Any]]:
+        """The full-text links the publisher declares to Crossref, text mining first."""
+        record = _json(self.get, f"{CROSSREF}/{quote(doi)}")
+        message = cast(dict[str, Any], (record or {}).get("message") or {})
+        links = cast(list[dict[str, Any]], message.get("link") or [])
+        links.sort(key=lambda x: x.get("intended-application") != "text-mining")
+        return [
+            {
+                "is_oa": True,
+                "landing_page_url": None
+                if "pdf" in (x.get("content-type") or "")
+                else x.get("URL"),
+                "pdf_url": x.get("URL") if "pdf" in (x.get("content-type") or "") else None,
+                "license": "no license given",
+                "source": {"display_name": "the publisher (Crossref)"},
+            }
+            for x in links
+            if x.get("URL")
+        ]
+
+    def open_access(self, work: dict[str, Any], doi: str | None) -> bool:
         """The publisher's copy first, then the others, best first; each time the HTML full
         texts first, then the PDFs. OpenAlex's version labels are not reliable enough to sort
-        on (a bioRxiv copy labelled accepted, PMC copies labelled submitted)."""
+        on (a bioRxiv copy labelled accepted, PMC copies labelled submitted), so the three
+        sources of locations are taken in their own order, OpenAlex first."""
         best = work.get("best_oa_location")
         locations = [best] if best else []
         locations += [x for x in _locations(work) if x.get("is_oa") and x != best]
-        locations = [
-            x for x in locations if not _is_pmc(x.get("landing_page_url")) and not _is_preprint(x)
-        ]
-        doi = (work.get("doi") or "").lower()
+        if doi:
+            locations += self.unpaywall(doi) + self.crossref(doi)
+        kept: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for location in locations:
+            key = f"{location.get('landing_page_url')}|{location.get('pdf_url')}"
+            if _is_pmc(location.get("landing_page_url")) or _is_preprint(location) or key in seen:
+                continue
+            seen.add(key)
+            kept.append(location)
+        locations = kept
+        doi = (f"https://doi.org/{doi}" if doi else "").lower()
         publisher = [x for x in locations if (x.get("landing_page_url") or "").lower() == doi]
         others = [x for x in locations if x not in publisher]
         for tier in (publisher, others):
@@ -410,9 +511,7 @@ class Fetch:
         license_ = _pmc_license(record, work)
         if not any(self.pmc(pmcid, license_) for pmcid in ids):
             start = len(self.tried)
-            if not work:
-                self.manifest["why"] = "not in OpenAlex"
-            elif not self.open_access(work):
+            if not self.open_access(work, doi):
                 self.manifest["why"] = self.why(work, self.tried[start:])
         if self.manifest["file"] is None:
             self.manifest["line"] = f"Full text: closed — {self.manifest['why']}"
@@ -424,14 +523,20 @@ class Fetch:
         return self.manifest
 
     def why(self, work: dict[str, Any], tried: list[dict[str, str]]) -> str:
+        """Why there is no full text, for the `Full text: closed — ...` line of the note. The
+        copies tried come first: they say what happened, where the locations say what was
+        announced."""
+        copies = [t for t in tried if not t["url"].startswith((UNPAYWALL, CROSSREF))]
+        blocked = [t["url"] for t in copies if not t["outcome"].startswith("HTTP 200")]
+        if blocked:
+            return f"a copy at {blocked[0]} but download blocked"
+        if copies:
+            return f"a copy at {copies[0]['url']} but no full text there"
         oa = [x for x in _locations(work) if x.get("is_oa")]
+        if not work:
+            return "not in OpenAlex, and no copy from Unpaywall or Crossref"
         if not oa:
             return "not open access anywhere"
-        blocked = [t["url"] for t in tried if not t["outcome"].startswith("HTTP 200")]
-        if blocked:
-            return f"open access at {blocked[0]} but download blocked"
-        if tried:
-            return f"open access at {tried[0]['url']} but no full text there"
         if any(_is_preprint(x) for x in oa):
             return "open access only as a preprint"
         if any(_is_pmc(x.get("landing_page_url")) for x in oa):

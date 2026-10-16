@@ -6,7 +6,19 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from drakkar.fetch import EUROPE_PMC, OPENALEX, PMC_AWS, Response, fetch, pmcids
+import pytest
+
+from drakkar.fetch import (
+    CROSSREF,
+    EFETCH,
+    EUROPE_PMC,
+    OPENALEX,
+    PMC_AWS,
+    UNPAYWALL,
+    Response,
+    fetch,
+    pmcids,
+)
 
 PMID = 123
 SEARCH = f"{EUROPE_PMC}/search?query=EXT_ID%3A{PMID}%20AND%20SRC%3AMED&format=json&resultType=core"
@@ -31,8 +43,15 @@ def json_ok(data: Any) -> Response:
     return ok(json.dumps(data).encode(), "application/json")
 
 
+@pytest.fixture(autouse=True)
+def no_address(monkeypatch: pytest.MonkeyPatch):
+    """No address configured, unless a test sets one: Unpaywall must then not be asked."""
+    monkeypatch.setattr("drakkar.fetch.load_dotenv", lambda: None)
+    monkeypatch.delenv("UNPAYWALL_EMAIL", raising=False)
+
+
 def getter(responses: dict[str, Response], asked: list[str]):
-    def get(url: str) -> Response:
+    def get(url: str, headers: dict[str, str] | None = None) -> Response:
         asked.append(url)
         r = responses.get(url, Response(url, 404, "", b""))
         return Response(r.url or url, r.status, r.content_type, r.body)
@@ -121,8 +140,11 @@ def test_pmc_xml_from_europe_pmc_when_not_in_the_open_access_files(tmp_path: Pat
             f"{EUROPE_PMC}/PMC9/fullTextXML": ok(XML),
         },
     )
-    assert manifest["line"] == "Full text: PMC9 (no license given)"
+    assert manifest["line"] == (
+        "Full text: PMC9 (no license given), supplementary files not offered by this source"
+    )
     assert manifest["file"] == f"{PMID}.xml" and "pdf" not in manifest
+    assert manifest["supplements_offered"] is False
 
 
 def test_pmcid_known_only_to_openalex():
@@ -229,7 +251,7 @@ def test_blocked(tmp_path: Path):
             doi: Response(doi, 403, "", b""),
         },
     )
-    assert manifest["line"] == f"Full text: closed — open access at {doi} but download blocked"
+    assert manifest["line"] == f"Full text: closed — a copy at {doi} but download blocked"
 
 
 def test_open_access_without_a_copy_to_download(tmp_path: Path):
@@ -239,4 +261,120 @@ def test_open_access_without_a_copy_to_download(tmp_path: Path):
 
 def test_error_page_sent_as_success(tmp_path: Path):
     manifest, _ = run(tmp_path, {SEARCH: ok(b"<html>Service unavailable</html>", "text/html")})
-    assert manifest["line"] == "Full text: closed — not in OpenAlex"
+    assert manifest["line"] == (
+        "Full text: closed — not in OpenAlex, and no copy from Unpaywall or Crossref"
+    )
+
+
+def test_pmc_xml_from_efetch_when_europe_pmc_has_none(tmp_path: Path):
+    """A PMC copy outside the open access files, which Europe PMC does not serve: `efetch`
+    gives the body, and the supplementary files are asked for on their own."""
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("s1.xlsx", "cells")
+    manifest, asked = run(
+        tmp_path,
+        {
+            SEARCH: json_ok({"resultList": {"result": [{"pmcid": "PMC9", "license": "cc by"}]}}),
+            WORK: json_ok({}),
+            f"{PMC_AWS}/?list-type=2&prefix=PMC9.": ok(b"<ListBucketResult/>"),
+            f"{EUROPE_PMC}/PMC9/fullTextXML": Response("", 500, "", b""),
+            f"{EFETCH}?db=pmc&id=PMC9&rettype=xml": ok(XML),
+            f"{EUROPE_PMC}/PMC9/supplementaryFiles": ok(archive.getvalue(), "application/zip"),
+        },
+    )
+    assert manifest["line"] == "Full text: PMC9 (cc by)"
+    assert manifest["file"] == f"{PMID}.xml"
+    assert manifest["supplements_offered"] is True
+    assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
+    assert asked.index(f"{EUROPE_PMC}/PMC9/fullTextXML") < asked.index(
+        f"{EFETCH}?db=pmc&id=PMC9&rettype=xml"
+    )
+
+
+def test_efetch_without_a_body_is_no_full_text(tmp_path: Path):
+    manifest, _ = run(
+        tmp_path,
+        {
+            SEARCH: json_ok({"resultList": {"result": [{"pmcid": "PMC9"}]}}),
+            WORK: json_ok({"locations": [{"is_oa": False}]}),
+            f"{PMC_AWS}/?list-type=2&prefix=PMC9.": ok(b"<ListBucketResult/>"),
+            f"{EFETCH}?db=pmc&id=PMC9&rettype=xml": ok(
+                b"<pmc-articleset><front/></pmc-articleset>"
+            ),
+        },
+    )
+    assert manifest["file"] is None
+    assert manifest["line"] == "Full text: closed — not open access anywhere"
+    outcomes = {t["url"]: t["outcome"] for t in manifest["tried"]}
+    assert outcomes[f"{EFETCH}?db=pmc&id=PMC9&rettype=xml"] == "HTTP 200, no full text"
+
+
+def test_copy_from_unpaywall_when_an_address_is_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("UNPAYWALL_EMAIL", "curator@example.org")
+    doi = "10.1/x"
+    manifest, _ = run(
+        tmp_path,
+        {
+            SEARCH: json_ok({"resultList": {"result": [{"doi": doi}]}}),
+            WORK: json_ok({}),
+            f"{UNPAYWALL}/{doi}?email=curator%40example.org": json_ok(
+                {
+                    "oa_locations": [
+                        {
+                            "url_for_landing_page": "https://repo.org/record/1",
+                            "url_for_pdf": "https://repo.org/record/1.pdf",
+                            "license": "cc-by",
+                            "repository_institution": "Repo",
+                        }
+                    ]
+                }
+            ),
+            "https://repo.org/record/1": ok(ARTICLE, "text/html", url="https://repo.org/record/1"),
+        },
+    )
+    assert manifest["line"] == "Full text: Repo (cc-by, https://repo.org/record/1)"
+    assert manifest["file"] == f"{PMID}.html"
+
+
+def test_unpaywall_is_not_asked_without_an_address(tmp_path: Path):
+    manifest, asked = run(
+        tmp_path,
+        {
+            SEARCH: json_ok({"resultList": {"result": [{"doi": "10.1/x"}]}}),
+            WORK: json_ok({"locations": [{"is_oa": True}]}),
+        },
+    )
+    assert not any(url.startswith(UNPAYWALL) for url in asked)
+    assert any(url.startswith(CROSSREF) for url in asked)
+    assert manifest["line"] == "Full text: closed — open access, but no copy to download"
+
+
+def test_copy_from_the_crossref_text_mining_link(tmp_path: Path):
+    doi = "10.1/x"
+    manifest, _ = run(
+        tmp_path,
+        {
+            SEARCH: json_ok({"resultList": {"result": [{"doi": doi}]}}),
+            WORK: json_ok({}),
+            f"{CROSSREF}/{doi}": json_ok(
+                {
+                    "message": {
+                        "link": [
+                            {"URL": "https://journal.org/x.html", "content-type": "text/html"},
+                            {
+                                "URL": "https://journal.org/x.pdf",
+                                "content-type": "application/pdf",
+                                "intended-application": "text-mining",
+                            },
+                        ]
+                    }
+                }
+            ),
+            "https://journal.org/x.pdf": ok(b"%PDF-1.7", "application/pdf"),
+        },
+    )
+    assert manifest["file"] == f"{PMID}.pdf"
+    assert manifest["source"] == "the publisher (Crossref)"

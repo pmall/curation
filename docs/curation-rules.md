@@ -22,21 +22,21 @@ The curation method is the one published in the PNAS 2024 SI appendix (doi:10.10
 
 2. **Pre-curation** on title and abstract, by Claude, for every publication: `selected` or `discarded`. The goal is to remove the query's false positives. A publication is `selected` as soon as the abstract suggests it may contain a virus–human PPI: **the goal is exhaustiveness**, so in doubt, select. `discarded` is a pre-curation decision only.
 
-3. **Curation pass** by Claude on each selected publication, from its full text (§1). Once the full text has been read, the publication is `curated`, **whether descriptions were found or not**. A curated publication with zero descriptions is a valid outcome: the publication was reviewed and reports no interaction that meets the criteria. The note says why.
+3. **Curation pass** by Claude on each selected publication, from its full text (§1). Once the full text has been read, the publication is `curated`, **whether descriptions were found or not**. A curated publication with zero descriptions is a valid outcome: the publication was reviewed and reports no interaction that meets the criteria. The note says why. A publication is `curated` only when **everything that can carry an interaction has been read**: its full text and every supplementary file that may hold one. A file whose content bears on no interaction is not one of them: an image, a video, a file of raw source data whose values are already in a table that was read. A file that may hold an interaction and could not be read — not fetched, held by no copy, failed to convert, or its content left uncertain — leaves the publication `selected` with its pass date, whatever the read part showed; the descriptions found are recorded all the same, and the note says which file and why. **An unsettled description leaves it `selected` too**: the publication is `curated` only when every description it holds is settled and recorded.
 
-4. Every selected publication Claude went through gets the date of the pass in `associations.ai_pass_at` (`database.md` §1), curated or not. A publication still `selected` with a date needs a **manual pass**: curated by hand, or handed to Claude as a curator file. Its note says why Claude could not curate it (e.g. no accessible full text, with the URL when there is one).
+4. Every selected publication Claude went through gets the date of the pass in `associations.ai_pass_at` (`database.md` §1), curated or not. A publication still `selected` with a date needs a **manual pass**: curated by hand, or handed to Claude as a curator file. Its note says why Claude could not curate it fully (e.g. no accessible full text, or supplementary files it needs that no accessible copy holds, with the URL when there is one).
 
 5. **Re-curation** of a curated publication: curated again from its full text, without looking at its current curation, and diffed against its live descriptions (`tools.md`).
 
 **Tracking:**
 
-| State + `ai_pass_at` | Meaning                                  |
-| -------------------- | ---------------------------------------- |
-| `pending`            | Not pre-curated yet.                     |
-| `selected`, null     | Waiting for Claude's curation pass.      |
-| `selected`, date     | Claude could not curate it: manual pass. |
-| `curated`            | Done (by Claude if dated).               |
-| `discarded`          | Rejected at pre-curation.                |
+| State + `ai_pass_at` | Meaning                                        |
+| -------------------- | ---------------------------------------------- |
+| `pending`            | Not pre-curated yet.                           |
+| `selected`, null     | Waiting for Claude's curation pass.            |
+| `selected`, date     | Claude could not curate it fully: manual pass. |
+| `curated`            | Done (by Claude if dated).                     |
+| `discarded`          | Rejected at pre-curation.                      |
 
 A run is **complete** when every publication is `discarded` or `curated`. Claude is **done with a run** when no publication is `pending` and every `selected` publication has a date.
 
@@ -119,17 +119,17 @@ A header line, optional `- ` detail lines, the pass history (oldest first), then
 
 The header is fixed so the write tools can check it: the date of the last rewrite, `Claude`, the association state in capitals, then a one-line summary. The state in the header must match `associations.state`. A note never holds a number the database already gives, such as the count of descriptions: it would go stale with the next revision.
 
-| State       | Summary                                                                                                                             | Detail lines                            |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `SELECTED`  | What the abstract suggests.                                                                                                         | `Full text` once checked; `Pass`.       |
-| `DISCARDED` | `<reason code>`, then a short why.                                                                                                  | —                                       |
-| `CURATED`   | Source: `from PMC1234567`, `from <URL>`, `from a PDF provided by the user` or `from curator file <name>`; with no description, why. | `Strain`, `Not kept`, `Remark`; `Pass`. |
+| State       | Summary                                                                                                                             | Detail lines                                                                           |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `SELECTED`  | What the abstract suggests; after a partial curation pass, what was curated and which files are missing.                            | `Full text` once checked; `Strain`, `Not kept`, `Remark` after a partial pass; `Pass`. |
+| `DISCARDED` | `<reason code>`, then a short why.                                                                                                  | —                                                                                      |
+| `CURATED`   | Source: `from PMC1234567`, `from <URL>`, `from a PDF provided by the user` or `from curator file <name>`; with no description, why. | `Strain`, `Not kept`, `Remark`; `Pass`.                                                |
 
 Pre-curation discard reason codes: `no-viral-protein`, `no-human-protein`, `no-ppi` (no physical interaction suggested), `non-human-host`, `review`, `preprint`, `not-research` (editorial, erratum, protocol…), `other`.
 
 Detail line formats:
 
-- `Full text:` the line written by the fetch (`tools.md`): `Full text: <PMCID> (<license>)`, `Full text: <source> (<license>, <URL>)` for another copy, or `Full text: closed — <why>` (e.g. not open access anywhere, or open access at <URL> but download blocked); `Full text: PDF provided by the user` for a PDF the user provides
+- `Full text:` the line written by the fetch (`tools.md`): `Full text: <PMCID> (<license>)`, followed by `, supplementary files not offered by this source` when the PMC copy came without them, `Full text: <source> (<license>, <URL>)` for another copy, or `Full text: closed — <why>` (e.g. not open access anywhere, or open access at <URL> but download blocked); `Full text: PDF provided by the user` for a PDF the user provides
 - `Strain: <strain> (<where in the publication>)`: the strain of the publication, when it holds for all its descriptions.
 - `Not kept: <pair or claim> — <reason>`
 - `Remark: <anything a reviewer should know>` (for a curator file: how ambiguous rows were interpreted)
