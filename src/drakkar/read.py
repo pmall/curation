@@ -34,7 +34,6 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
-from multiprocessing import Pool
 from typing import Any, cast
 
 import psycopg
@@ -193,28 +192,17 @@ def _taxon_name(cur: Any, ncbi_taxon_id: int) -> str:
 
 
 def _lineages(cur: Any, taxa: set[int]) -> dict[int, dict[str, tuple[int, str]]]:
-    """Species and family (NCBI ID, scientific name) of each taxon, one walk up the tree."""
+    """Species and family (NCBI ID, scientific name) of each taxon, given by its NCBI ID."""
     cur.execute(
-        """
-        WITH RECURSIVE lineage AS (
-            SELECT ncbi_taxon_id AS leaf, taxon_id, parent_taxon_id, ncbi_taxon_id, node_rank
-            FROM taxon WHERE ncbi_taxon_id = ANY(%s)
-            UNION ALL
-            SELECT l.leaf, t.taxon_id, t.parent_taxon_id, t.ncbi_taxon_id, t.node_rank
-            FROM lineage AS l JOIN taxon AS t ON t.taxon_id = l.parent_taxon_id
-            WHERE l.node_rank <> 'family'      -- stop at the family
-              AND t.taxon_id <> l.taxon_id     -- the root is its own parent
-        )
-        SELECT l.leaf, l.node_rank, l.ncbi_taxon_id, n.name
-        FROM lineage AS l
-        LEFT JOIN taxon_name AS n ON n.taxon_id = l.taxon_id AND n.name_class = 'scientific name'
-        WHERE l.node_rank IN ('species', 'family')
-        """,
-        (list(taxa),),
+        "SELECT ncbi_taxon_id, taxon_id FROM taxon WHERE ncbi_taxon_id = ANY(%s)", (list(taxa),)
     )
+    leaves = cur.fetchall()
+    nodes = _ascend(cur, [taxon_id for _, taxon_id in leaves])
     lineages: dict[int, dict[str, tuple[int, str]]] = defaultdict(dict)
-    for leaf, rank, ncbi_id, name in cur.fetchall():
-        lineages[leaf].setdefault(rank, (ncbi_id, name or str(ncbi_id)))
+    for leaf, taxon_id in leaves:
+        for ncbi_id, rank, name in _walk(nodes, taxon_id):
+            if rank in ("species", "family"):
+                lineages[leaf].setdefault(rank, (ncbi_id, name))
     return lineages
 
 
@@ -449,6 +437,20 @@ def _ascend(cur: Any, taxon_ids: list[int]) -> dict[int, tuple[int, int, str, st
     return found
 
 
+def _walk(nodes: dict[int, tuple[int, int, str, str]], taxon_id: int) -> list[tuple[int, str, str]]:
+    """The lineage of a taxon in the nodes of `_ascend`, from the taxon up to its family: NCBI ID,
+    rank, scientific name."""
+    walked: list[tuple[int, str, str]] = []
+    node = taxon_id
+    while node in nodes:
+        parent, ncbi_id, rank, name = nodes[node]
+        walked.append((ncbi_id, rank, name))
+        if rank == "family" or parent == node:
+            break
+        node = parent
+    return walked
+
+
 def _subtree_taxa(cur: Any, ncbi_taxon_id: int) -> dict[int, tuple[int, int]]:
     """`_descend` from the taxon of that NCBI ID."""
     cur.execute("SELECT taxon_id FROM taxon WHERE ncbi_taxon_id = %s", (ncbi_taxon_id,))
@@ -587,15 +589,7 @@ def taxa(cur: Any, texts: list[str], taxon: str | None = None, page: Page = DEFA
 
     def line(text: str, taxon_id: int, names: list[str]) -> str:
         """NCBI ID, scientific name (with the name matched), rank, lineage up to the family."""
-        walked: list[tuple[int, str, str]] = []
-        node = taxon_id
-        while node in nodes:
-            parent, ncbi_id, rank, name = nodes[node]
-            walked.append((ncbi_id, rank, name))
-            if rank == "family" or parent == node:
-                break
-            node = parent
-        (ncbi_id, rank, name), *above = walked
+        (ncbi_id, rank, name), *above = _walk(nodes, taxon_id)
         matched = [n for n in names if text.casefold() in n.casefold()]
         also = "" if text.casefold() in name.casefold() else f" ({matched[0]})"
         return f"{ncbi_id}\t{name}{also}\t{rank}\t{' < '.join(n for *_, n in above) or '-'}"
@@ -708,12 +702,9 @@ def closest(
     names = _taxon_names(cur, {e[3] for e in entries})
     lines = ["#sequence\taccession\tdb\tprotein\ttaxon\tidentity\tregion"]
     for label, query in queries.items():
-        with Pool() as pool:  # one alignment per entry: thousands for a virus
-            mappings = pool.starmap(_map_entry, [(query, e[0], e[4]) for e in entries], 64)
         ranked: list[tuple[float, bool, str, str]] = []
-        for (accession, is_reviewed, description, taxon_id, _), mapping in zip(
-            entries, mappings, strict=True
-        ):
+        for accession, is_reviewed, description, taxon_id, isoforms in entries:
+            mapping = _map_entry(query, accession, isoforms)
             identity = best_identity(mapping)
             if identity < min_identity:
                 continue

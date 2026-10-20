@@ -53,30 +53,29 @@ The tested sequence can carry, at its N- or C-terminal end, residues that are no
 
 ## 4. How each value is identified
 
-Each value is identified by the first tier that gives it, in the three lists below, from the most direct to the most inferred; the last tier of each list is any way possible. The lists apply to the human and the viral interactors alike.
+Each value is identified by the first tier that gives it, in the three lists below, from the most direct to the most inferred. Each tier gives its label, the case it applies to, and how the value is identified; a description note names the tier of a value by its label (`notes.md`). A tier whose case does not apply, or that gives no value, passes to the next: when the publication gives a UniProt accession that is not found in Drakkar, the next tier is `cross-reference`. The lists apply to the human and the viral interactors alike.
 
 ### The UniProt entry
 
-1. A current UniProt accession the publication gives.
-2. An identifier of another database the publication gives (a GenBank or RefSeq accession, a PDB code, a clone, a plasmid, a commercial construct): the current entry it cross-references, or the current entry identical by sequence.
-3. The protein named, with the strain for a viral protein (for a human protein, its gene name): its current entry.
-4. The protein's sequence, from the publication or from another database: the closest current entry by sequence, of the same virus for a viral protein.
-5. A viral protein whose strain is not given: a Swiss-Prot entry of the virus, otherwise the entry most used in Drakkar for that virus and generic name.
-6. A viral protein whose virus has no current entry: the closest current entry by sequence, whatever its virus.
-7. Any way possible.
+1. `accession`: when the publication gives a UniProt accession, its current entry.
+2. `cross-reference`: when the publication gives an identifier of another database (a GenBank or RefSeq accession, a PDB code, a clone, a plasmid, a commercial construct), the current entry it cross-references, otherwise the current entry identical to its sequence.
+3. `name`: when the publication names the protein (a human protein by its gene name, a viral protein with its strain), its current entry.
+4. `sequence`: when the protein's sequence is known, from the publication or another database (e.g. the GenBank record of a strain UniProt does not have), the current entry closest to it by sequence, of the same virus for a viral protein (e.g. isolate HCV-N, not in UniProt: its GenBank sequence AF139594 is closest to P26662, strain H77).
+5. `virus`: when the strain of a viral protein is not given and its sequence is not known, the Swiss-Prot entry of the virus for that protein, otherwise the entry most used in Drakkar for that virus and generic name.
+6. `best-effort`: in any other case, any way possible.
 
 ### The coordinates of a mature protein
 
-1. The chain of the mature protein on the entry (UniProt chain feature).
-2. The mature protein's boundaries given by the publication, on the entry or aligned on it from the publication's sequence.
-3. The mature peptide features of the entry's GenBank or RefSeq record.
-4. The chain of the same mature protein on another entry (another strain), aligned on the entry.
-5. Any way possible.
+1. `chain`: when the entry has a chain feature for the mature protein, that chain.
+2. `publication`: when the publication gives the mature protein's boundaries, those boundaries, on the entry, or on the publication's sequence aligned on the entry.
+3. `GenBank`: when the entry's GenBank or RefSeq record has a mature peptide feature for it, that feature.
+4. `other-strain`: when another entry of the virus (another strain) has a chain feature for the same mature protein, that chain, aligned on the entry.
+5. `best-effort`: in any other case, any way possible.
 
 ### The mappings
 
-1. The sequence the publication writes (text, figure, table, supplementary file).
-2. Coordinates on the publication's sequence (its strain, its clone): the subsequence of that sequence, from UniProt or another database.
-3. Coordinates on another sequence the publication names (a reference strain, a numbering it states): the region they designate on that sequence, carried over to the publication's sequence when it is known, else that subsequence.
-4. A construct the publication names without coordinates (a deletion mutant, primers, a commercial or deposited construct, a construct of a cited publication): its boundaries as that construct's own record gives them (the primers, the supplier, the plasmid record, the cited publication), on the publication's sequence.
-5. Any way possible that gives the sequence the construct carried.
+1. `written`: when the publication writes the sequence (in its text, a figure, a table, a supplementary file), that sequence.
+2. `coordinates`: when the publication gives coordinates on its own sequence (its strain, its clone), the subsequence at those coordinates, from UniProt or another database.
+3. `other-numbering`: when the publication gives coordinates on another sequence it names (a reference strain, a numbering it states), the region they designate on that sequence, carried over to the publication's sequence when it is known, otherwise the subsequence of that other sequence.
+4. `construct`: when the publication names a construct without coordinates (a deletion mutant, primers, a commercial or deposited construct, a construct of a cited publication), the subsequence of the publication's sequence within the boundaries that construct's own record gives (the primers, the supplier, the plasmid record, the cited publication).
+5. `best-effort`: in any other case, any way possible that gives the sequence the construct carried.
