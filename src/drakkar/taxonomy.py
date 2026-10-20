@@ -8,7 +8,9 @@ Python port of BioSQL's `load_ncbi_taxonomy.pl --nodelete`, as used by drakkar-t
 - retired nodes (absent from the dump) are kept, because proteins may still reference them;
 - the nested set (left_value, right_value) is rebuilt from the root, children ordered by NCBI ID;
 - the names of the nodes present in the dump are replaced. Unlike the Perl script, the names
-  of retired nodes are kept, so old proteins keep a scientific name.
+  of retired nodes are kept, so old proteins keep a scientific name;
+- `taxon.search`, all the names of a taxon in one text for `drakkar-read taxon`, is recomputed
+  for the taxa whose names changed.
 
 Everything runs in one transaction. Without --commit, a dry run: it is rolled back.
 """
@@ -19,11 +21,25 @@ import time
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
+from typing import LiteralString
 
 from drakkar.db import connect
 
 NAME_MAX_LENGTH = 255
 ROOT_NCBI_TAXON_ID = 1
+# `taxon.search`: the names of a taxon, its scientific name first, for `drakkar-read taxon`
+# (trigram-indexed). Recomputed for the taxa of `tmp_changed`.
+SEARCH: LiteralString = """
+    UPDATE taxon AS t SET search = names.search
+    FROM (
+        SELECT c.taxon_id,
+               string_agg(n.name, ' | ' ORDER BY n.name_class <> 'scientific name', n.name)
+                   AS search
+        FROM tmp_changed AS c LEFT JOIN taxon_name AS n ON n.taxon_id = c.taxon_id
+        GROUP BY c.taxon_id
+    ) AS names
+    WHERE t.taxon_id = names.taxon_id AND t.search IS DISTINCT FROM names.search
+"""
 
 
 def read_dmp(path: Path) -> Iterator[list[str]]:
@@ -166,18 +182,25 @@ def load(release_directory: Path, *, commit: bool) -> None:
         """)
         cur.execute("CREATE INDEX ON tmp_taxon_names (taxon_id, name, name_class)")
         cur.execute("ANALYZE tmp_taxon_names")
+        cur.execute("CREATE TEMP TABLE tmp_changed (taxon_id integer) ON COMMIT DROP")
         cur.execute("""
-            DELETE FROM taxon_name AS tn USING taxon AS t, tmp_nodes AS n
-            WHERE tn.taxon_id = t.taxon_id AND t.ncbi_taxon_id = n.ncbi_taxon_id
-            AND NOT EXISTS (
-                SELECT 1 FROM tmp_taxon_names AS dump
-                WHERE dump.taxon_id = tn.taxon_id AND dump.name = tn.name
-                AND dump.name_class = tn.name_class
+            WITH deleted AS (
+                DELETE FROM taxon_name AS tn USING taxon AS t, tmp_nodes AS n
+                WHERE tn.taxon_id = t.taxon_id AND t.ncbi_taxon_id = n.ncbi_taxon_id
+                AND NOT EXISTS (
+                    SELECT 1 FROM tmp_taxon_names AS dump
+                    WHERE dump.taxon_id = tn.taxon_id AND dump.name = tn.name
+                    AND dump.name_class = tn.name_class
+                )
+                RETURNING tn.taxon_id
             )
+            INSERT INTO tmp_changed SELECT taxon_id FROM deleted
         """)
         deleted_names = cur.rowcount
+        # The names to insert, once to note their taxa (an INSERT on `taxon_name`, which has a
+        # rule, cannot return them), then inserted.
         cur.execute("""
-            INSERT INTO taxon_name (taxon_id, name, name_class)
+            CREATE TEMP TABLE tmp_new_names ON COMMIT DROP AS
             SELECT dump.taxon_id, dump.name, dump.name_class FROM tmp_taxon_names AS dump
             WHERE NOT EXISTS (
                 SELECT 1 FROM taxon_name AS tn
@@ -185,7 +208,14 @@ def load(release_directory: Path, *, commit: bool) -> None:
                 AND tn.name_class = dump.name_class
             )
         """)
+        cur.execute("INSERT INTO tmp_changed SELECT taxon_id FROM tmp_new_names")
+        cur.execute("""
+            INSERT INTO taxon_name (taxon_id, name, name_class)
+            SELECT taxon_id, name, name_class FROM tmp_new_names
+        """)
         log(start, f"names: {deleted_names} deleted, {cur.rowcount} inserted")
+        cur.execute(SEARCH)
+        log(start, f"search: {cur.rowcount} taxa")
         for row in too_long:
             log(start, f"name skipped (> {NAME_MAX_LENGTH} characters): taxon {row[0]}, {row[3]}")
 

@@ -50,11 +50,30 @@ They take several files at once, and `--header` prints the header line of their 
 Reading is read-only:
 
 - `uv run drakkar-read publication <run_id> <pmid>`: title, abstract, note, live descriptions with their notes;
-- `uv run drakkar-read entry <accession>`: snapshots, isoforms, names, chains and peptides, sequence;
-- `uv run drakkar-read names <accession>`: the generic names used on the same strain, virus and family;
+- `uv run drakkar-read entry <accession>`: snapshots, isoforms, names, chains and peptides (the sequence: `seq`); for a secondary accession, the entry that holds it;
+- `uv run drakkar-read names <accession>`: the generic names used on the same strain, virus and family, with their interactors, those on an obsolete snapshot marked (the name stays reusable, the entry does not);
 - `uv run drakkar-read curation-names <pmid> <accession>`: the same, without the descriptions of that publication, in every run;
-- `uv run drakkar-read row <stable_id>...`: live descriptions as revision rows, to edit;
-- `drakkar.db.connect(readonly=True)` for anything else.
+- `uv run drakkar-read row <stable_id>...`: live descriptions as revision rows, to edit.
+
+The lookups read what Drakkar holds, on the current snapshots. Each takes many inputs and prints tab-separated lines under one `#` header line naming the columns, each line starting with the input it answers (`(none)` when nothing is found). A text matches as a substring, case aside, nothing else: spelling variants are given as more inputs. A taxon is an NCBI taxon ID or a name, and covers its whole subtree; a name held by several taxa is refused with their IDs. An entry whose taxon is missing from the NCBI taxonomy is under no taxon: found without `--taxon`, or by `--taxon` with its own ID.
+
+A lookup prints the first 10 lines per input (`--limit <n>`), the closest names first. When it leaves some out, a last line for that input says which are shown and out of how many, e.g. `NS1	… 1-10 of 1928 shown: --offset 10 for the next; narrow with --taxon, …, or --all`: `--offset <n>` reads on, `--all` prints them all, narrowing finds what is deep in the list.
+
+- `uv run drakkar-read methods [<text>...]`: the PSI-MI terms whose name or a synonym contains each text, detection methods (MI:0001) first, then the most used: PSI-MI ID, name (with the synonym matched), `is_detection`, live descriptions; every term without text.
+- `uv run drakkar-read search [<text>...] [--taxon <taxon>] [--human | --viral] [--reviewed]`: the entries whose `search` text (accession, gene names, taxon, protein name) contains each text, Swiss-Prot first: accession, `SP` (Swiss-Prot) or `TR` (TrEMBL), gene name, protein name, taxon, length; every entry of the taxon without text. Chains: `entry`.
+- `uv run drakkar-read taxon <text>... [--taxon <taxon>]`: the taxa one of whose names contains each text (only under that taxon, when given): NCBI ID, scientific name (with the name matched), rank, lineage up to the family.
+- `uv run drakkar-read closest <sequence>... --taxon <taxon> [--min-identity <%>]`: the entries of the taxon ranked by identity with each sequence (given as is, or as `<accession>[:<start>-<stop>]`), as the write maps a sequence on a whole entry, then Swiss-Prot first: accession, `SP` or `TR`, protein name, taxon, identity, aligned region (`1-15` on the canonical isoform, `<isoform>:1-15` on another).
+- `uv run drakkar-read seq <accession>[:<start>-<stop>]...`: the sequence of each entry or isoform, or between those coordinates (1-based, inclusive).
+- `uv run drakkar-read map <accession>[:<start>-<stop>] <sequence>...`: what the write computes for each mapping sequence (extra end residues in lowercase) on that interactor: its extra end residues, its occurrences on each isoform with their identity (on the canonical isoform, relative to the interactor's start), and `ok`, `below 90 %` or `aligns nowhere`.
+- `uv run drakkar-read used <taxon> [<generic name>...] [--exclude <pmid>]`: the viral interactors of live descriptions under the taxon, on any snapshot, without those of `--exclude`. Without generic names, one line per generic name, the most used first, with its live descriptions and its three most used interactors; with generic names (case aside), one line per interactor of each: accession, coordinates, current or obsolete snapshot, live descriptions, the most used first. On an obsolete snapshot, the generic name stays reusable, the entry does not.
+- `uv run drakkar-read sql <query>`: free SQL for what no lookup gives, on a read-only connection where each statement stops after 30 seconds: its rows as tab-separated lines under a header of column names, paged and counted as the lookups, each cell cut at 200 characters. Written from the tables of `database.md` §1.
+
+## NCBI sequences
+
+A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken from its sequence (`curation-rules.md` §3, mappings). Read-only, no database; the record used is named in the description note.
+
+- `uv run drakkar-genbank search <query>... [--limit <n>] [--offset <n>] [--all]`: the NCBI protein records of each query, in NCBI search syntax (`JFH-1 AND polyprotein`, `"Hepatitis C virus JFH-1"[Organism]`), paged and counted as the lookups: accession and version, title, length, NCBI taxon.
+- `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: a protein record: its accession and version, title, length and sequence, or the subsequence between those coordinates (1-based, inclusive); a nucleotide record (a genome): its coding sequences, one line each, with the protein accession to read with `seq`.
 
 ## Full texts
 
