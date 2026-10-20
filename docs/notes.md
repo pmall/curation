@@ -14,7 +14,7 @@ The notes are Claude's memory of its curation: from them alone, Claude can tell 
 
 Detail lines, in this order:
 
-- `Full text:` the line written by the fetch (`tools.md`), or `Full text: PDF provided by the user`.
+- `Full text:` the line printed by the fetch (`tools.md`), or `Full text: PDF provided by the user`.
 - `Strain: <strain> (<where in the publication>)`, when one strain holds for all the viral interactors; otherwise each description's `Entry` line gives it.
 - `Not read: <file> (<where cited>) — <why>`, one per supplementary file listed or cited and not read: `not relevant, <what it holds>`, or `relevant, <why it could not be read>`, which keeps the publication `selected`.
 - `Not kept: <pair or claim> (<where>) — <reason>`, one per pair the publication shows that is not a description, the reason in words.
