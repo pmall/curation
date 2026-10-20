@@ -49,3 +49,22 @@ Cases spotted with `drakkar-fetch` and `drakkar-parse` on real publications: fai
 - Europe PMC answered HTTP 500, not 404, on all three PMCIDs outside the open access files: a 500 there says nothing about the article.
 - Six of the seven closed publications are Springer, Wiley or Elsevier, each with a text and data mining API keyed to an institution; the seventh (ASM) is reachable only through its PMC copy.
 - Conversion refused 5 supplementary files: a `.pptx` (no converter), 2 image-only PDFs (no text layer) and 2 GraphPad `.pzfx` (no converter). All five hold figures or raw curves, so none of them carries an interaction.
+
+## 2026-10-20, the fetch in three steps (10 publications of the runs above)
+
+| PMID     | Fetch | Outcome                                                                                                                                         |
+| -------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 22046132 |  10 s | complete: PMC open access files, 6 supplementary `.doc` (3 `.tif` skipped)                                                                      |
+| 37480566 |   4 s | incomplete: PMC XML (NIHMS author manuscript); its 5 `.xlsx` and figures PDF in no route (Europe PMC answers 200 without an archive)            |
+| 37656811 |   5 s | complete: the PMC article page (Wiley, outside the open access files; Wiley 403)                                                                |
+| 37682346 |   4 s | complete: the PMC article page (Springer); its 4 supplementary `.tif` skipped                                                                   |
+| 37695057 |   5 s | incomplete: the PMC article page (ASM); its supplementary PDF refused by ASM (403), also through `--supplement` with its ASM URL                |
+| 37658919 |   6 s | closed: Springer page declares a paywall                                                                                                        |
+| 37673357 |   4 s | incomplete, no article: the DOI page (an Elsevier redirect) declares nothing, and no free copy has a PDF                                        |
+| 40060511 |   4 s | incomplete, no article: the PMC copy is the bioRxiv preprint (a stub, "Full Text Availability"); eLife's page is 3 KB with no article           |
+| 41279199 |     — | Europe PMC gives the bioRxiv DOI, OpenAlex the Cell Reports one: the preprint was fetched until the preprint DOI was set aside; now as 37673357 |
+| 42687756 |   4 s | incomplete, no article: Oxford University Press 403                                                                                             |
+
+- Springer Nature pages list their supplementary files (`media.springernature.com`) even behind a paywall, and serve them.
+- Publisher pages, 20 DOIs of open access articles: Nature, Springer, BMC, EMBO, Life Science Alliance and Frontiers declare free access in the page's metadata; PLOS only by the Creative Commons license of its copyright line; eLife and Elsevier (a `linkinghub` redirect) answer a page of 2 to 3 KB with no article; MDPI, Oxford University Press, PNAS, Wiley, Taylor & Francis and the Microbiology Society answer 403. No paywalled page links a Creative Commons license.
+- PMC article pages through the generic HTML conversion: tables kept, but table and figure captions lost and the back matter kept (references, declarations, footnotes: 13,293 words against 6,711 from the XML of PMC8711287). Read by their structure instead, three pages match their XML conversion: the same tables and captions, the word counts within 2 %.

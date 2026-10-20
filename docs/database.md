@@ -115,4 +115,3 @@ Checked by `uv run drakkar-check <report dir>` (`check.md` and one TSV per viola
 ## 5. Open technical questions
 
 1. The PubMed query used to fill runs.
-2. An Elsevier text-mining API key, to download Elsevier open access publications, which often fail to download?

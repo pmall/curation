@@ -2,9 +2,9 @@
 
 uv run drakkar-parse <file> <out>
 
-PMC XML, HTML and Word documents (.docx, and .doc through our own reader) become Markdown, a
-PDF its text page by page, a spreadsheet one TSV block per sheet. The converter is chosen by
-the file type; no network.
+PMC XML, HTML (a PMC article page by its structure, as its XML) and Word documents (.docx,
+and .doc through our own reader) become Markdown, a PDF its text page by page, a spreadsheet
+one TSV block per sheet. The converter is chosen by the file type; no network.
 """
 
 import argparse
@@ -218,10 +218,82 @@ def jats(path: Path) -> str:
 
 # HTML
 
+# The back matter of a PMC article page, left out as in its XML; `notes-<n>` sections too.
+PMC_PAGE_DROPPED = {"kwd-group", "ack", "fn-group", "ref-list", "associated-data", "contrib-info"}
+
+
+def _classes(el: _Element) -> set[str]:
+    return set((el.get("class") or "").split())
+
+
+def _pmc_page(children: Iterable[_Element], level: int) -> Iterator[str]:
+    """The blocks of a PMC article page, its XML rendered as HTML: sections and their titles,
+    paragraphs, lists, figure and table captions, tables, supplementary materials."""
+    for child in children:
+        tag, classes = _tag(child), _classes(child)
+        if tag == "section":
+            if classes & PMC_PAGE_DROPPED or (child.get("id") or "").startswith("notes"):
+                continue
+            if "tw" in classes:  # a table
+                head = child.find("h4")
+                caption = child.find("div[@class='caption p']")
+                label = _text(head) if head is not None else "Table."
+                yield f"**{label}** {_text(caption) if caption is not None else ''}".rstrip()
+                tables = list(child.iter("table"))
+                for table in tables:
+                    yield markdown_table(_grid(table))
+                if not tables:
+                    yield "(table given as an image)"
+                for foot in child.iterfind(".//div"):
+                    if "tw-foot" in _classes(foot):
+                        yield _text(foot)
+            elif "sm" in classes:  # a supplementary material: its caption and file
+                links = [a.get("href", "") for a in child.iter("a")]
+                names = list(dict.fromkeys(Path(h).name for h in links if "/bin/" in h))
+                caption = _text(child, {"a", "sup"})
+                files = f"(file {', '.join(names)})" if names else ""
+                yield " ".join(x for x in ("**Supplementary material.**", caption, files) if x)
+            else:
+                title = next((h for h in child if _tag(h) in ("h2", "h3", "h4", "h5")), None)
+                if title is not None and _text(title):
+                    yield "#" * min(level, 6) + " " + _text(title)
+                yield from _pmc_page(child, level + 1)
+        elif tag == "figure":
+            head = next((h for h in child if _tag(h) in ("h3", "h4")), None)
+            caption = child.find("figcaption")
+            label = _text(head) if head is not None else "Figure."
+            yield f"**{label}** {_text(caption) if caption is not None else ''}".rstrip()
+        elif tag in ("h2", "h3", "h4", "h5"):
+            continue  # a section title, given with its section
+        elif tag in ("ul", "ol"):
+            yield "\n".join(f"- {_text(item)}" for item in child.iterfind("li"))
+        elif tag == "table":
+            yield markdown_table(_grid(child))
+        elif tag in ("div", "dl") and any(
+            _tag(c) in ("p", "section", "figure", "table", "ul", "ol", "div") for c in child
+        ):
+            yield from _pmc_page(child, level)
+        elif text := _text(child):
+            yield text
+
+
+def pmc_page(doc: _Element, body: _Element) -> str:
+    title = next(doc.iter("h1"), None)
+    blocks = ["# " + _text(title)] if title is not None else []
+    blocks.extend(_pmc_page(body, 2))
+    return "\n\n".join(b for b in blocks if b) + "\n"
+
 
 def html(path: Path) -> str:
+    """A PMC article page by its structure, as its XML; any other page by its main text."""
+    raw = path.read_bytes()
+    if b"main-article-body" in raw:
+        doc = etree.fromstring(raw, etree.HTMLParser())
+        for body in doc.iter("section"):
+            if "main-article-body" in _classes(body):
+                return pmc_page(doc, body)
     text = trafilatura.extract(
-        path.read_bytes(),  # bytes: trafilatura finds the page's charset
+        raw,  # bytes: trafilatura finds the page's charset
         output_format="markdown",
         include_tables=True,
         include_comments=False,

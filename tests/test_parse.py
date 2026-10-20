@@ -150,6 +150,59 @@ def test_html(tmp_path: Path):
     assert "var x" not in text
 
 
+PMC_PAGE = """<html><body><hgroup><h1>NS1 binds <i>TRIM25</i></h1></hgroup>
+<section class="body main-article-body">
+  <section class="abstract" id="abstract1"><h2 class="pmc_sec_title">Abstract</h2>
+    <p>We show that NS1 binds TRIM25.</p></section>
+  <section id="kwd-group1" class="kwd-group"><p>influenza</p></section>
+  <section id="S1"><h2 class="pmc_sec_title">Results</h2>
+    <p>NS1 co-precipitates TRIM25 (<a href="#F1">Fig. 1</a>).</p>
+    <figure class="fig xbox font-sm" id="F1"><h3 class="obj_head">Figure 1.</h3>
+      <p class="img-box"><img src="f1.jpg"></p><figcaption><p>Co-IP. Anti-FLAG.</p></figcaption>
+    </figure>
+    <section class="tw xbox font-sm" id="T1"><h4 class="obj_head">Table 1.</h4>
+      <div class="caption p"><p>Interactions.</p></div>
+      <div class="tbl-box p"><table><thead><tr><th>Bait</th><th colspan="2">Prey</th></tr></thead>
+        <tbody><tr><td>NS1</td><td>TRIM25</td><td>Q14258</td></tr></tbody></table></div>
+      <div class="tw-foot p"><div class="fn"><p>Co-IP in HEK293T cells.</p></div></div>
+    </section>
+    <section id="S1.1"><h3 class="pmc_sec_title">Mapping</h3>
+      <ul><li>Residues 1-73 of NS1.</li></ul></section>
+  </section>
+  <section class="ack" id="ack1"><h2 class="pmc_sec_title">Acknowledgments</h2>
+    <p>Thanks.</p></section>
+  <section id="notes1"><h2 class="pmc_sec_title">Author contributions</h2><p>All.</p></section>
+  <section id="S2"><h2 class="pmc_sec_title">Supplementary Material</h2>
+    <section class="sm xbox font-sm" id="SM1"><div class="media p"><div class="caption">
+      <a href="/articles/instance/1/bin/s1.xlsx">s1.xlsx</a><sup> (12KB, xlsx) </sup>
+      <p>Table S1. Y2H screen.</p></div></div></section>
+  </section>
+  <section class="ref-list" id="ref-list1"><h2 class="pmc_sec_title">References</h2>
+    <ol><li><cite>A cited paper.</cite></li></ol></section>
+  <section class="associated-data"><p>Data.</p></section>
+</section></body></html>"""
+
+
+def test_pmc_page(tmp_path: Path):
+    """A PMC article page is read by its structure, as its XML: the same blocks, the back
+    matter left out."""
+    path = tmp_path / "a.html"
+    path.write_text(PMC_PAGE)
+    assert parse(path) == (
+        "# NS1 binds TRIM25\n\n"
+        "## Abstract\n\nWe show that NS1 binds TRIM25.\n\n"
+        "## Results\n\n"
+        "NS1 co-precipitates TRIM25 (Fig. 1).\n\n"
+        "**Figure 1.** Co-IP. Anti-FLAG.\n\n"
+        "**Table 1.** Interactions.\n\n"
+        "| Bait | Prey | Prey |\n|---|---|---|\n| NS1 | TRIM25 | Q14258 |\n\n"
+        "Co-IP in HEK293T cells.\n\n"
+        "### Mapping\n\n- Residues 1-73 of NS1.\n\n"
+        "## Supplementary Material\n\n"
+        "**Supplementary material.** Table S1. Y2H screen. (file s1.xlsx)\n"
+    )
+
+
 def test_html_charset(tmp_path: Path):
     paragraphs = "".join(
         f"<p>Prot&eacute;ine {i} : NS1 lie TRIM25, voir la figure.</p>" for i in range(30)

@@ -58,7 +58,7 @@ orchestrator (curate skill)
                       of the publications left selected to the special run
 ```
 
-- **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC, Europe PMC, NCBI, then open access copies (OpenAlex, Unpaywall, Crossref), and converts them to text. A subagent never downloads anything. When no source works, the curator can provide a PDF.
+- **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC (its open access files, Europe PMC, NCBI, the PMC article page), the publisher's page, then the free copies' PDFs (OpenAlex, Unpaywall), and converts them to text. A closed article gets no subagent; a free one no route gave is fetched once more. A subagent downloads only a missing supplementary file it needs, with `drakkar-fetch --supplement`, never the article. When no route works, the curator can provide a PDF.
 - **One subagent per publication**, with its own context: it reads the publication, decides each description by the rules and writes files. It never writes to the database.
 - **Unsettled is said, not guessed.** A description the subagent cannot settle goes to `descriptions.unsettled.tsv` with why ([`item.md`](skills/curate/item.md)); the publication stays `selected`.
 - **A dry run before the report.** `drakkar-batch` applies the merged files in one transaction, checks every invariant on the result and rolls back. Its refused rows and errors, inconsistencies between publications among them, go to the report as they are, not fixed.
