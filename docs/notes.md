@@ -1,6 +1,6 @@
 # Notes
 
-The notes are Claude's memory of its curation: from them alone, Claude can tell what it read on a publication, what it kept and left out and why, and how each description was decided, to curate it again, update it and report on it. A description note carries no date: a version is dated by its `created_at`. A publication note keeps the dated history of its passes and moves. Notes are short, a few words per line, with fixed labels so they can be searched: a report reads the headers for the states, the `Not read` lines for the relevant files missing, the `Not kept` lines for what was left out, and the description lines of a last tier (any way possible) for the values a reviewer should see. A note never holds a number the database already gives, such as the count of descriptions.
+The notes are Claude's memory of its curation: from them alone, Claude can tell what it read on a publication, what it kept and left out and why, and how each description was decided, to curate it again, update it and report on it. A description note carries no date: a version is dated by its `created_at`. A publication note keeps the dated history of its passes and moves. Notes are short, a few words per line, with fixed labels so they can be searched: a report reads the headers for the states, the `Not read` lines for the relevant files missing, the `Not kept` lines for what was left out, and the `best-effort` description lines for the values a reviewer should see. A note never holds a number the database already gives, such as the count of descriptions.
 
 ## Publication note
 
@@ -35,11 +35,11 @@ Detail lines, in this order:
 | `CORRECTED` | An in-place correction, no new version | `isoform renamed by UniProt, P01106-1 → P01106` |
 | `REMOVED` | A removal, in place on the last version; by a re-curation, its reason is in the publication note's `Not kept` line | `HLA protein`, `not found by the re-curation` |
 
-The detail lines of a `CREATED` note are written for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. Each line names the tier of the value (`curation-rules.md` §4), its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
+The detail lines of a `CREATED` note are written for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. Each line names the tier of the value by its label (`curation-rules.md` §4), its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
 
-- `Entry: <as published> (<where>) → <accession> (<strain of the entry>), tier <n>: <evidence>`; for a family or a complex, the member chosen and why.
-- `Coordinates: <start>–<stop>, tier <n>: <evidence>`, for a mature protein.
-- `Mapping: <as published> (<where>), tier <n>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept.
+- `Entry: <as published> (<where>) → <accession> (<strain of the entry>), <label>: <evidence>`; for a family or a complex, the member chosen and why.
+- `Coordinates: <start>–<stop>, <label>: <evidence>`, for a mature protein.
+- `Mapping: <as published> (<where>), <label>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept.
 - `Remark: <what was arbitrary, what stays uncertain, what would change the decision>`.
 
 ## Examples
@@ -66,6 +66,6 @@ Y2H, see table S2
 
 ```
 CREATED: anti-tag co-IP (MI:0007), Fig. 2B and 3A.
-- Entry: NS3, isolate HCV-N (Methods) → P26662 (H77), tier 4: closest by sequence, GenBank AF139594
-- Mapping: NS3 1–180 (Fig. 4, deletion mutant), tier 2: sequence from GenBank AF139594 (HCV-N)
+- Entry: NS3, isolate HCV-N (Methods) → P26662 (H77), sequence: closest to GenBank AF139594 (HCV-N)
+- Mapping: NS3 1–180 (Fig. 4, deletion mutant), coordinates: residues 1–180 of GenBank AF139594 (HCV-N)
 ```

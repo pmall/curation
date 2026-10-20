@@ -44,12 +44,12 @@ The publication is curated from its full text, whatever Drakkar holds for it: no
 
 - `uv run drakkar-read methods <text>...`: the PSI-MI ID of a method, by name or synonym, and whether it is a detection method: `methods coimmuno "two hybrid" "pull down"`. A term PSI-MI does not hold is looked for by its technique: `pull down` for a GST pull-down, `affinity` for AP-MS, `electron microscopy` for cryo-EM, `proximity labelling` for APEX, `non denaturing gel` for a native gel.
 - `uv run drakkar-read entry <accession>`: an entry's snapshots, isoforms, names, chains and peptides; a secondary accession gives the entry that holds it.
-- `uv run drakkar-read search <text>... [--taxon <taxon>] [--human | --viral] [--reviewed]` (entry tier 3): the entries of a gene or protein name, or a virus's whole proteome: `search TRIM25 DDX3X --human --reviewed`, `search "non-structural protein 4A" --taxon 3052230`, `search --taxon 3052230`. An entry whose taxon is missing from the NCBI taxonomy is found without `--taxon` only.
+- `uv run drakkar-read search <text>... [--taxon <taxon>] [--human | --viral] [--reviewed]` (entry tier `name`): the entries of a gene or protein name, or a virus's whole proteome: `search TRIM25 DDX3X --human --reviewed`, `search "non-structural protein 4A" --taxon 3052230`, `search --taxon 3052230`. An entry whose taxon is missing from the NCBI taxonomy is found without `--taxon` only.
 - `uv run drakkar-read taxon <text>...`: the taxon of a strain or a virus: `taxon JFH1 "Puerto Rico/8"`.
-- `uv run drakkar-read closest <sequence>... --taxon <taxon>` (entry tiers 4 and 6): the closest entries by sequence: `closest MSTNPKPQRKTKRNT --taxon 3052230 --min-identity 100`.
+- `uv run drakkar-read closest <sequence>... --taxon <taxon>` (entry tier `sequence`): the closest entries by sequence: `closest MSTNPKPQRKTKRNT --taxon 3052230 --min-identity 100`.
 - `uv run drakkar-read seq <accession>[:<start>-<stop>]...`: a sequence or a subsequence: `seq P26662:810-830`.
 - `uv run drakkar-read map <accession>[:<start>-<stop>] <sequence>...`: your mappings checked before writing them, as the write will align them: `map P26662:810-1026 mDREMAASCGG`.
-- `uv run drakkar-read used <taxon> [<generic name>...] --exclude <pmid>` (entry tier 5): the generic names used for a virus, and the entries most used for a virus and generic name: `used 3052230 NS3 NS5A --exclude <pmid>`.
+- `uv run drakkar-read used <taxon> [<generic name>...] --exclude <pmid>` (entry tier `virus`): the generic names used for a virus, and the entries most used for a virus and generic name: `used 3052230 NS3 NS5A --exclude <pmid>`.
 - `uv run drakkar-read curation-names <pmid> <accession>`: the generic names used on the entry's strain, virus and family.
 - `uv run drakkar-genbank search <query>...` and `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: NCBI protein records: `drakkar-genbank search "JFH-1 AND polyprotein"`, `drakkar-genbank seq BAB32872.1:2-191`; a genome accession lists its coding sequences.
 - `uv run drakkar-read sql "<query>"`: what none of them gives, read-only. The tables: `descriptions` (`stable_id`, `version`, `association_id`, `method_id`, `protein1_id`, `protein2_id`, `start2`, `stop2`, `name2`; live when `deleted_at` is null), `associations` (`id`, `run_id`, `pmid`, `state`), `proteins` (one row per snapshot: `id`, `accession`, `type` `h` or `v`, `ncbi_taxon_id`, `version`), `proteins_versions` (the current snapshots: `accession`, `version`, `reviewed`), `methods` (`id`, `psimi_id`, `name`).
@@ -67,11 +67,11 @@ The publication is curated from its full text, whatever Drakkar holds for it: no
 
 **The notes** are your memory of this curation: the next pass and the batch report know of it only what they say. Short, a few words per line, with these labels.
 
-The description note: `CREATED: <method name> (<PSI-MI ID>), <where the publication shows it>` (e.g. `anti-tag co-IP (MI:0007), Fig. 2B and 5C`), then a `- ` line for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. Each line names the tier, its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
+The description note: `CREATED: <method name> (<PSI-MI ID>), <where the publication shows it>` (e.g. `anti-tag co-IP (MI:0007), Fig. 2B and 5C`), then a `- ` line for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. Each line names the tier of the value by its label, its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
 
-- `Entry: <as published> (<where>) → <accession> (<strain of the entry>), tier <n>: <evidence>`; for a family or a complex, the member chosen and why;
-- `Coordinates: <start>–<stop>, tier <n>: <evidence>`, for a mature protein;
-- `Mapping: <as published> (<where>), tier <n>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept;
+- `Entry: <as published> (<where>) → <accession> (<strain of the entry>), <label>: <evidence>`; for a family or a complex, the member chosen and why;
+- `Coordinates: <start>–<stop>, <label>: <evidence>`, for a mature protein;
+- `Mapping: <as published> (<where>), <label>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept;
 - `Remark: <what was arbitrary, what stays uncertain, what would change the decision>`.
 
 `curation.txt`, the lines of the publication note, in this order:
@@ -90,4 +90,4 @@ Done when these files are in `<dir>/`, each written under a temporary name and r
 
 You never write to the database.
 
-Reply in a few lines, for the batch report: the state the publication earns, `curated`, or `selected` with the relevant files missing; the descriptions, with the values of a last tier (any way possible) a reviewer should see; each file you asked for with `--supplement`, found or missing; what the tools could not do (a failure, a wrong result, a query you had to write with `drakkar-read sql`), with the command.
+Reply in a few lines, for the batch report: the state the publication earns, `curated`, or `selected` with the relevant files missing; the descriptions, with the `best-effort` values a reviewer should see; each file you asked for with `--supplement`, found or missing; what the tools could not do (a failure, a wrong result, a query you had to write with `drakkar-read sql`), with the command.

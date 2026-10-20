@@ -49,7 +49,7 @@ from dotenv import load_dotenv
 from lxml import etree
 from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
 
-from drakkar.parse import ParseError, parse
+from drakkar.parse import ParseError, class_names, one_line, parse, tag_name
 
 EUROPE_PMC = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
@@ -132,10 +132,6 @@ def _json(get: Get, url: str) -> dict[str, Any] | None:
         return None
 
 
-def _one_line(text: str) -> str:
-    return " ".join(text.split())
-
-
 def _is_pdf(r: Response) -> bool:
     return r.body.startswith(b"%PDF")
 
@@ -165,17 +161,8 @@ def _zip(body: bytes) -> zipfile.ZipFile | None:
         return None
 
 
-def _localname(el: _Element) -> str:
-    # Comments and processing instructions have a function as tag.
-    return etree.QName(el).localname if isinstance(el.tag, str) else ""  # pyright: ignore[reportUnnecessaryIsInstance]
-
-
 def _text(el: _Element) -> str:
-    return _one_line(" ".join(str(t) for t in el.itertext()))
-
-
-def _has_class(el: _Element, name: str) -> bool:
-    return name in (el.get("class") or "").split()
+    return one_line(" ".join(str(t) for t in el.itertext()))
 
 
 def _safe_name(name: str, taken: set[str]) -> str:
@@ -233,7 +220,7 @@ def _same_file(name: str, url: str, text: str = "") -> bool:
     whole = rf"(?<![a-z0-9]){re.escape(stem)}(?![a-z0-9])"
     if len(stem) >= 3 and re.search(whole, unquote(url).lower()):
         return True
-    return not _extension(name) and bool(re.search(whole, _one_line(text).lower()))
+    return not _extension(name) and bool(re.search(whole, one_line(text).lower()))
 
 
 def _is_preprint(location: dict[str, Any]) -> bool:
@@ -295,7 +282,7 @@ def jats_supplements(xml: bytes) -> list[Supplement]:
         return []
 
     def caption(node: _Element) -> str:
-        return " ".join(_text(c) for c in node if _localname(c) in ("label", "caption"))
+        return " ".join(_text(c) for c in node if tag_name(c) in ("label", "caption"))
 
     for el in root.iter("{*}supplementary-material", "{*}inline-supplementary-material"):
         for node in [el, *el.iter("{*}media")]:
@@ -315,7 +302,7 @@ def pmc_page_supplements(page: bytes) -> list[Supplement]:
     if doc is None:
         return []
     for section in doc.iter("section"):
-        if not _has_class(section, "sm"):
+        if "sm" not in class_names(section):
             continue
         for a in section.iter("a"):
             href = a.get("href") or ""
@@ -353,7 +340,7 @@ def pmc_page_has_body(page: bytes) -> bool:
     if doc is None:
         return False
     for body in doc.iter("section"):
-        if not _has_class(body, "main-article-body"):
+        if "main-article-body" not in class_names(body):
             continue
         for section in body.iterchildren("section"):
             own = not section.get("class") and not (section.get("id") or "").startswith("notes")

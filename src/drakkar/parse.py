@@ -34,7 +34,7 @@ class ParseError(Exception):
     pass
 
 
-def _one_line(text: str) -> str:
+def one_line(text: str) -> str:
     return " ".join(text.split())
 
 
@@ -43,7 +43,7 @@ def markdown_table(rows: list[list[str]]) -> str:
     if not rows:
         return ""
     width = max(len(r) for r in rows)
-    cells = [[_one_line(c).replace("|", "\\|") for c in r] + [""] * (width - len(r)) for r in rows]
+    cells = [[one_line(c).replace("|", "\\|") for c in r] + [""] * (width - len(r)) for r in rows]
     lines = ["| " + " | ".join(r) + " |" for r in cells]
     lines.insert(1, "|" + "---|" * width)
     return "\n".join(lines)
@@ -83,7 +83,7 @@ DROPPED = {
 XLINK = "{http://www.w3.org/1999/xlink}href"
 
 
-def _tag(el: _Element) -> str:
+def tag_name(el: _Element) -> str:
     # Comments and processing instructions have a function as tag.
     return etree.QName(el).localname if isinstance(el.tag, str) else ""  # pyright: ignore[reportUnnecessaryIsInstance]
 
@@ -92,16 +92,16 @@ def _text(el: _Element, skip: Collection[str] = ()) -> str:
     """All the text of an element in one line, but for its children whose tag is in `skip`."""
     parts = [el.text or ""]
     for child in el:
-        tag = _tag(child)
+        tag = tag_name(child)
         if tag == "alternatives":  # one formula in several notations: the first
-            notations = [c for c in child if _tag(c)]
+            notations = [c for c in child if tag_name(c)]
             parts.append(_text(notations[0], skip) if notations else "")
         elif tag in SEPARATE and tag not in skip:
             parts.append(f" {_text(child, skip)} ")
         elif tag not in skip:
             parts.append(_text(child, skip))
         parts.append(child.tail or "")
-    return _one_line("".join(parts))
+    return one_line("".join(parts))
 
 
 def _inline(el: _Element) -> str:
@@ -115,7 +115,7 @@ def _caption(el: _Element, kind: str) -> str:
     head = _inline(label) if label is not None else kind
     text = ""
     if caption is not None:
-        text = " ".join(_text(c) for c in caption if _tag(c) in ("title", "p"))
+        text = " ".join(_text(c) for c in caption if tag_name(c) in ("title", "p"))
     return f"**{head}.** {text}".rstrip()
 
 
@@ -132,7 +132,7 @@ def _grid(table: _Element) -> list[list[str]]:
     pending: dict[tuple[int, int], str] = {}  # cells of rowspans, by (row, column)
     for r, tr in enumerate(table.iter("{*}tr")):
         row: list[str] = []
-        cells = iter([c for c in tr if _tag(c) in ("td", "th")])
+        cells = iter([c for c in tr if tag_name(c) in ("td", "th")])
         cell = next(cells, None)
         while cell is not None or (r, len(row)) in pending:
             if (r, len(row)) in pending:
@@ -152,7 +152,7 @@ def _grid(table: _Element) -> list[list[str]]:
 
 def _jats(children: Iterable[_Element], level: int) -> Iterator[str]:
     for child in children:
-        tag = _tag(child)
+        tag = tag_name(child)
         if tag in DROPPED or tag in ("label", "title", "caption"):
             continue
         if tag in ("sec", "app", "abstract", "trans-abstract", "boxed-text", "app-group"):
@@ -183,8 +183,8 @@ def _jats(children: Iterable[_Element], level: int) -> Iterator[str]:
         elif tag == "def-list":
             yield "\n".join(f"- {_text(item)}" for item in child.iter("{*}def-item"))
         elif tag == "alternatives":  # one block in several notations: the first
-            yield from _jats([c for c in child if _tag(c)][:1], level)
-        elif blocks := [c for c in child if _tag(c) in BLOCKS]:
+            yield from _jats([c for c in child if tag_name(c)][:1], level)
+        elif blocks := [c for c in child if tag_name(c) in BLOCKS]:
             if text := _inline(child):
                 yield text
             yield from _jats(blocks, level)
@@ -198,7 +198,7 @@ def jats(path: Path) -> str:
     except etree.XMLSyntaxError as e:
         raise ParseError(f"not XML: {e}") from e
     article = root.getroot()
-    if _tag(article) != "article":
+    if tag_name(article) != "article":
         article = article.find(".//{*}article")
         if article is None:
             raise ParseError("XML without an article")
@@ -208,7 +208,7 @@ def jats(path: Path) -> str:
         blocks.append("# " + _inline(title))
     meta = article.find("{*}front/{*}article-meta")
     if meta is not None:
-        blocks.extend(_jats([a for a in meta if _tag(a) in ("abstract", "trans-abstract")], 2))
+        blocks.extend(_jats([a for a in meta if tag_name(a) in ("abstract", "trans-abstract")], 2))
     for part in ("body", "back", "floats-group"):
         el = article.find(f"{{*}}{part}")
         if el is not None:
@@ -222,7 +222,7 @@ def jats(path: Path) -> str:
 PMC_PAGE_DROPPED = {"kwd-group", "ack", "fn-group", "ref-list", "associated-data", "contrib-info"}
 
 
-def _classes(el: _Element) -> set[str]:
+def class_names(el: _Element) -> set[str]:
     return set((el.get("class") or "").split())
 
 
@@ -230,7 +230,7 @@ def _pmc_page(children: Iterable[_Element], level: int) -> Iterator[str]:
     """The blocks of a PMC article page, its XML rendered as HTML: sections and their titles,
     paragraphs, lists, figure and table captions, tables, supplementary materials."""
     for child in children:
-        tag, classes = _tag(child), _classes(child)
+        tag, classes = tag_name(child), class_names(child)
         if tag == "section":
             if classes & PMC_PAGE_DROPPED or (child.get("id") or "").startswith("notes"):
                 continue
@@ -245,7 +245,7 @@ def _pmc_page(children: Iterable[_Element], level: int) -> Iterator[str]:
                 if not tables:
                     yield "(table given as an image)"
                 for foot in child.iterfind(".//div"):
-                    if "tw-foot" in _classes(foot):
+                    if "tw-foot" in class_names(foot):
                         yield _text(foot)
             elif "sm" in classes:  # a supplementary material: its caption and file
                 links = [a.get("href", "") for a in child.iter("a")]
@@ -254,12 +254,12 @@ def _pmc_page(children: Iterable[_Element], level: int) -> Iterator[str]:
                 files = f"(file {', '.join(names)})" if names else ""
                 yield " ".join(x for x in ("**Supplementary material.**", caption, files) if x)
             else:
-                title = next((h for h in child if _tag(h) in ("h2", "h3", "h4", "h5")), None)
+                title = next((h for h in child if tag_name(h) in ("h2", "h3", "h4", "h5")), None)
                 if title is not None and _text(title):
                     yield "#" * min(level, 6) + " " + _text(title)
                 yield from _pmc_page(child, level + 1)
         elif tag == "figure":
-            head = next((h for h in child if _tag(h) in ("h3", "h4")), None)
+            head = next((h for h in child if tag_name(h) in ("h3", "h4")), None)
             caption = child.find("figcaption")
             label = _text(head) if head is not None else "Figure."
             yield f"**{label}** {_text(caption) if caption is not None else ''}".rstrip()
@@ -270,7 +270,7 @@ def _pmc_page(children: Iterable[_Element], level: int) -> Iterator[str]:
         elif tag == "table":
             yield markdown_table(_grid(child))
         elif tag in ("div", "dl") and any(
-            _tag(c) in ("p", "section", "figure", "table", "ul", "ol", "div") for c in child
+            tag_name(c) in ("p", "section", "figure", "table", "ul", "ol", "div") for c in child
         ):
             yield from _pmc_page(child, level)
         elif text := _text(child):
@@ -290,7 +290,7 @@ def html(path: Path) -> str:
     if b"main-article-body" in raw:
         doc = etree.fromstring(raw, etree.HTMLParser())
         for body in doc.iter("section"):
-            if "main-article-body" in _classes(body):
+            if "main-article-body" in class_names(body):
                 return pmc_page(doc, body)
     text = trafilatura.extract(
         raw,  # bytes: trafilatura finds the page's charset
@@ -331,7 +331,7 @@ def _cell(value: Any) -> str:
         return str(int(value))
     if isinstance(value, datetime | date):
         return value.isoformat()
-    return _one_line(str(value))
+    return one_line(str(value))
 
 
 def _sheets(sheets: list[tuple[str, list[list[Any]]]]) -> str:
@@ -390,7 +390,7 @@ def word(path: Path) -> str:
         tag = etree.QName(el).localname
         if tag == "p":
             paragraph = Paragraph(cast(Any, el), document)
-            text = _one_line(paragraph.text)
+            text = one_line(paragraph.text)
             style = paragraph.style.name if paragraph.style is not None else ""
             if text and (m := re.match(r"Heading (\d)", style or "")):
                 blocks.append("#" * int(m.group(1)) + " " + text)
@@ -605,7 +605,7 @@ def doc(path: Path) -> str:
         if row:  # cells whose row end was not found: kept, never lost
             table.append((row, ()))
         blocks.append(markdown_table(_aligned(table)))
-        blocks.append(_one_line("".join(current)))
+        blocks.append(one_line("".join(current)))
         table, row, current = [], [], []
 
     fields: list[bool] = []  # open fields, True while in their code (hidden)
@@ -625,7 +625,7 @@ def doc(path: Path) -> str:
             depth = p.values.get(SPRM_DEPTH, 1 if p.values.get(SPRM_IN_TABLE) else 0)
             row_end = char != "\x0c" and p.values.get(SPRM_ROW_END) and depth <= 1
             if char == "\x07" and depth <= 1 and not row_end:
-                row.append(_one_line("".join(current)))  # the end of a cell
+                row.append(one_line("".join(current)))  # the end of a cell
                 current = []
             elif row_end:
                 table.append((row, p.edges))
