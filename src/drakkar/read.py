@@ -189,16 +189,7 @@ def entry(cur: Any, accession: str) -> str:
 
 
 def _taxon_name(cur: Any, ncbi_taxon_id: int) -> str:
-    cur.execute(
-        """
-        SELECT n.name FROM taxon AS t
-        JOIN taxon_name AS n ON n.taxon_id = t.taxon_id AND n.name_class = 'scientific name'
-        WHERE t.ncbi_taxon_id = %s
-        """,
-        (ncbi_taxon_id,),
-    )
-    row = cur.fetchone()
-    return row[0] if row else "not in the NCBI taxonomy"
+    return _taxon_names(cur, {ncbi_taxon_id}).get(ncbi_taxon_id, "not in the NCBI taxonomy")
 
 
 def _lineages(cur: Any, taxa: set[int]) -> dict[int, dict[str, tuple[int, str]]]:
@@ -343,6 +334,10 @@ class Page:
     offset: int = 0
     limit: int | None = LIMIT
 
+    def cut[T](self, items: list[T]) -> list[T]:
+        """The items of the page."""
+        return items[self.offset : None if self.limit is None else self.offset + self.limit]
+
     def lines(
         self, label: str, lines: list[str], narrow: str, total: int | None = None
     ) -> list[str]:
@@ -352,8 +347,7 @@ class Page:
         prefix = f"{label}\t" if label else ""
         if total is None:
             total = len(lines)
-            stop = None if self.limit is None else self.offset + self.limit
-            lines = lines[self.offset : stop]
+            lines = self.cut(lines)
         if not total:
             return [f"{prefix}(none)"]
         shown = [prefix + line for line in lines]
@@ -479,7 +473,7 @@ def _taxon_names(cur: Any, taxa: set[int]) -> dict[int, str]:
     return dict(cur.fetchall())
 
 
-def _lines(cur: Any, query: str, params: dict[str, Any]) -> list[tuple[Any, ...]]:
+def _fetch(cur: Any, query: str, params: dict[str, Any]) -> list[tuple[Any, ...]]:
     cur.execute(query, params)  # type: ignore[arg-type]
     return cur.fetchall()
 
@@ -548,14 +542,13 @@ def search(
           AND (v.reviewed OR NOT %(reviewed)s)
     """
     results = {
-        text: _lines(cur, query + " AND v.search ILIKE %(like)s", {**params, "like": _like(text)})
+        text: _fetch(cur, query + " AND v.search ILIKE %(like)s", {**params, "like": _like(text)})
         for text in texts
-    } or {"": _lines(cur, query, params)}
-    stop = None if page.limit is None else page.offset + page.limit
+    } or {"": _fetch(cur, query, params)}
     pages: dict[str, list[tuple[Any, ...]]] = {}
     for text, found in results.items():
         found.sort(key=lambda r: (not r[1], _rank(text, [r[2], r[3], *r[5]]), r[0]))
-        pages[text] = found[page.offset : stop]
+        pages[text] = page.cut(found)
     names = _taxon_names(cur, {r[4] for rows in pages.values() for r in rows})
 
     def line(row: tuple[Any, ...]) -> str:
@@ -585,12 +578,11 @@ def taxa(cur: Any, texts: list[str], taxon: str | None = None, page: Page = DEFA
             (_like(text),),
         )
         found[text] = [r for r in cur.fetchall() if within is None or r[0] in within]
-    stop = None if page.limit is None else page.offset + page.limit
     pages: dict[str, list[tuple[int, list[str]]]] = {}
     for text, rows in found.items():
         ranked = [(t, s.split(" | ")) for t, s in rows]
         ranked.sort(key=lambda r: _rank(text, r[1]))  # stable: NCBI ID order among equals
-        pages[text] = ranked[page.offset : stop]
+        pages[text] = page.cut(ranked)
     nodes = _ascend(cur, sorted({t for rows in pages.values() for t, _ in rows}))
 
     def line(text: str, taxon_id: int, names: list[str]) -> str:
@@ -844,7 +836,6 @@ def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
     that skips, fetches and counts on the server; a statement no cursor takes (EXPLAIN, SHOW)
     is run as is."""
     query = query.strip().rstrip(";")
-    stop = None if page.limit is None else page.offset + page.limit
     try:
         cur.execute("SAVEPOINT lookup")
         try:
@@ -857,7 +848,7 @@ def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
             columns = [c.name for c in cur.description]
             rows = cur.fetchall()
             total = len(rows)
-            rows = rows[page.offset : stop]
+            rows = page.cut(rows)
         else:
             skipped = 0
             if page.offset:
