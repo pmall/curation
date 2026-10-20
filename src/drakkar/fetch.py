@@ -1,29 +1,30 @@
-"""Download the full text of a publication, as published, with its supplementary files.
+"""Download the full text of a publication, as published, with its supplementary files, and
+convert them to text for the curation; or one file, at a URL.
 
 uv run drakkar-fetch <pmid> <dir>
-uv run drakkar-fetch --supplement <pmid> <dir> <url or file name>...
+uv run drakkar-download <url> <dir>
 
 Three steps, each a list of routes; a route answers yes or no by one test.
 1. Access: the article is free when it has a PMCID, when OpenAlex or Unpaywall list a free copy
    (never a preprint), or when the publisher's page declares free access (a Creative Commons
    license among the declarations); closed otherwise.
-2. The article, from the first route that gives it: the PMC open access files, Europe PMC
-   `fullTextXML` and NCBI `efetch` (each when its XML has a body), the PMC article page (when
-   it has the body sections), the publisher's HTML page (when it declares free access), then
-   the publisher's PDF (`citation_pdf_url`) and the other free copies' PDFs (when the file is
-   a PDF).
+2. The article, one file, from the first route that gives it: the PMC open access files,
+   Europe PMC `fullTextXML` and NCBI `efetch` (each when its XML has a body), the PMC article
+   page (when it has the body sections), the publisher's HTML page (when it declares free
+   access), then, last, the publisher's PDF (`citation_pdf_url`) and the other free copies'
+   PDFs (when the file is a PDF).
 3. The supplementary files the article lists (its XML, or the supplementary links of its
    page), each looked for on every route that serves one, whatever route gave the article: the
    PMC open access files, the link the article gives, the publisher's page, then Europe PMC's
    supplementary files service. Videos, images, the Reporting Summary and the peer review
    file are skipped.
-Nothing is converted (`drakkar-parse`). Writes `<pmid>.xml|html|pdf`, the supplementary files
-in `<pmid>.supp/`, and last the manifest `<pmid>.json`: the article, or why there is none, and
-each supplementary file found, skipped or missing, with every place tried.
+Each file is converted as `drakkar-parse` does: the article to `<pmid>.md`, a supplementary file
+to `<file>.md` beside it. Last, the manifest `manifest.json` lists the files the curation can
+use, written only when the article could be converted. Prints the report: the `Full text` line
+of the publication note, then what could not be had.
 
-`--supplement` runs step 3 on the files given, also at the URL itself when one is given,
-converts each file found to `<file>.md` beside it, and updates the manifest. It never replaces
-the article or a file already there.
+`drakkar-download` saves the file at a URL, unpacks an archive (its videos and images left
+out), converts each file, and prints one line per file: its text, or why it could not be had.
 
 Configuration, in the project's `.env`: `UNPAYWALL_EMAIL`, the address Unpaywall asks for to
 answer a request. Without it Unpaywall is not asked at all.
@@ -35,7 +36,6 @@ import json
 import mimetypes
 import os
 import re
-import sys
 import urllib.error
 import urllib.request
 import zipfile
@@ -91,6 +91,7 @@ PMC_HOSTS = ("ncbi.nlm.nih.gov", "europepmc.org")
 # Services, not copies: a failure there says nothing of where the article is blocked.
 SERVICES = (PMC_AWS, EUROPE_PMC, EFETCH)
 CAPTION_LENGTH = 200
+MANIFEST = "manifest.json"
 
 
 @dataclass
@@ -206,6 +207,48 @@ def _left_out(name: str, caption: str = "") -> str | None:
         return "reporting summary"
     if re.search(r"peer review (file|report)|transparent peer review", caption, re.I):
         return "peer review"
+    return None
+
+
+def _typed(name: str, content_type: str) -> str:
+    """A file name with the extension of its type, from the response when the name gives none."""
+    if Path(name).suffix.lower() not in SUPPLEMENT_SUFFIXES:
+        name += mimetypes.guess_extension(content_type) or ""
+    return name
+
+
+def unpacked(name: str, body: bytes, url: str) -> Iterator[tuple[str, str, bytes | str]]:
+    """A downloaded file, or each file of a zip archive: its name, its URL (`<url>#<path>` for
+    a file of an archive) and its body, or why it is left out (a video, an image)."""
+    archive = _zip(body) if name.lower().endswith(".zip") else None
+    if archive is None:
+        yield name, url, body
+        return
+    for info in archive.infolist():
+        member = Path(info.filename)
+        if info.is_dir() or "__MACOSX" in member.parts or member.name[:1] == ".":
+            continue
+        inner = f"{url}#{info.filename}"
+        if why := _left_out(member.name):
+            yield member.name, inner, why
+        else:
+            yield from unpacked(member.name, archive.read(info), inner)
+
+
+def save(folder: Path, name: str, body: bytes) -> Path:
+    """A file saved in the folder under a name no other file there has."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / _safe_name(name, {p.name for p in folder.iterdir()})
+    path.write_bytes(body)
+    return path
+
+
+def convert(source: Path, text: Path) -> str | None:
+    """A file converted to text (`drakkar-parse`); returns why it cannot be."""
+    try:
+        text.write_text(parse(source), encoding="utf-8")
+    except ParseError as e:
+        return str(e)
     return None
 
 
@@ -406,9 +449,8 @@ def supplement_links(page: bytes, base: str) -> list[Supplement]:
 class Fetch:
     def __init__(self, pmid: int, out: Path, get: Get) -> None:
         self.pmid, self.out, self.get = pmid, out, get
-        self.manifest: dict[str, Any] = {"pmid": pmid, "file": None}
+        self.report: dict[str, Any] = {"pmid": pmid, "file": None}
         self.tried: list[dict[str, str]] = []  # the routes of the article
-        self.taken: set[str] = set()
         self.record: dict[str, Any] = {}
         self.work: dict[str, Any] = {}
         self.pmcids: list[str] = []
@@ -525,17 +567,17 @@ class Fetch:
     def _save(self, body: bytes, suffix: str) -> None:
         name = f"{self.pmid}{suffix}"
         (self.out / name).write_bytes(body)
-        self.manifest["file"] = name
+        self.report["file"] = name
 
     def _from_pmc(self, pmcid: str) -> None:
         license_ = _pmc_license(self.record, self.work)
-        self.manifest.update(source=pmcid, url=f"{PMC_PAGE}/{pmcid}/", license=license_)
+        self.report.update(source=pmcid, url=f"{PMC_PAGE}/{pmcid}/", license=license_)
 
     def _from(self, url: str, location: dict[str, Any]) -> None:
         venue = cast(dict[str, Any], location.get("source") or {})
         source = venue.get("display_name") or urlparse(url).netloc
         license_ = location.get("license") or "no license given"
-        self.manifest.update(source=source, url=url, license=license_)
+        self.report.update(source=source, url=url, license=license_)
 
     def pmc_listing(self, pmcid: str) -> str | None:
         """The latest version of a PMC copy in the open access files (`PMC123.2` after
@@ -554,16 +596,9 @@ class Fetch:
         return version
 
     def pmc_files(self, pmcid: str) -> bool:
-        """The PMC open access files: their XML as `pmc_xml`, with its PDF."""
+        """The PMC open access files: their XML, as `pmc_xml`."""
         version = self.pmc_listing(pmcid)
-        if version is None or not self.pmc_xml(pmcid, f"{PMC_AWS}/{version}/{version}.xml"):
-            return False
-        if f"{version}.pdf" in self.oa_files:
-            pdf = self.get(self.oa_files[f"{version}.pdf"])
-            if pdf.status == 200 and _is_pdf(pdf):
-                (self.out / f"{self.pmid}.pdf").write_bytes(pdf.body)
-                self.manifest["pdf"] = f"{self.pmid}.pdf"
-        return True
+        return version is not None and self.pmc_xml(pmcid, f"{PMC_AWS}/{version}/{version}.xml")
 
     def pmc_xml(self, pmcid: str, url: str) -> bool:
         """A PMC XML (the open access files', Europe PMC `fullTextXML` or NCBI `efetch`), the
@@ -628,7 +663,7 @@ class Fetch:
 
     def _list(self, supplements: list[Supplement], source: str) -> None:
         self.listed = supplements
-        self.manifest["supplements_from"] = source
+        self.report["supplements_from"] = source
 
     # Step 3: the supplementary files
 
@@ -706,42 +741,28 @@ class Fetch:
             tried[-1]["outcome"] += ", an HTML page"
             return False
         name = item.name if _extension(item.name) else _url_name(url)
-        if Path(name).suffix.lower() not in SUPPLEMENT_SUFFIXES:
-            name += mimetypes.guess_extension(r.content_type) or ""
-        self._keep(item, name, r.body, url)
+        self._keep(item, _typed(name, r.content_type), r.body, url)
         return True
 
     def _keep(self, item: Supplement, name: str, body: bytes, url: str) -> None:
         """A supplementary file saved; a zip archive is unpacked, its videos and images left
         out."""
-        archive = _zip(body) if name.lower().endswith(".zip") else None
-        if archive is not None:
-            for info in archive.infolist():
-                member = Path(info.filename)
-                if info.is_dir() or "__MACOSX" in member.parts or member.name[:1] == ".":
-                    continue
-                inside = Supplement(member.name, item.caption)
-                if why := _left_out(member.name):
-                    self._skip(inside, why, f"{url}#{info.filename}")
-                else:
-                    self._keep(item, member.name, archive.read(info), f"{url}#{info.filename}")
-            return
-        folder = self.out / f"{self.pmid}.supp"
-        folder.mkdir(exist_ok=True)
-        self.taken |= {p.name for p in folder.iterdir()}
-        name = _safe_name(name, self.taken)
-        (folder / name).write_bytes(body)
-        self.manifest.setdefault("supplements", []).append(
-            {"name": item.name, "file": f"{folder.name}/{name}", "url": url}
-        )
+        for file, where, content in unpacked(name, body, url):
+            if isinstance(content, str):
+                self._skip(Supplement(file, item.caption), content, where)
+                continue
+            path = save(self.out / f"{self.pmid}.supp", file, content)
+            self.report.setdefault("supplements", []).append(
+                {"name": item.name, "file": str(path.relative_to(self.out)), "url": where}
+            )
 
     def _skip(self, item: Supplement, why: str, url: str | None = None) -> None:
         entry = {"name": item.name, "why": why}
         if url or item.url:
             entry["url"] = url or item.url or ""
-        self.manifest.setdefault("skipped_supplements", []).append(entry)
+        self.report.setdefault("skipped_supplements", []).append(entry)
 
-    # The manifest
+    # The report
 
     def _missing(self, item: Supplement, tried: list[dict[str, str]]) -> dict[str, Any]:
         entry: dict[str, Any] = {"name": item.name}
@@ -754,30 +775,28 @@ class Fetch:
 
     def conclude(self) -> None:
         """The `Full text` line of the publication note."""
-        m = self.manifest
-        missing = [x["name"] for x in m.get("missing_supplements", [])]
-        if m["file"] is None:
-            if m["free"]:
-                m["why"] = self.not_downloaded_why()
-                m["line"] = f"Full text: not downloaded — {m['why']}"
+        report = self.report
+        if report["file"] is None:
+            if report["free"]:
+                report["why"] = self.not_downloaded_why()
+                report["line"] = f"Full text: not downloaded — {report['why']}"
             else:
-                m["line"] = f"Full text: closed — {m['why']}"
+                report["line"] = f"Full text: closed — {report['why']}"
             return
-        m.pop("why", None)
-        if m["source"] in self.pmcids:
-            m["line"] = f"Full text: {m['source']} ({m['license']})"
+        report.pop("why", None)
+        if report["source"] in self.pmcids:
+            report["line"] = f"Full text: {report['source']} ({report['license']})"
         else:
-            m["line"] = f"Full text: {m['source']} ({m['license']}, {m['url']})"
-        if missing:
-            m["line"] += ", supplementary files missing: " + ", ".join(missing)
+            report["line"] = f"Full text: {report['source']} ({report['license']}, {report['url']})"
+        if missing := [x["name"] for x in report["missing_supplements"]]:
+            report["line"] += ", supplementary files missing: " + ", ".join(missing)
 
     def not_downloaded_why(self) -> str:
         """Why a free article was not downloaded: the first copy tried, outside the services
         and the preprints."""
-        tried = self.manifest.get("tried", [])
         copies = [
             t
-            for t in tried
+            for t in self.tried
             if not t["url"].startswith(SERVICES) and not t["outcome"].endswith("a preprint")
         ]
         for t in copies:
@@ -787,14 +806,33 @@ class Fetch:
             return f"a free copy at {copies[0]['url']} but no article there"
         return "free, but no copy to download"
 
-    def write(self) -> dict[str, Any]:
-        path = self.out / f"{self.pmid}.json"
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self.manifest, indent=2, ensure_ascii=False) + "\n")
-        tmp.replace(path)  # last: a manifest means the fetch is done
-        return self.manifest
+    # The manifest
 
-    # The two modes
+    def _convert(self, file: str, text: str) -> str | None:
+        return convert(self.out / file, self.out / text)
+
+    def write_manifest(self) -> None:
+        """Every file converted, then the manifest of those the curation can use, written last
+        and only when the article could be converted: a manifest means the curation can start."""
+        report = self.report
+        article = {"file": report["file"], "text": f"{self.pmid}.md"}
+        if why := self._convert(article["file"], article["text"]):
+            report["not_converted"] = why
+            return
+        supplements: list[dict[str, str]] = []
+        for x in report["supplements"]:
+            text = f"{x['file']}.md"
+            if why := self._convert(x["file"], text):
+                x["not_converted"] = why
+            else:
+                supplements.append({"name": x["name"], "file": x["file"], "text": text})
+        path = self.out / MANIFEST
+        tmp = path.with_suffix(".json.tmp")
+        manifest = {"article": article, "supplements": supplements}
+        tmp.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+        tmp.replace(path)
+
+    # The fetch
 
     def _identify(self) -> None:
         query = quote(f"EXT_ID:{self.pmid} AND SRC:MED")
@@ -810,98 +848,77 @@ class Fetch:
 
     def run(self) -> dict[str, Any]:
         self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / MANIFEST).unlink(missing_ok=True)
         self._identify()
-        m = self.manifest
-        m.update(pmcid=self.pmcids[0] if self.pmcids else None, pmcids=self.pmcids, doi=self.doi)
-        m["free"] = self.free()
-        if not m["free"]:
-            m["why"] = self.closed_why()
+        report = self.report
+        report.update(pmcid=self.pmcids[0] if self.pmcids else None, pmcids=self.pmcids)
+        report.update(doi=self.doi, free=self.free())
+        if not report["free"]:
+            report["why"] = self.closed_why()
         any(route() for route in self.article_routes())
-        m["tried"] = self.tried
-        if m["file"] is not None:
-            if "supplements_from" not in m and (page := self.html_page) is not None:
+        report["tried"] = self.tried
+        if report["file"] is not None:
+            if "supplements_from" not in report and (page := self.html_page) is not None:
                 self._list(supplement_links(page.body, page.url), "the publisher's page")
-            m.setdefault("supplements", [])
+            report.setdefault("supplements", [])
             missing = self.find(self.listed)
-            m["missing_supplements"] = [self._missing(item, tried) for item, tried in missing]
+            report["missing_supplements"] = [self._missing(item, tried) for item, tried in missing]
+            self.write_manifest()
         self.conclude()
-        return self.write()
-
-    def supplement(self, asked: list[str]) -> list[str]:
-        """Step 3 on the files the curation asks for; returns one line per file."""
-        m = self.manifest = json.loads((self.out / f"{self.pmid}.json").read_text())
-        self.pmcids = m.get("pmcids") or ([m["pmcid"]] if m.get("pmcid") else [])
-        self.doi = m.get("doi")
-        for pmcid in self.pmcids:
-            self.pmc_listing(pmcid)  # self.tried, not the manifest's: no route of the article
-        m.setdefault("supplements", [])
-        m.setdefault("missing_supplements", [])
-        listed = {x["name"]: x for x in m["missing_supplements"]}
-        lines: list[str] = []
-        for arg in asked:
-            url = arg if re.match(r"https?://", arg) else None
-            name = _url_name(arg) if url else arg
-            there = [s for s in m["supplements"] if name in (s["name"], Path(s["file"]).name)]
-            if there:
-                lines.append(f"{name}: already there, {self.out / there[0]['file']}")
-                continue
-            known = listed.get(name, {})
-            item = Supplement(name, known.get("caption", ""), url or known.get("url"))
-            kept, skipped = len(m["supplements"]), len(m.get("skipped_supplements", []))
-            others = [x for x in m["missing_supplements"] if x["name"] != name]
-            if missing := self.find([item]):
-                tried = missing[0][1]
-                m["missing_supplements"] = [*others, self._missing(item, tried) | {"asked": True}]
-                places = "; ".join(f"{t['url']} ({t['outcome']})" for t in tried)
-                lines.append(f"{name}: missing, tried {places or 'nothing: no route holds it'}")
-                continue
-            m["missing_supplements"] = others
-            for s in m["supplements"][kept:]:
-                s["asked"] = True
-                lines.append(f"{name}: found, {self.convert(s['file'])}")
-            for s in m.get("skipped_supplements", [])[skipped:]:
-                lines.append(f"{name}: skipped, {s['why']}")
-        if m["file"] is not None:
-            self.conclude()
-        self.write()
-        return lines
-
-    def convert(self, file: str) -> str:
-        source = self.out / file
-        target = source.with_name(source.name + ".md")
-        try:
-            target.write_text(parse(source), encoding="utf-8")
-        except ParseError as e:
-            return f"{source}, not converted: {e}"
-        return str(target)
+        return report
 
 
 def fetch(pmid: int, out: Path, get: Get = http_get) -> dict[str, Any]:
+    """The full text fetched and converted, its manifest written; returns the report."""
     return Fetch(pmid, out, get).run()
 
 
-def fetch_supplements(pmid: int, out: Path, asked: list[str], get: Get = http_get) -> list[str]:
-    return Fetch(pmid, out, get).supplement(asked)
+def report_lines(report: dict[str, Any]) -> list[str]:
+    """The report printed: the `Full text` line, then what could not be had."""
+    lines = [report["line"]]
+    if report["file"] is None:
+        lines += [f"  tried {t['url']} ({t['outcome']})" for t in report["tried"]]
+    elif why := report.get("not_converted"):
+        lines.append(f"  {report['file']}: not converted, {why}")
+    for x in report.get("supplements", []):
+        if why := x.get("not_converted"):
+            lines.append(f"  {x['name']}: not converted, {why}")
+    for x in report.get("missing_supplements", []):
+        places = "; ".join(f"{t['url']} ({t['outcome']})" for t in x["tried"])
+        lines.append(f"  {x['name']}: missing, tried {places or 'nothing: no route holds it'}")
+    return lines
+
+
+def download(url: str, out: Path, get: Get = http_get) -> list[str]:
+    """The file at a URL saved in `out`, an archive unpacked, each file converted to `<file>.md`
+    beside it; returns one line per file: its text, or why it could not be had."""
+    r = get(url)
+    if r.status != 200:
+        return [f"{url}: {_outcome(r)}"]
+    name = _typed(_url_name(r.url or url) or "file", r.content_type)
+    lines: list[str] = []
+    for file, where, content in unpacked(name, r.body, r.url or url):
+        if isinstance(content, str):
+            lines.append(f"{where}: skipped, {content}")
+            continue
+        path = save(out, file, content)
+        text = path.with_name(path.name + ".md")
+        why = convert(path, text)
+        lines.append(f"{path}: not converted, {why}" if why else str(text))
+    return lines
+
+
+def download_main() -> None:
+    parser = argparse.ArgumentParser(description="Download a file and convert it to text.")
+    parser.add_argument("url")
+    parser.add_argument("dir", type=Path)
+    args = parser.parse_args()
+    print("\n".join(download(args.url, args.dir)))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download the full text of a publication.")
-    parser.add_argument(
-        "--supplement",
-        action="store_true",
-        help="look for the supplementary files given, for a publication already fetched",
-    )
     parser.add_argument("pmid", type=int)
     parser.add_argument("dir", type=Path)
-    parser.add_argument("files", nargs="*", help="with --supplement: URLs or file names")
     args = parser.parse_args()
-    if args.supplement:
-        if not args.files:
-            parser.error("--supplement needs at least one URL or file name")
-        if not (args.dir / f"{args.pmid}.json").exists():
-            sys.exit(f"{args.dir}: no manifest, fetch the publication first")
-        print("\n".join(fetch_supplements(args.pmid, args.dir, args.files)))
-    else:
-        if args.files:
-            parser.error("files are given only with --supplement")
-        print(fetch(args.pmid, args.dir)["line"])
+    print("\n".join(report_lines(fetch(args.pmid, args.dir))))

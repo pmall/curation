@@ -31,7 +31,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 
 | Purpose | Commands | What they do |
 | -- | -- | -- |
-| Full texts | `drakkar-fetch`, `drakkar-parse` | Download a full text with its supplementary files and a manifest; convert XML, HTML, PDF, Word, spreadsheets. |
+| Full texts | `drakkar-fetch`, `drakkar-download`, `drakkar-parse` | Download a full text with its supplementary files, convert them, and list them in a manifest; download and convert one file at a URL; convert a file (XML, HTML, PDF, Word, spreadsheets). |
 | Reading | `drakkar-read`, `drakkar-genbank` | A publication, a UniProt entry, the generic names in use, live descriptions as revision rows; lookups of methods, entries, taxa, sequences and mappings; free read-only SQL; NCBI protein sequences. |
 | Re-curation | `drakkar-diff` | A re-curated publication's descriptions against its live ones, as files to add, revise and remove. |
 | Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-move`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; a whole batch in one transaction. |
@@ -47,7 +47,7 @@ A batch is the curation of at most 20 publications, orchestrated by the [`curate
 ```
 orchestrator (curate skill)
   1. publications   from the prompt, or the next ones of the oldest vh run
-  2. full texts     drakkar-fetch, drakkar-parse     ── no subagent yet; the orchestrator never reads them
+  2. full texts     drakkar-fetch, unless ready      ── no subagent yet; the orchestrator never reads them
   3. curate         one curator agent per publication (curator.md)
                       reads the converted full text and the UniProt entries
                       writes its descriptions and curation notes
@@ -59,7 +59,7 @@ orchestrator (curate skill)
                       of the publications left selected to the special run
 ```
 
-- **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC (its open access files, Europe PMC, NCBI, the PMC article page), the publisher's page, then the free copies' PDFs (OpenAlex, Unpaywall), and converts them to text. A publication without the article is fetched once more, and still without it gets no subagent. A subagent downloads a missing supplementary file it needs with `drakkar-fetch --supplement`, and any file it needs to identify an interactor, its coordinates or a mapping (a sequence, an entry, a taxon) from a public database, never the article. When no route works, the curator can provide a PDF.
+- **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC (its open access files, Europe PMC, NCBI, the PMC article page), the publisher's page, then the free copies' PDFs (OpenAlex, Unpaywall), and converts them to text. A publication without the article is fetched once more, and still without it gets no subagent. A subagent downloads a missing supplementary file it needs from the URL the text gives (`drakkar-download`), and any file it needs to identify an interactor, its coordinates or a mapping (a sequence, an entry, a taxon) from a public database, never the article. When no route works, the user can provide the files: they are set up as the fetch does, with their manifest.
 - **One subagent per publication**, the `curator` agent, with its own context and only the shell and the file tools: it reads the publication, decides each description by the rules and writes files. It never writes to the database.
 - **Every description is written.** Each value comes from the first tier that gives it, from the most direct to the most inferred, and the description note names the tier (by its label) and the evidence of each value that is not obvious ([`docs/curation-rules.md` §4](docs/curation-rules.md#4-how-each-value-is-identified)); a publication stays `selected` only for a relevant file the subagent could not get.
 - **A dry run before the report.** `drakkar-batch` applies the merged files in one transaction, checks every invariant on the result and rolls back. Its refused rows and errors, inconsistencies between publications among them, go to the report as they are, not fixed.

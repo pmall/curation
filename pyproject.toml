@@ -27,6 +27,7 @@ drakkar-move = "drakkar.files:move_main"
 drakkar-batch = "drakkar.files:batch_main"
 drakkar-read = "drakkar.read:main"
 drakkar-fetch = "drakkar.fetch:main"
+drakkar-download = "drakkar.fetch:download_main"
 drakkar-parse = "drakkar.parse:main"
 drakkar-genbank = "drakkar.genbank:main"
 

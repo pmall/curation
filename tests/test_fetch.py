@@ -1,4 +1,4 @@
-"""The routes of drakkar-fetch, its manifest and `--supplement`, the downloads simulated (no
+"""The routes of drakkar-fetch, its report and its report, the downloads simulated (no
 network). The pages in `samples/fetch/` are real responses cut to what the routes read."""
 
 import io
@@ -17,9 +17,10 @@ from drakkar.fetch import (
     PMC_PAGE,
     UNPAYWALL,
     Response,
+    download,
     fetch,
-    fetch_supplements,
     pmcids,
+    report_lines,
 )
 
 SAMPLES = Path(__file__).parent / "samples" / "fetch"
@@ -85,9 +86,7 @@ class Server:
 
 def run(tmp_path: Path, responses: dict[str, Response]) -> tuple[dict[str, Any], Server]:
     server = Server(responses)
-    manifest = fetch(PMID, tmp_path, server)
-    assert json.loads((tmp_path / f"{PMID}.json").read_text()) == manifest
-    return manifest, server
+    return fetch(PMID, tmp_path, server), server
 
 
 def location(url: str, pdf: str | None = None, name: str = "J Virol") -> dict[str, Any]:
@@ -100,16 +99,18 @@ def location(url: str, pdf: str | None = None, name: str = "J Virol") -> dict[st
     }
 
 
-def outcomes(manifest: dict[str, Any]) -> dict[str, str]:
-    return {t["url"]: t["outcome"] for t in manifest["tried"]}
+def outcomes(report: dict[str, Any]) -> dict[str, str]:
+    return {t["url"]: t["outcome"] for t in report["tried"]}
 
 
 # Step 2: the article
 
 
 def test_pmc_open_access_files(tmp_path: Path):
-    """The article and its PDF; videos, images and the Reporting Summary skipped, never asked."""
-    manifest, server = run(
+    """The article, its XML alone; videos, images and the Reporting Summary skipped, never
+    asked. Each file converted, the manifest listing those the curation can use: not a file
+    that cannot be converted, which the report gives with why."""
+    report, server = run(
         tmp_path,
         {
             SEARCH: found(license="cc by"),
@@ -124,17 +125,31 @@ def test_pmc_open_access_files(tmp_path: Path):
                 "PMC9.2/s2.pdf",
             ),  # fmt: skip
             f"{PMC_AWS}/PMC9.2/PMC9.2.xml": ok(XML),
-            f"{PMC_AWS}/PMC9.2/PMC9.2.pdf": ok(b"%PDF-1.7"),
             f"{PMC_AWS}/PMC9.2/s1.xlsx": ok(b"cells"),
         },
     )
-    assert manifest["line"] == "Full text: PMC9 (cc by)"
-    assert manifest["missing_supplements"] == []
-    assert (manifest["file"], manifest["pdf"]) == (f"{PMID}.xml", f"{PMID}.pdf")
-    assert manifest["supplements"] == [
-        {"name": "s1.xlsx", "file": f"{PMID}.supp/s1.xlsx", "url": f"{PMC_AWS}/PMC9.2/s1.xlsx"}
+    assert report["line"] == "Full text: PMC9 (cc by)"
+    assert report["missing_supplements"] == []
+    assert report["file"] == f"{PMID}.xml"
+    assert not (tmp_path / f"{PMID}.pdf").exists()
+    assert (tmp_path / f"{PMID}.md").read_text().startswith("Text\n")
+    assert report["supplements"] == [
+        {
+            "name": "s1.xlsx",
+            "file": f"{PMID}.supp/s1.xlsx",
+            "url": f"{PMC_AWS}/PMC9.2/s1.xlsx",
+            "not_converted": "cannot be read: BadZipFile: File is not a zip file",
+        }
     ]
-    assert [s["why"] for s in manifest["skipped_supplements"]] == [
+    assert json.loads((tmp_path / "manifest.json").read_text()) == {
+        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md"},
+        "supplements": [],
+    }
+    assert report_lines(report) == [
+        "Full text: PMC9 (cc by)",
+        "  s1.xlsx: not converted, cannot be read: BadZipFile: File is not a zip file",
+    ]
+    assert [s["why"] for s in report["skipped_supplements"]] == [
         "video",
         "image",
         "reporting summary",
@@ -153,7 +168,7 @@ def test_supplement_archive_is_unpacked(tmp_path: Path):
         b'<article xmlns:xlink="http://www.w3.org/1999/xlink"><body>'
         b'<supplementary-material xlink:href="s.zip"/></body></article>'
     )
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             SEARCH: found(),
@@ -163,10 +178,10 @@ def test_supplement_archive_is_unpacked(tmp_path: Path):
             f"{PMC_AWS}/PMC9.1/s.zip": ok(archive.getvalue()),
         },
     )
-    assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
+    assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
     assert (tmp_path / f"{PMID}.supp" / "s1.xlsx").read_text() == "cells"
-    assert [s["why"] for s in manifest["skipped_supplements"]] == ["video"]
-    assert manifest["missing_supplements"] == []
+    assert [s["why"] for s in report["skipped_supplements"]] == ["video"]
+    assert report["missing_supplements"] == []
 
 
 def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
@@ -175,7 +190,7 @@ def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as z:
         z.writestr("s1.xlsx", "cells")
-    manifest, server = run(
+    report, server = run(
         tmp_path,
         {
             SEARCH: found(),
@@ -187,13 +202,12 @@ def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
             f"{EUROPE_PMC}/PMC9/supplementaryFiles": ok(archive.getvalue(), "application/zip"),
         },
     )
-    assert manifest["file"] == f"{PMID}.xml"
-    assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
+    assert report["file"] == f"{PMID}.xml"
+    assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
     assert (
-        manifest["line"]
-        == "Full text: PMC9 (no license given), supplementary files missing: s3.pdf"
+        report["line"] == "Full text: PMC9 (no license given), supplementary files missing: s3.pdf"
     )
-    [missing] = manifest["missing_supplements"]
+    [missing] = report["missing_supplements"]
     assert missing["name"] == "s3.pdf" and missing["caption"] == "Table S3"
     assert [t["url"] for t in missing["tried"]] == [f"{EUROPE_PMC}/PMC9/supplementaryFiles"]
     assert server.asked.count(f"{EUROPE_PMC}/PMC9/supplementaryFiles") == 1
@@ -202,7 +216,7 @@ def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
 def test_pmc_page_when_no_xml_has_a_body(tmp_path: Path):
     """`efetch` gives the front matter alone; the PMC article page holds the article. Its
     supplementary file, behind a challenge on PMC's website, is looked for elsewhere."""
-    manifest, server = run(
+    report, server = run(
         tmp_path,
         {
             SEARCH: found("PMC10537728", doi=DOI),
@@ -214,10 +228,10 @@ def test_pmc_page_when_no_xml_has_a_body(tmp_path: Path):
             PUBLISHER: Response(PUBLISHER, 403, "", b""),
         },
     )
-    assert (manifest["file"], manifest["source"]) == (f"{PMID}.html", "PMC10537728")
-    assert manifest["supplements_from"] == "the PMC article page"
-    assert outcomes(manifest)[f"{EFETCH}?db=pmc&id=PMC10537728&rettype=xml"] == "HTTP 200, no body"
-    [missing] = manifest["missing_supplements"]
+    assert (report["file"], report["source"]) == (f"{PMID}.html", "PMC10537728")
+    assert report["supplements_from"] == "the PMC article page"
+    assert outcomes(report)[f"{EFETCH}?db=pmc&id=PMC10537728&rettype=xml"] == "HTTP 200, no body"
+    [missing] = report["missing_supplements"]
     assert missing["name"] == "jvi.00040-23-s0001.pdf"
     assert missing["tried"][-1]["url"] == f"{EUROPE_PMC}/PMC10537728/supplementaryFiles"
     assert not any("/bin/" in u for u in server.asked)
@@ -230,13 +244,13 @@ def test_pmc_page_without_body_sections_is_no_article(tmp_path: Path):
         b'<p>Abstract.</p></section><section id="notes1"><p>Note.</p></section></section>'
         b"</body></html>"
     )
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {SEARCH: found(), WORK: json_ok({}), f"{PMC_PAGE}/PMC9/": ok(abstract_only, "text/html")},
     )
-    assert manifest["file"] is None
-    assert outcomes(manifest)[f"{PMC_PAGE}/PMC9/"] == "HTTP 200, no body sections"
-    assert manifest["free"] is True
+    assert report["file"] is None
+    assert outcomes(report)[f"{PMC_PAGE}/PMC9/"] == "HTTP 200, no body sections"
+    assert report["free"] is True
 
 
 def test_pmcid_known_only_to_openalex():
@@ -254,7 +268,7 @@ def test_pmcid_known_only_to_openalex():
 def test_publisher_page_declaring_free_access(tmp_path: Path):
     url = "https://www.nature.com/articles/s41467-020-19808-4"
     media = "https://media.springernature.com/original/springer-static/esm/art%3A10.1038%2Fs41467-020-19808-4/MediaObjects/41467_2020_19808_"
-    manifest, server = run(
+    report, server = run(
         tmp_path,
         {
             SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}),
@@ -267,20 +281,20 @@ def test_publisher_page_declaring_free_access(tmp_path: Path):
             f"{media}MOESM4_ESM.xlsx": ok(b"cells"),
         },
     )
-    assert manifest["file"] == f"{PMID}.html"
-    assert manifest["line"] == f"Full text: Nat Commun (cc-by, {url})"
-    assert outcomes(manifest)[PUBLISHER] == "HTTP 200, declares free access"
-    assert [s["name"] for s in manifest["supplements"]] == [
+    assert report["file"] == f"{PMID}.html"
+    assert report["line"] == f"Full text: Nat Commun (cc-by, {url})"
+    assert outcomes(report)[PUBLISHER] == "HTTP 200, declares free access"
+    assert [s["name"] for s in report["supplements"]] == [
         "41467_2020_19808_MOESM1_ESM.pdf",
         "41467_2020_19808_MOESM4_ESM.xlsx",
     ]
-    assert [s["why"] for s in manifest["skipped_supplements"]] == [
+    assert [s["why"] for s in report["skipped_supplements"]] == [
         "peer review",
         "reporting summary",
     ]
     assert f"{media}MOESM2_ESM.pdf" not in server.asked
     assert f"{media}MOESM3_ESM.pdf" not in server.asked
-    assert manifest["missing_supplements"] == []
+    assert report["missing_supplements"] == []
 
 
 def test_page_declaring_a_creative_commons_license(tmp_path: Path):
@@ -288,7 +302,7 @@ def test_page_declaring_a_creative_commons_license(tmp_path: Path):
     supplementary links name no file type, the type comes with the download."""
     url = "https://journals.plos.org/plospathogens/article?id=10.1371/journal.ppat.1009743"
     file = "https://journals.plos.org/plospathogens/article/file?type=supplementary&id=10.1371/journal.ppat.1009743"
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}),
@@ -300,13 +314,13 @@ def test_page_declaring_a_creative_commons_license(tmp_path: Path):
             ),
         },
     )
-    assert outcomes(manifest)[PUBLISHER] == "HTTP 200, declares free access"
-    assert manifest["file"] == f"{PMID}.html"
-    assert [s["file"] for s in manifest["supplements"]] == [
+    assert outcomes(report)[PUBLISHER] == "HTTP 200, declares free access"
+    assert report["file"] == f"{PMID}.html"
+    assert [s["file"] for s in report["supplements"]] == [
         f"{PMID}.supp/journal.ppat.1009743.s005.xlsx"
     ]
-    assert [s["why"] for s in manifest["skipped_supplements"]] == ["image"]
-    assert [x["name"] for x in manifest["missing_supplements"]] == [
+    assert [s["why"] for s in report["skipped_supplements"]] == ["image"]
+    assert [x["name"] for x in report["missing_supplements"]] == [
         f"journal.ppat.1009743.s00{n}" for n in (2, 3, 4, 6, 7)
     ]
 
@@ -317,7 +331,7 @@ def test_paywalled_page_is_no_article_but_lists_the_files(tmp_path: Path):
     pdf = "https://link.springer.com/content/pdf/10.1007/s10495-023-01883-9.pdf"
     docx = "https://media.springernature.com/original/springer-static/esm/art%3A10.1007%2Fs10495-023-01883-9/MediaObjects/10495_2023_1883_MOESM1_ESM.docx"
     repository = location("https://repo.org/record/1", "https://repo.org/record/1.pdf", "Repo")
-    manifest, server = run(
+    report, server = run(
         tmp_path,
         {
             SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}),
@@ -328,14 +342,14 @@ def test_paywalled_page_is_no_article_but_lists_the_files(tmp_path: Path):
             docx: ok(b"PK\x03\x04", "application/octet-stream"),
         },
     )
-    assert outcomes(manifest)[PUBLISHER] == "HTTP 200, declares a paywall"
-    assert (manifest["file"], manifest["source"]) == (f"{PMID}.pdf", "Repo")
+    assert outcomes(report)[PUBLISHER] == "HTTP 200, declares a paywall"
+    assert (report["file"], report["source"]) == (f"{PMID}.pdf", "Repo")
     assert server.asked.index(pdf) < server.asked.index("https://repo.org/record/1.pdf")
-    assert manifest["supplements_from"] == "the publisher's page"
-    assert [s["file"] for s in manifest["supplements"]] == [
+    assert report["supplements_from"] == "the publisher's page"
+    assert [s["file"] for s in report["supplements"]] == [
         f"{PMID}.supp/10495_2023_1883_MOESM1_ESM.docx"
     ]
-    assert manifest["missing_supplements"] == []
+    assert report["missing_supplements"] == []
 
 
 def test_plos_link_names_the_file_without_its_extension(tmp_path: Path):
@@ -346,7 +360,7 @@ def test_plos_link_names_the_file_without_its_extension(tmp_path: Path):
     )
     link = "https://journals.plos.org/plospathogens/article/file?type=supplementary&id=10.1371/journal.ppat.1002331.s004"
     article_page = f'<html><body><a href="{link}">Table S4</a></body></html>'.encode()
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             SEARCH: found(doi=DOI),
@@ -357,8 +371,8 @@ def test_plos_link_names_the_file_without_its_extension(tmp_path: Path):
             link: ok(b"\xd0\xcf\x11\xe0", "application/msword"),
         },
     )
-    assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/ppat.1002331.s004.doc"]
-    assert manifest["missing_supplements"] == []
+    assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/ppat.1002331.s004.doc"]
+    assert report["missing_supplements"] == []
 
 
 def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
@@ -368,7 +382,7 @@ def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
     )
     free = '<meta name="citation_fulltext_world_readable" content="">'
     html = f"<html><head>{free}</head><body><p>Text</p>{links}</body></html>".encode()
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             WORK: json_ok({"doi": PUBLISHER}),
@@ -377,16 +391,16 @@ def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
             "https://journal.org/file?type=supplementary&id=s2": ok(b"II*", "image/tiff"),
         },
     )
-    assert manifest["file"] == f"{PMID}.html"
-    assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/s1.doc"]
-    assert [s["why"] for s in manifest["skipped_supplements"]] == ["image"]
+    assert report["file"] == f"{PMID}.html"
+    assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.doc"]
+    assert [s["why"] for s in report["skipped_supplements"]] == ["image"]
 
 
 # Step 1: access, and the outcome without an article
 
 
 def test_closed(tmp_path: Path):
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}),
@@ -394,19 +408,62 @@ def test_closed(tmp_path: Path):
             PUBLISHER: page("springer-paywall.html"),
         },
     )
-    assert (manifest["free"], manifest["file"]) == (False, None)
-    assert manifest["line"] == "Full text: closed — not open access anywhere"
+    assert (report["free"], report["file"]) == (False, None)
+    assert report["line"] == "Full text: closed — not open access anywhere"
+    assert not (tmp_path / "manifest.json").exists()
+    assert report_lines(report)[1] == f"  tried {PUBLISHER} (HTTP 200, declares a paywall)"
+
+
+def test_manifest_lists_the_converted_files(tmp_path: Path):
+    xml = (
+        b'<article xmlns:xlink="http://www.w3.org/1999/xlink"><body><p>Text</p>'
+        b'<supplementary-material xlink:href="s1.csv"/></body></article>'
+    )
+    responses = {
+        SEARCH: found(),
+        WORK: json_ok({}),
+        f"{PMC_AWS}/?list-type=2&prefix=PMC9.": listing("PMC9.1/PMC9.1.xml", "PMC9.1/s1.csv"),
+        f"{PMC_AWS}/PMC9.1/PMC9.1.xml": ok(xml),
+        f"{PMC_AWS}/PMC9.1/s1.csv": ok(b"a,b\n1,2\n", "text/csv"),
+    }
+    report, _ = run(tmp_path, responses)
+    assert json.loads((tmp_path / "manifest.json").read_text()) == {
+        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md"},
+        "supplements": [
+            {"name": "s1.csv", "file": f"{PMID}.supp/s1.csv", "text": f"{PMID}.supp/s1.csv.md"}
+        ],
+    }
+    assert (tmp_path / f"{PMID}.supp" / "s1.csv.md").read_text() == "a,b\n1,2\n"
+    assert report_lines(report) == ["Full text: PMC9 (no license given)"]
+
+
+def test_no_manifest_when_the_article_cannot_be_converted(tmp_path: Path):
+    """A scanned or damaged PDF: the curation cannot start; a manifest left by an earlier fetch
+    is removed."""
+    (tmp_path / "manifest.json").write_text("{}")
+    pdf = "https://repo.org/record/1.pdf"
+    report, _ = run(
+        tmp_path,
+        {
+            SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}),
+            WORK: json_ok({"locations": [location("https://repo.org/record/1", pdf, "Repo")]}),
+            pdf: ok(b"%PDF-1.7 damaged", "application/pdf"),
+        },
+    )
+    assert report["file"] == f"{PMID}.pdf"
+    assert not (tmp_path / "manifest.json").exists()
+    assert report_lines(report)[1].startswith(f"  {PMID}.pdf: not converted, ")
 
 
 def test_preprint_is_never_fetched(tmp_path: Path):
     preprint = location("https://doi.org/10.1101/y", "https://www.biorxiv.org/y.pdf", "bioRxiv")
-    manifest, server = run(tmp_path, {WORK: json_ok({"locations": [preprint]})})
-    assert manifest["line"] == "Full text: closed — open access only as a preprint"
+    report, server = run(tmp_path, {WORK: json_ok({"locations": [preprint]})})
+    assert report["line"] == "Full text: closed — open access only as a preprint"
     assert not any("10.1101" in url or "biorxiv" in url for url in server.asked)
 
 
 def test_free_but_blocked(tmp_path: Path):
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             WORK: json_ok(
@@ -416,29 +473,29 @@ def test_free_but_blocked(tmp_path: Path):
             PUBLISHER + ".pdf": Response(PUBLISHER + ".pdf", 403, "", b""),
         },
     )
-    assert (manifest["free"], manifest["file"]) == (True, None)
-    assert manifest["line"] == (
+    assert (report["free"], report["file"]) == (True, None)
+    assert report["line"] == (
         f"Full text: not downloaded — a free copy at {PUBLISHER} but download blocked (HTTP 403)"
     )
 
 
 def test_page_declaring_free_access_makes_the_article_free(tmp_path: Path):
     """Neither a PMCID nor a free copy listed: the publisher's page decides."""
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             WORK: json_ok({"doi": PUBLISHER}),
             PUBLISHER: page("nature-free.html", "https://www.nature.com/articles/x"),
         },
     )
-    assert manifest["free"] is True and manifest["file"] == f"{PMID}.html"
+    assert report["free"] is True and report["file"] == f"{PMID}.html"
 
 
 def test_copy_from_unpaywall_when_an_address_is_configured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("UNPAYWALL_EMAIL", "curator@example.org")
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}),
@@ -458,102 +515,33 @@ def test_copy_from_unpaywall_when_an_address_is_configured(
             "https://repo.org/record/1.pdf": ok(b"%PDF-1.7", "application/pdf"),
         },
     )
-    assert manifest["line"] == "Full text: Repo (cc-by, https://repo.org/record/1.pdf)"
-    assert manifest["file"] == f"{PMID}.pdf"
+    assert report["line"] == "Full text: Repo (cc-by, https://repo.org/record/1.pdf)"
+    assert report["file"] == f"{PMID}.pdf"
 
 
 def test_unpaywall_is_not_asked_without_an_address(tmp_path: Path):
-    manifest, server = run(
+    report, server = run(
         tmp_path, {SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}), WORK: json_ok({})}
     )
     assert not any(url.startswith(UNPAYWALL) for url in server.asked)
-    assert (manifest["free"], manifest["file"]) == (False, None)
+    assert (report["free"], report["file"]) == (False, None)
 
 
 def test_error_page_sent_as_success(tmp_path: Path):
-    manifest, _ = run(tmp_path, {SEARCH: ok(b"<html>Service unavailable</html>", "text/html")})
-    assert manifest["line"] == "Full text: closed — not open access anywhere"
-
-
-# --supplement
-
-
-def fetched_with_a_missing_file(tmp_path: Path) -> dict[str, Response]:
-    responses = {
-        SEARCH: found(doi=DOI),
-        WORK: json_ok({}),
-        f"{PMC_AWS}/?list-type=2&prefix=PMC9.": listing("PMC9.1/PMC9.1.xml", "PMC9.1/s1.xlsx"),
-        f"{PMC_AWS}/PMC9.1/PMC9.1.xml": ok(
-            XML.replace(b"s2.pdf", b"s3.csv").replace(b"Reporting Summary", b"Table S3")
-        ),
-        f"{PMC_AWS}/PMC9.1/s1.xlsx": ok(b"cells"),
-    }
-    manifest, _ = run(tmp_path, responses)
-    assert [x["name"] for x in manifest["missing_supplements"]] == ["s3.csv"]
-    return responses
-
-
-def test_supplement_found_at_a_url(tmp_path: Path):
-    responses = fetched_with_a_missing_file(tmp_path)
-    url = "https://data.org/files/s3.csv"
-    responses[url] = ok(b"a,b\n1,2\n", "text/csv")
-    lines = fetch_supplements(PMID, tmp_path, [url], Server(responses))
-    converted = tmp_path / f"{PMID}.supp" / "s3.csv.md"
-    assert lines == [f"s3.csv: found, {converted}"]
-    assert converted.read_text() == "a,b\n1,2\n"
-    manifest = json.loads((tmp_path / f"{PMID}.json").read_text())
-    assert manifest["supplements"][-1] == {
-        "name": "s3.csv",
-        "file": f"{PMID}.supp/s3.csv",
-        "url": url,
-        "asked": True,
-    }
-    assert manifest["missing_supplements"] == []
-    assert manifest["line"] == "Full text: PMC9 (no license given)"
-    assert (tmp_path / f"{PMID}.xml").read_bytes().startswith(b"<article")
-
-
-def test_supplement_by_its_label_on_the_publisher_page(tmp_path: Path):
-    responses = fetched_with_a_missing_file(tmp_path)
-    responses[PUBLISHER] = ok(
-        b'<html><body><a href="/suppl/t3.csv">Supplementary Table S3</a></body></html>',
-        "text/html",
-        "https://journal.org/a",
-    )
-    responses["https://journal.org/suppl/t3.csv"] = ok(b"x\n", "text/csv")
-    lines = fetch_supplements(PMID, tmp_path, ["Table S3", "Table S30"], Server(responses))
-    assert lines[0] == f"Table S3: found, {tmp_path / f'{PMID}.supp' / 't3.csv.md'}"
-    assert lines[1].startswith("Table S30: missing, tried ")
-    manifest = json.loads((tmp_path / f"{PMID}.json").read_text())
-    assert [x["name"] for x in manifest["missing_supplements"]] == ["s3.csv", "Table S30"]
-    assert manifest["missing_supplements"][-1]["asked"] is True
-
-
-def test_supplement_still_missing_and_already_there(tmp_path: Path):
-    responses = fetched_with_a_missing_file(tmp_path)
-    lines = fetch_supplements(PMID, tmp_path, ["s3.csv", "s1.xlsx"], Server(responses))
-    assert lines[0] == (
-        f"s3.csv: missing, tried {EUROPE_PMC}/PMC9/supplementaryFiles (HTTP 404, no archive)"
-    )
-    assert lines[1] == f"s1.xlsx: already there, {tmp_path / f'{PMID}.supp' / 's1.xlsx'}"
-    manifest = json.loads((tmp_path / f"{PMID}.json").read_text())
-    assert [s["name"] for s in manifest["supplements"]] == ["s1.xlsx"]
-    assert (
-        manifest["line"]
-        == "Full text: PMC9 (no license given), supplementary files missing: s3.csv"
-    )
+    report, _ = run(tmp_path, {SEARCH: ok(b"<html>Service unavailable</html>", "text/html")})
+    assert report["line"] == "Full text: closed — not open access anywhere"
 
 
 def test_preprint_doi_is_never_the_articles(tmp_path: Path):
     """Europe PMC may give the preprint's DOI; OpenAlex the article's."""
-    manifest, server = run(
+    report, server = run(
         tmp_path,
         {
             SEARCH: json_ok({"resultList": {"result": [{"doi": "10.1101/y"}]}}),
             WORK: json_ok({"doi": PUBLISHER}),
         },
     )
-    assert manifest["doi"] == DOI
+    assert report["doi"] == DOI
     assert PUBLISHER in server.asked and "https://doi.org/10.1101/y" not in server.asked
 
 
@@ -565,7 +553,7 @@ def test_pmc_copy_of_a_preprint_is_no_article(tmp_path: Path):
         b'<article><front><article-meta><article-id pub-id-type="doi">10.1101/y</article-id>'
         b"</article-meta></front><body><p>Text</p></body></article>"
     )
-    manifest, _ = run(
+    report, _ = run(
         tmp_path,
         {
             SEARCH: found(),
@@ -575,9 +563,37 @@ def test_pmc_copy_of_a_preprint_is_no_article(tmp_path: Path):
             PUBLISHER: Response(PUBLISHER, 403, "", b""),
         },
     )
-    assert manifest["file"] is None
-    assert outcomes(manifest)[f"{EFETCH}?db=pmc&id=PMC9&rettype=xml"] == "HTTP 200, a preprint"
-    assert outcomes(manifest)[f"{PMC_PAGE}/PMC9/"] == "HTTP 200, a preprint"
-    assert manifest["line"] == (
+    assert report["file"] is None
+    assert outcomes(report)[f"{EFETCH}?db=pmc&id=PMC9&rettype=xml"] == "HTTP 200, a preprint"
+    assert outcomes(report)[f"{PMC_PAGE}/PMC9/"] == "HTTP 200, a preprint"
+    assert report["line"] == (
         f"Full text: not downloaded — a free copy at {PUBLISHER} but download blocked (HTTP 403)"
     )
+
+
+# drakkar-download
+
+
+def test_download_unpacks_and_converts(tmp_path: Path):
+    """A repository's archive: each file saved and converted, a video left out."""
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("data/s1.csv", "a,b\n1,2\n")
+        z.writestr("movie_s2.mp4", "frames")
+    url = "https://zenodo.org/records/1/files/data.zip"
+    lines = download(url, tmp_path, Server({url: ok(archive.getvalue(), "application/zip")}))
+    assert lines == [str(tmp_path / "s1.csv.md"), f"{url}#movie_s2.mp4: skipped, video"]
+    assert (tmp_path / "s1.csv.md").read_text() == "a,b\n1,2\n"
+
+
+def test_download_names_the_type_from_the_response(tmp_path: Path):
+    """A link without an extension (`?download=1`): the type from the response."""
+    url = "https://figshare.com/ndownloader/files/42"
+    lines = download(url, tmp_path, Server({url: ok(b"x\ty\n", "text/csv")}))
+    assert lines == [str(tmp_path / "42.csv.md")]
+
+
+def test_download_failure(tmp_path: Path):
+    url = "https://journal.org/suppl/s1.xlsx"
+    assert download(url, tmp_path, Server({})) == [f"{url}: HTTP 404"]
+    assert not tmp_path.exists() or not any(tmp_path.iterdir())
