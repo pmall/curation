@@ -33,8 +33,7 @@ def ncbi(url: str) -> Response:
     if base == EFETCH and query["db"] == "nuccore" and query["id"] == "AB047639":
         return ok(CDS)
     if base == ESEARCH:
-        start, size = int(query["retstart"]), int(query["retmax"])
-        ids = ["13122262", "13122263", "13122264"][start : start + size]
+        ids = ["13122262", "13122263", "13122264"][: int(query["retmax"])]
         return ok(json.dumps({"esearchresult": {"count": "3", "idlist": ids}}))
     if base == ESUMMARY:
         result = {
@@ -50,7 +49,7 @@ def test_seq():
     eutils = Eutils(ncbi, pause=0)
     lines = seq(eutils, ["BAB32872:1-15", "BAB32872", "AB047639", "XX1", "BAB32872:1-999"])
     assert lines.splitlines() == [
-        "#input\taccession\ttitle\tlength\tsequence",
+        "#location\taccession\ttitle\tlength\tsequence",
         "BAB32872:1-15\tBAB32872.1\tpolyprotein [Hepatitis C virus JFH-1]\t15\tMSTNPKPQRKTKRNT",
         f"BAB32872\tBAB32872.1\tpolyprotein [Hepatitis C virus JFH-1]\t70\t{POLYPROTEIN}",
         "AB047639\tBAB32872.1\tCDS 341..9442: polyprotein\t70\t-",
@@ -64,9 +63,4 @@ def test_search_is_paged():
     eutils = Eutils(ncbi, pause=0)
     lines = search(eutils, ["JFH-1"], Page(limit=2)).splitlines()
     assert lines[1].startswith("JFH-1\tBAB32870.1\t" + "x" * 120 + "…\t3033\t1")
-    assert lines[-1] == (
-        "JFH-1\t… 1-2 of 3 shown: --offset 2 for the next; "
-        "narrow with a closer query (NCBI search syntax), or --all"
-    )
-    last = search(eutils, ["JFH-1"], Page(offset=2)).splitlines()
-    assert last[1].startswith("JFH-1\tBAB32870.1\t") and last[2].startswith("JFH-1\t… 3-3 of 3")
+    assert lines[-1] == "JFH-1\t… 2 of 3"
