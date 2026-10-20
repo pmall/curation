@@ -16,7 +16,7 @@ names) is left to the full check, on the result of the whole list: a rename carr
 descriptions passes through inconsistent states and is valid at the end.
 
 A description note carries no date (its version has `created_at`); a publication note keeps the
-dated history of its passes and moves.
+notes of its passes and moves, the newest first.
 """
 
 import json
@@ -95,7 +95,7 @@ class Revision:
 
 @dataclass(frozen=True)
 class PublicationUpdate:
-    """The state of a publication (`selected` or `curated`) and its whole note, after a pass."""
+    """The state of a publication (`selected` or `curated`) and the note of a pass."""
 
     run_id: int
     pmid: int
@@ -226,14 +226,6 @@ def _association(cur: Any, run_id: int, pmid: int) -> _Association:
     if association.state not in ("selected", "curated"):
         raise InvalidRow(f"publication {pmid} of run {run_id} is {association.state}")
     return association
-
-
-def _note(note: str, action: str = "", *, required: bool = False) -> str:
-    """A description note (`notes.md`); a removal must say why."""
-    note = note.strip()
-    if required and not note:
-        raise InvalidRow(f"the note must hold the {action} decision")
-    return note
 
 
 def _build(
@@ -371,7 +363,7 @@ def _add(cur: Any, item: NewDescription) -> str:
     association = _association(cur, item.run_id, item.pmid)
     if association.run_type != "vh":
         raise InvalidRow(f"run {item.run_id} is an hh run: new descriptions go to a vh run")
-    note = _note(item.note)
+    note = item.note.strip()
     row = _build(cur, association, item.description)
     stable_id = _new_stable_id(cur)
     _insert(cur, stable_id, 1, row, note)
@@ -463,7 +455,9 @@ def _revise(cur: Any, revision: Revision) -> str:
     item = revision.description
 
     if revision.action == "remove":
-        note = _note(revision.note, "REMOVED", required=True)
+        note = revision.note.strip()
+        if not note:
+            raise InvalidRow("the note must hold the REMOVED decision")
         if revision.into:
             # The removed description, as it is or as it was decided to be, is its survivor.
             if item is None:
@@ -487,7 +481,7 @@ def _revise(cur: Any, revision: Revision) -> str:
 
     if item is None:
         raise InvalidRow(f"{revision.stable_id}: a revision needs its description")
-    note = _note(revision.note)
+    note = revision.note.strip()
     row = _build(cur, association, item, kept)
     cur.execute(COLUMNS, (live_id,))
     old = dict(zip(row, cur.fetchone(), strict=True))  # same order; JSON columns come parsed
@@ -571,36 +565,8 @@ def _removal(revision: Revision) -> bool:
 
 # --- Publications -------------------------------------------------------------------------------
 
-CURATOR_BLOCK = "--- Curator note (before Claude) ---"
-# A note of Claude starts with its state, dated in the notes of earlier passes.
-CLAUDE_NOTE = re.compile(r"(\[\d{4}-\d{2}-\d{2} Claude\] )?(PENDING|SELECTED|DISCARDED|CURATED): ")
-
-
-PASS_LINE = re.compile(r"- Pass (\d{4}-\d{2}-\d{2}): \S")
-HISTORY = ("- Pass ", "- Moved ")
-
-
-def _publication_note(note: str, old: str, passed: bool) -> str:
-    """The note of a pass: Claude's lines, then the history (the `Pass` and `Moved`
-    lines of the note before it, then this pass's `Pass` line, dated by the curation), then the
-    curator block. Before Claude's first pass, a note that is not Claude's is a curator's, kept
-    verbatim."""
-    old = old.strip()
-    if passed or not old or CLAUDE_NOTE.match(old):
-        old_body, _, curator = old.partition(f"\n{CURATOR_BLOCK}\n")
-    else:
-        old_body, curator = "", old
-    history = [line for line in old_body.split("\n") if line.startswith(HISTORY)]
-    given = note.partition(f"\n{CURATOR_BLOCK}\n")[0].strip().split("\n")
-    passes = [line for line in given if PASS_LINE.match(line)]
-    if not passes:
-        raise InvalidRow("the note needs its `- Pass <curation date>: <outcome>` line")
-    passes = [line for line in passes if line not in history] or passes[-1:]
-    body = [line for line in given if not line.startswith(HISTORY)]
-    lines = [*body, *history, *passes]
-    if curator:
-        lines += [CURATOR_BLOCK, curator]
-    return "\n".join(lines)
+# A new note goes first in the note of a publication, the previous notes after a line `---`.
+NEW_NOTE = "concat_ws(E'\\n---\\n', nullif(%s::text, ''), nullif(annotation, ''))"
 
 
 def _publication(cur: Any, update: PublicationUpdate) -> str:
@@ -609,13 +575,10 @@ def _publication(cur: Any, update: PublicationUpdate) -> str:
         raise InvalidRow(f"run {update.run_id} is an hh run: hh curation is frozen")
     if update.state not in ("selected", "curated"):
         raise InvalidRow(f"state {update.state!r} is not selected or curated")
-    cur.execute("SELECT annotation, ai_pass_at FROM associations WHERE id = %s", (association.id,))
-    old, passed_at = cur.fetchone()
-    note = _publication_note(update.note, old, passed_at is not None)
     cur.execute(
-        "UPDATE associations SET state = %s, annotation = %s, ai_pass_at = now(), "
+        f"UPDATE associations SET state = %s, annotation = {NEW_NOTE}, ai_pass_at = now(), "
         "updated_at = now() WHERE id = %s",
-        (update.state, note, association.id),
+        (update.state, update.note.strip(), association.id),
     )
     return f"{update.run_id}/{update.pmid}"
 
@@ -623,7 +586,8 @@ def _publication(cur: Any, update: PublicationUpdate) -> str:
 def update_publications(
     conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
 ) -> Outcome:
-    """Set the state and note of publications of vh runs at the end of a pass (`ai_pass_at`)."""
+    """Set the state of publications of vh runs at the end of a pass (`ai_pass_at`), the note of
+    the pass first in their notes."""
     return _write(conn, commit, lambda cur: _apply_rows(cur, updates, _publication))
 
 
@@ -667,12 +631,11 @@ def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
     )
     if cur.fetchone() is not None:
         raise InvalidRow(f"publication {move.pmid} is already in run {target}")
-    cur.execute("SELECT annotation FROM associations WHERE id = %s", (move.association_id,))
-    body, block, curator = cur.fetchone()[0].strip().partition(f"\n{CURATOR_BLOCK}\n")
     cur.execute("SELECT current_date::text")
-    note = f"{body}\n- Moved {cur.fetchone()[0]}: from run {move.run}{block}{curator}"
+    note = f"Moved {cur.fetchone()[0]}: from run {move.run}"
     cur.execute(
-        "UPDATE associations SET run_id = %s, annotation = %s, updated_at = now() WHERE id = %s",
+        f"UPDATE associations SET run_id = %s, annotation = {NEW_NOTE}, updated_at = now() "
+        "WHERE id = %s",
         (target_id, note, move.association_id),
     )
     return f"{move.run}/{move.pmid} → {target}"
@@ -687,7 +650,7 @@ def move_publications(
 ) -> tuple[list[Move], Outcome]:
     """Move the publications given as (run_id, pmid) that are `selected` with a pass date in a vh
     run of the PubMed query to the open special run (a new one with `new_run`), each with a
-    `Moved` line in its note. The others are left where they are.
+    `Moved` note first in its note. The others are left where they are.
 
     Raises `ValueError` for a publication that is not in its run.
     """

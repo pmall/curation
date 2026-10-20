@@ -4,7 +4,7 @@ The notes are Claude's memory of its curation: from them alone, Claude can tell 
 
 ## Publication note
 
-`associations.annotation`, rewritten whole at each curation pass: a header line `STATE: summary`, its detail lines, then its history, one line per pass and per move, oldest first. The note of a pass ends with its own `Pass` line; the write keeps the history and the curator note of the note it replaces.
+`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, a header line `STATE: summary` and its detail lines; a move to a special run writes the note `Moved YYYY-MM-DD: from run <name>`.
 
 | State | Summary |
 | -- | -- |
@@ -20,9 +20,6 @@ Detail lines, in this order:
 - `Not kept: <pair or claim> (<where>) — <reason>`, one per pair the publication shows that is not a description, the reason in words.
 - `Remark: <anything a next pass needs that no other line holds>` (for a curator file, how ambiguous rows were interpreted).
 - `Pass YYYY-MM-DD: <outcome>`, dated by the curation: `curated from <source>`, `re-curated from <source>`, `partial from <source>, <files> missing`, `not accessible (<why>)`.
-- `Moved YYYY-MM-DD: from run <name>`, added by the move to a special run.
-
-Before Claude's first pass (`ai_pass_at` empty), an existing note is a curator's: the write keeps it verbatim after a line `--- Curator note (before Claude) ---`.
 
 ## Description note
 
@@ -57,12 +54,13 @@ CURATED: from PMC1234567, co-IP and pull-down of HCV NS5A with human kinases.
 ```
 
 ```
+Moved 2026-10-21: from run 88
+---
 SELECTED: from PMC2345678, Y2H screen of ZIKV proteins against a human library; Table S2 missing.
 - Full text: PMC2345678 (cc by), supplementary files missing: Table S2
 - Not read: Table S2 (Results, "Screen") — relevant, missing: tried PMC open access files, the publisher's page, Europe PMC
 - Pass 2026-10-20: partial from PMC2345678, Table S2 missing
-- Moved 2026-10-21: from run 88
---- Curator note (before Claude) ---
+---
 Y2H, see table S2
 ```
 

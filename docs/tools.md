@@ -30,7 +30,7 @@ Tab separated. Lines starting with `#` are ignored (the header is one), so files
 | description columns | on a `revise`: the whole new description, as in `*.add.tsv`, from `method` to `below_threshold` |
 | `note` | `revise`: the note of the new version, `REVISED` (`UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
-**Publications** (`*.publications.tsv`), one row per publication whose state or note changes: `run_id`, `pmid`, `state`, `note` (the whole publication note).
+**Publications** (`*.publications.tsv`), one row per publication whose state or note changes: `run_id`, `pmid`, `state`, `note` (the note of the pass, put first in the publication's note, the previous notes after a line `---`).
 
 ## Tools
 
@@ -42,7 +42,7 @@ Writes go through these commands. Without `--commit`, a command is a dry run: it
 
 They take several files at once, and `--header` prints the header line of their format.
 
-- `uv run drakkar-move <file>... [--new-run] [--commit]`: takes publications files (`*.publications.tsv`, only `run_id` and `pmid` are read) and moves those that are `selected` with a pass date in a vh run of the PubMed query to the open special run, the one with the highest number (`database.md` §1, states), adding its `Moved` line to each note; the others stay where they are. `--new-run` opens the next special run first, and the first move opens `special-1`. Their descriptions move with them.
+- `uv run drakkar-move <file>... [--new-run] [--commit]`: takes publications files (`*.publications.tsv`, only `run_id` and `pmid` are read) and moves those that are `selected` with a pass date in a vh run of the PubMed query to the open special run, the one with the highest number (`database.md` §1, states), putting its `Moved` note first in each note; the others stay where they are. `--new-run` opens the next special run first, and the first move opens `special-1`. Their descriptions move with them.
 - `uv run drakkar-batch <dir> [--new-run] [--commit]`: writes a curation batch from the merged files of its directory: `descriptions.revise.tsv` and `descriptions.delete.tsv` (revision rows), `descriptions.add.tsv`, and `publications.tsv`; a missing descriptions file has no rows. One transaction, in this order: the revisions and removals, the new descriptions, the publication states and notes, then the move of the publications left `selected` with a pass date, as `drakkar-move` does (`--new-run` likewise). Every invariant is checked once, on the result, so a row can rely on an earlier one (an addition on a rename). Refused rows are reported with their file and line.
 - `uv run drakkar-diff <run_id> <pmid> <file>`: read-only. Diffs the descriptions of the file (`*.add.tsv` format, all of one publication) against the live descriptions of that publication, and writes beside the file `<name>.add.tsv`, the descriptions that are not live; `<name>.revise.tsv`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.tsv`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein; `below_threshold` follows from the mappings and is not compared. An empty file puts every live description of the publication in `<name>.delete.tsv`.
 - `uv run drakkar-check <dir>`: checks every invariant, read-only.

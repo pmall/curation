@@ -197,10 +197,8 @@ def test_removal_needs_its_note(conn):
 
 
 def test_publication_curated(conn):
-    note = "CURATED: from PMC1234567, no description"
+    note = "CURATED: from PMC1234567, no description\n- Pass 2026-10-18: curated from PMC1234567"
     update = PublicationUpdate(*SELECTED, "curated", note)
-    assert "`- Pass" in update_publications(conn, [update]).problems[0][1]
-    update = replace(update, note=f"{note}\n- Pass 2026-10-18: curated from PMC1234567")
     assert update_publications(conn, [update], commit=True).committed
     state, ai_pass_at = conn.execute(
         "SELECT state, ai_pass_at IS NOT NULL FROM associations "
@@ -209,39 +207,14 @@ def test_publication_curated(conn):
     assert (state, ai_pass_at) == ("curated", True)
 
 
-def test_publication_keeps_no_pre_curation_note_as_a_curator_note(conn):
-    conn.execute(
-        "UPDATE associations SET annotation = 'SELECTED: may hold a PPI', ai_pass_at = NULL "
-        "WHERE run_id = 12 AND pmid = 25031347"
-    )
-    conn.commit()
-    note = "CURATED: from PMC1234567\n- Pass 2026-10-20: curated from PMC1234567"
-    update = PublicationUpdate(*SELECTED, "curated", note)
-    assert update_publications(conn, [update], commit=True).committed
-    assert note_of(conn, SELECTED[1]) == note
-
-
-def test_publication_keeps_its_history(conn):
+def test_publication_note_goes_first(conn):
+    """SELECTED has no note yet; then each note goes first, the previous ones after `---`."""
     first = PublicationUpdate(*SELECTED, "selected", "SELECTED: no full text\n- Pass 2026-10-18: x")
     assert update_publications(conn, [first], commit=True).committed
+    assert note_of(conn, SELECTED[1]) == first.note
     second = replace(first, state="curated", note="CURATED: from a PDF\n- Pass 2026-10-20: y")
     assert update_publications(conn, [second], commit=True).committed
-    history = "- Pass 2026-10-18: x\n- Pass 2026-10-20: y"
-    assert note_of(conn, SELECTED[1]) == f"CURATED: from a PDF\n{history}"
-
-
-def test_publication_keeps_the_curator_note(conn):
-    claude = "CURATED: from PMC1234567\n- Pass 2026-10-20: curated"
-    update = PublicationUpdate(56, 34799561, "curated", claude)
-    assert update_publications(conn, [update], commit=True).committed
-    note = f"{claude}\n--- Curator note (before Claude) ---\nDone. Pierre to upload"
-    assert note_of(conn, 34799561) == note
-    given = note.replace("curated\n", "curated\n- Pass 2026-10-22: re-curated\n")
-    again = replace(update, note=given)  # the history and the block given back are kept once
-    assert update_publications(conn, [again], commit=True).committed
-    assert note_of(conn, 34799561) == note.replace(
-        "curated\n", "curated\n- Pass 2026-10-22: re-curated\n"
-    )
+    assert note_of(conn, SELECTED[1]) == f"{second.note}\n---\n{first.note}"
 
 
 def today(conn) -> str:
@@ -289,16 +262,12 @@ def test_move_to_the_special_run(conn, new):
     moves, outcome = move_publications(conn, [SARS, SELECTED], commit=True)
     assert [move.pmid for move in moves] == [SELECTED[1]] and outcome.committed
     run_id, name, moved = run_of(conn, SELECTED[1])
-    assert name == "special-1" and moved == f"{note}\n- Moved {today(conn)}: from run 32"
+    assert name == "special-1" and moved == f"Moved {today(conn)}: from run 32\n---\n{note}"
     assert stable_id in live(conn, run_id, SELECTED[1])
-    header = "CURATED: from a PDF provided by the user"
-    passed = "- Pass 2026-10-20: curated from a PDF provided by the user"
-    update = PublicationUpdate(run_id, SELECTED[1], "curated", f"{header}\n{passed}")
+    curated = "CURATED: from a PDF provided by the user\n- Pass 2026-10-20: curated from a PDF"
+    update = PublicationUpdate(run_id, SELECTED[1], "curated", curated)
     assert update_publications(conn, [update], commit=True).committed
-    history = (
-        f"- Pass 2026-10-18: not accessible (not open access)\n- Moved {today(conn)}: from run 32"
-    )
-    assert note_of(conn, SELECTED[1]) == f"{header}\n{history}\n{passed}"  # the history is kept
+    assert note_of(conn, SELECTED[1]) == f"{curated}\n---\n{moved}"
 
 
 def test_move_to_a_new_special_run(conn):
@@ -376,7 +345,7 @@ def test_batch_writes_everything_in_one_transaction(conn):
     names = {r.description.name2 for r in live(conn, *SARS).values() if r.description}
     assert "orf6" in names and "N" not in names
     _, name, note = run_of(conn, SELECTED[1])
-    assert name == "special-1" and note.endswith(f"- Moved {today(conn)}: from run 32")
+    assert name == "special-1" and note.startswith(f"Moved {today(conn)}: from run 32\n---\n")
 
 
 def test_batch_numbers_rows_across_its_lists(conn):

@@ -80,7 +80,7 @@ Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), PostgreSQL with Dra
 
 ```sh
 uv sync
-cp .env.example .env    # database connection, and the address Unpaywall asks for
+cp .env.example .env    # database connection, the address Unpaywall asks for, the NCBI API key
 ```
 
 In Claude Code, from the repository, `/curate` starts a batch: alone, it takes the next publications; or with a prompt naming publications and a work directory. The agent ends with its report and waits for the go.

@@ -30,7 +30,6 @@ EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 ESEARCH = f"{EUTILS}/esearch.fcgi"
 ESUMMARY = f"{EUTILS}/esummary.fcgi"
 LOCATION = re.compile(r"([A-Za-z0-9_.]+?)(?::(\d+)-(\d+))?")  # BAB32872.1:1-191
-COLUMNS = "#input\taccession\ttitle\tlength\tsequence"
 TITLE = 120  # characters shown of a title: those of Swiss-Prot records list every name
 
 
@@ -86,7 +85,7 @@ def _cds(header: str) -> tuple[str, str]:
 def seq(eutils: Eutils, locations: list[str]) -> str:
     """The sequence of each protein record, or between its coordinates; the coding sequences of
     each nucleotide record."""
-    lines = [COLUMNS]
+    lines = ["#input\taccession\ttitle\tlength\tsequence"]
     for text in locations:
         match = LOCATION.fullmatch(text)
         if match is None:

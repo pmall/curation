@@ -30,7 +30,6 @@ answer a request. Without it Unpaywall is not asked at all.
 """
 
 import argparse
-import contextlib
 import io
 import json
 import mimetypes
@@ -156,6 +155,13 @@ def _html(body: bytes) -> _Element | None:
     try:
         return etree.fromstring(body, etree.HTMLParser())
     except (etree.XMLSyntaxError, ValueError):
+        return None
+
+
+def _zip(body: bytes) -> zipfile.ZipFile | None:
+    try:
+        return zipfile.ZipFile(io.BytesIO(body))
+    except zipfile.BadZipFile:
         return None
 
 
@@ -390,10 +396,6 @@ def _meta(page: bytes, name: str) -> str | None:
     return None
 
 
-def citation_pdf_url(page: bytes) -> str | None:
-    return _meta(page, "citation_pdf_url")
-
-
 def supplement_links(page: bytes, base: str) -> list[Supplement]:
     """The supplementary files a publisher's page links: a link or a URL that says
     supplementary (`mmc` is Elsevier's name for them, `MOESM` Springer Nature's), to a file type
@@ -456,9 +458,10 @@ class Fetch:
         return self._page
 
     @property
-    def page_html(self) -> bytes | None:
+    def html_page(self) -> Response | None:
+        """The publisher's page when it is an HTML page."""
         page = self.page
-        return page.body if page is not None and page.status == 200 and _is_html(page) else None
+        return page if page is not None and page.status == 200 and _is_html(page) else None
 
     @property
     def copies(self) -> list[dict[str, Any]]:
@@ -512,7 +515,7 @@ class Fetch:
         return bool(
             self.pmcids
             or [x for x in self.copies if not _is_preprint(x)]
-            or (self.page_html is not None and declared_access(self.page_html) is True)
+            or ((page := self.html_page) is not None and declared_access(page.body) is True)
         )
 
     def closed_why(self) -> str:
@@ -564,30 +567,20 @@ class Fetch:
         return version
 
     def pmc_files(self, pmcid: str) -> bool:
-        """The PMC open access files: the article when its XML has a body, with its PDF; never
-        a preprint."""
+        """The PMC open access files: their XML as `pmc_xml`, with its PDF."""
         version = self.pmc_listing(pmcid)
-        if version is None:
+        if version is None or not self.pmc_xml(pmcid, f"{PMC_AWS}/{version}/{version}.xml"):
             return False
-        xml = self._try(f"{PMC_AWS}/{version}/{version}.xml")
-        if xml.status != 200:
-            return False
-        if problem := pmc_xml_problem(xml.body):
-            self._note(problem)
-            return False
-        self._save(xml.body, ".xml")
         if f"{version}.pdf" in self.oa_files:
             pdf = self.get(self.oa_files[f"{version}.pdf"])
             if pdf.status == 200 and _is_pdf(pdf):
                 (self.out / f"{self.pmid}.pdf").write_bytes(pdf.body)
                 self.manifest["pdf"] = f"{self.pmid}.pdf"
-        self._from_pmc(pmcid)
-        self._list(jats_supplements(xml.body), "the article's XML")
         return True
 
     def pmc_xml(self, pmcid: str, url: str) -> bool:
-        """A PMC XML alone, from Europe PMC `fullTextXML` or NCBI `efetch`, the article when it
-        has a body and is no preprint."""
+        """A PMC XML (the open access files', Europe PMC `fullTextXML` or NCBI `efetch`), the
+        article when it has a body and is no preprint."""
         xml = self._try(url)
         if xml.status != 200:
             return False
@@ -615,18 +608,17 @@ class Fetch:
 
     def publisher_html(self) -> bool:
         """The publisher's page, the article when it declares free access."""
-        page = self.page_html
-        if page is None or declared_access(page) is not True:
+        page = self.html_page
+        if page is None or declared_access(page.body) is not True:
             return False
-        self._save(page, ".html")
-        assert self.page is not None
-        self._from(self.page.url, self._publisher())
+        self._save(page.body, ".html")
+        self._from(page.url, self._publisher())
         return True
 
     def pdfs(self) -> bool:
         """The publisher's PDF (`citation_pdf_url`), then the other free copies' PDFs."""
         candidates: list[tuple[str, dict[str, Any]]] = []
-        if self.page_html is not None and (url := citation_pdf_url(self.page_html)):
+        if (page := self.html_page) is not None and (url := _meta(page.body, "citation_pdf_url")):
             candidates.append((url, self._publisher()))
         for location in self.copies:
             if not _is_preprint(location):
@@ -660,9 +652,8 @@ class Fetch:
                 yield url
         if item.url and not _is_pmc(item.url):
             yield item.url
-        page = self.page_html
-        if page is not None and self.page is not None:
-            for link in supplement_links(page, self.page.url):
+        if (page := self.html_page) is not None:
+            for link in supplement_links(page.body, page.url):
                 if (
                     link.url
                     and link.url != item.url
@@ -698,10 +689,7 @@ class Fetch:
         url = f"{EUROPE_PMC}/{self.pmcids[0]}/supplementaryFiles"
         if self._archive is None:
             r = self.get(url)
-            archive = None
-            if r.status == 200 and r.body[:2] == b"PK":
-                with contextlib.suppress(zipfile.BadZipFile):
-                    archive = zipfile.ZipFile(io.BytesIO(r.body))
+            archive = _zip(r.body) if r.status == 200 and r.body[:2] == b"PK" else None
             self._archive = (archive, _outcome(r) + ("" if archive else ", no archive"))
         archive, outcome = self._archive
         still: list[tuple[Supplement, list[dict[str, str]]]] = []
@@ -739,22 +727,18 @@ class Fetch:
     def _keep(self, item: Supplement, name: str, body: bytes, url: str) -> None:
         """A supplementary file saved; a zip archive is unpacked, its videos and images left
         out."""
-        if name.lower().endswith(".zip"):
-            try:
-                archive = zipfile.ZipFile(io.BytesIO(body))
-            except zipfile.BadZipFile:
-                archive = None
-            if archive is not None:
-                for info in archive.infolist():
-                    member = Path(info.filename)
-                    if info.is_dir() or "__MACOSX" in member.parts or member.name[:1] == ".":
-                        continue
-                    inside = Supplement(member.name, item.caption)
-                    if why := _left_out(member.name):
-                        self._skip(inside, why, f"{url}#{info.filename}")
-                    else:
-                        self._keep(item, member.name, archive.read(info), f"{url}#{info.filename}")
-                return
+        archive = _zip(body) if name.lower().endswith(".zip") else None
+        if archive is not None:
+            for info in archive.infolist():
+                member = Path(info.filename)
+                if info.is_dir() or "__MACOSX" in member.parts or member.name[:1] == ".":
+                    continue
+                inside = Supplement(member.name, item.caption)
+                if why := _left_out(member.name):
+                    self._skip(inside, why, f"{url}#{info.filename}")
+                else:
+                    self._keep(item, member.name, archive.read(info), f"{url}#{info.filename}")
+            return
         folder = self.out / f"{self.pmid}.supp"
         folder.mkdir(exist_ok=True)
         self.taken |= {p.name for p in folder.iterdir()}
@@ -848,8 +832,8 @@ class Fetch:
         any(route() for route in self.article_routes())
         m["tried"] = self.tried
         if m["file"] is not None:
-            if "supplements_from" not in m and self.page_html is not None and self.page:
-                self._list(supplement_links(self.page_html, self.page.url), "the publisher's page")
+            if "supplements_from" not in m and (page := self.html_page) is not None:
+                self._list(supplement_links(page.body, page.url), "the publisher's page")
             m.setdefault("supplements", [])
             missing = self.find(self.listed)
             m["missing_supplements"] = [self._missing(item, tried) for item, tried in missing]
