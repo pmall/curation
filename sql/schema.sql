@@ -72,7 +72,9 @@ CREATE TABLE public.methods (
     id integer NOT NULL,
     psimi_id character varying(7) NOT NULL,
     name character varying(255) NOT NULL,
-    search text
+    search text,
+    synonyms character varying[] DEFAULT '{}'::character varying[] NOT NULL,
+    is_detection boolean NOT NULL
 );
 
 CREATE TABLE public.proteins (
@@ -93,7 +95,9 @@ CREATE TABLE public.proteins_versions (
     current_version character(7) NOT NULL,
     names character varying[] NOT NULL,
     features jsonb NOT NULL,
-    search text
+    search text,
+    reviewed boolean NOT NULL,
+    secondary_accessions character varying[] NOT NULL
 );
 
 CREATE TABLE public.runs (
@@ -121,7 +125,8 @@ CREATE TABLE public.taxon (
     genetic_code smallint,
     mito_genetic_code smallint,
     left_value integer,
-    right_value integer
+    right_value integer,
+    search text
 );
 
 CREATE TABLE public.taxon_name (
@@ -341,9 +346,13 @@ CREATE INDEX proteins_ncbi_taxon_id_key ON public.proteins USING btree (ncbi_tax
 
 CREATE INDEX proteins_versions_search_key ON public.proteins_versions USING gin (search public.gin_trgm_ops);
 
+CREATE INDEX proteins_versions_secondary_accessions_key ON public.proteins_versions USING gin (secondary_accessions);
+
 CREATE INDEX taxnamename ON public.taxon_name USING btree (name);
 
 CREATE INDEX taxnametaxonid ON public.taxon_name USING btree (taxon_id);
+
+CREATE INDEX taxon_search_key ON public.taxon USING gin (search public.gin_trgm_ops);
 
 CREATE INDEX taxparent ON public.taxon USING btree (parent_taxon_id);
 

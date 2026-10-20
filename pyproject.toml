@@ -28,6 +28,7 @@ drakkar-batch = "drakkar.files:batch_main"
 drakkar-read = "drakkar.read:main"
 drakkar-fetch = "drakkar.fetch:main"
 drakkar-parse = "drakkar.parse:main"
+drakkar-genbank = "drakkar.genbank:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

@@ -14,6 +14,21 @@ The full text is already in `{dir}/`: `{pmid}.md`, converted from the original (
 
 The publication is curated from its full text and its interactors' UniProt entries (`uv run drakkar-read entry <accession>`), never from its record in the database: no `drakkar-read publication` or `drakkar-read row` on it. Generic names: `uv run drakkar-read curation-names {pmid} <accession>`.
 
+**The database** is read with these lookups (`docs/tools.md`), each taking many inputs at once, so ask everything you need in one call. A text matches as a substring, case aside: give its spelling variants as more inputs (`JFH1 JFH-1`, `NS2B-NS3 NS2B/NS3`). They print the first 10 results per input, the closest first; when some are left out, the last line says how many and how to see them: read on with `--offset`, or narrow (a closer text, `--taxon`, `--reviewed`, `--min-identity`) rather than `--all`. Never decide from a cut list without checking that what you look for is not further down.
+
+- `uv run drakkar-read methods <text>...`: the PSI-MI ID of a method, by name or synonym, and whether it is a detection method: `methods coimmuno "two hybrid" "pull down"`. A term PSI-MI does not hold is looked for by its technique: `pull down` for a GST pull-down, `affinity` for AP-MS, `electron microscopy` for cryo-EM, `proximity labelling` for APEX, `non denaturing gel` for a native gel.
+- `uv run drakkar-read search <text>... [--taxon <taxon>] [--human | --viral] [--reviewed]`: the entries of a gene or protein name, or a virus's whole proteome: `search TRIM25 DDX3X --human --reviewed`, `search "non-structural protein 4A" --taxon 3052230`, `search --taxon 3052230`. A mature protein is a chain of its polyprotein: `entry` lists them. An accession is read with `entry`, secondary ones too. An entry whose taxon is missing from the NCBI taxonomy is found without `--taxon` only.
+- `uv run drakkar-read taxon <text>...`: the taxon of a strain or a virus: `taxon JFH1 "Puerto Rico/8"`.
+- `uv run drakkar-read closest <sequence>... --taxon <taxon>`: the publication's strain, or the closest entry when UniProt lacks it: `closest MSTNPKPQRKTKRNT --taxon 3052230 --min-identity 100`.
+- `uv run drakkar-read seq <accession>[:<start>-<stop>]...`: a mapping from coordinates: `seq P26662:810-830`.
+- `uv run drakkar-read map <accession>[:<start>-<stop>] <sequence>...`: your mappings checked before writing them: `map P26662:810-1026 mDREMAASCGG`.
+- `uv run drakkar-read used <taxon> [<generic name>...] --exclude {pmid}`: the generic names already used for a virus, and the entry most used for a virus and generic name: `used 3052230 NS3 NS5A --exclude {pmid}`.
+- `uv run drakkar-genbank search <query>...` and `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: the publication's strain at NCBI when UniProt lacks it, for the mappings taken from its sequence: `drakkar-genbank search "JFH-1 AND polyprotein"`, `drakkar-genbank seq BAB32872.1:2-191`; a genome accession lists its coding sequences.
+
+`--exclude {pmid}` is always given: the curation never sees the descriptions of the publication it curates.
+
+What none of them gives: `uv run drakkar-read sql "<query>"`, written from the tables of `docs/database.md` §1, then go on with the curation.
+
 A high-throughput screen is curated from its supplementary tables, with the authors' own thresholds (`curation-rules.md` §3). If it holds more than you can decide well, write no file and say so.
 
 **Done** when these files are in `{dir}/`:
@@ -25,4 +40,4 @@ A high-throughput screen is curated from its supplementary tables, with the auth
 
 Write each of your files under a temporary name and rename it once it is complete. You never write to the database.
 
-Reply in a few lines: descriptions, unsettled descriptions, anything you could not do; and each file you asked for with `--supplement`: the name the publication gives it, where it is cited, found or missing.
+Reply in a few lines: descriptions, unsettled descriptions, anything you could not do; each file you asked for with `--supplement`: the name the publication gives it, where it is cited, found or missing; and each `drakkar-read sql` query, with what it was for.

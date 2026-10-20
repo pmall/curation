@@ -15,7 +15,8 @@ Two steps:
 2. `upgrade`: the TSV files are staged, then, in one transaction:
    - an entry whose existing snapshot is unchanged (same accession, taxon and isoform sequences,
      and for human the same gene name) keeps it; any other entry gets a new `proteins` row;
-   - `proteins_versions` is rebuilt: one row per entry of the release, pointing to its snapshot;
+   - `proteins_versions` is rebuilt: one row per entry of the release, pointing to its snapshot,
+     with whether it is in Swiss-Prot (`reviewed`) and its secondary accessions;
    - a Markdown report lists what changed and the descriptions that need a revision.
 
 Unlike the Perl import, entries whose taxon is missing from `taxon` are imported (and reported)
@@ -341,8 +342,11 @@ def upgrade(release_directory: Path, *, commit: bool) -> None:
         cur.execute("DELETE FROM proteins_versions")
         cur.execute(
             """
-            INSERT INTO proteins_versions (accession, version, current_version, names, features)
-            SELECT s.accession, coalesce(m.version, %(release)s), %(release)s, s.names, s.features
+            INSERT INTO proteins_versions
+                (accession, version, current_version, names, features, reviewed,
+                 secondary_accessions)
+            SELECT s.accession, coalesce(m.version, %(release)s), %(release)s, s.names, s.features,
+                   s.reviewed, s.secondary_accessions
             FROM staging AS s LEFT JOIN matched AS m USING (accession)
             """,
             {"release": release},
