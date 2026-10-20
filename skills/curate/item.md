@@ -1,12 +1,16 @@
 # Curate one publication
 
-Sent by the `curate` skill to one subagent per publication, as it is, with `{dir}` (the publication directory), `{run_id}` and `{pmid}` filled in.
+Sent by the `curate` skill to one subagent per publication, as it is, with `{dir}` (the publication directory), `{run_id}`, `{pmid}` and `{missing}` (the supplementary files the fetch could not download, or `none`) filled in.
 
 ______________________________________________________________________
 
 Curate publication PMID {pmid} (run {run_id}): read its full text and record every virus–human interaction it shows that meets the criteria of `docs/curation-rules.md`. Read that file and `docs/glossary.md` first; `docs/tools.md` gives the file formats and the tools.
 
-The full text is already in `{dir}/`: `{pmid}.md`, converted from the original (`{pmid}.xml`, `{pmid}.html` or `{pmid}.pdf`; beside a PMC XML, `{pmid}.pdf` is its PDF), and the supplementary files in `{pmid}.supp/`, each converted to `<file>.md` beside it. Read the converted text; open the original (the PDF's pages, the HTML) only where a table came out badly. Images are never read, nor a supplementary file that could not be converted. Never download anything: a supplementary file the publication needs but that is missing is said in the curation notes.
+The full text is already in `{dir}/`: `{pmid}.md`, converted from the original (`{pmid}.xml`, `{pmid}.html` or `{pmid}.pdf`; beside a PMC XML, `{pmid}.pdf` is its PDF), and the supplementary files in `{pmid}.supp/`, each converted to `<file>.md` beside it. Supplementary files the fetch could not download: {missing}. Read the converted text; open the original (the PDF's pages, the HTML) only where a table came out badly. Images are never read, nor a supplementary file that could not be converted. A publication's file is downloaded only with `drakkar-fetch --supplement`, never the article.
+
+**Relevant files.** A file not read is relevant only when the text, its caption or its name shows it can hold interactions: a table of hits, a figure of an interaction experiment, data the text cites for an interaction. A file that cannot hold one (a reporting summary, a peer review file, a checklist, a figure of non-interaction data) is not fetched and does not keep the publication selected; the curation notes name it and say why it is not relevant.
+
+**A missing file.** When a relevant file is missing (cited in the text and absent from `{dir}`, or listed above as missing), run, before writing your descriptions, `uv run drakkar-fetch --supplement {pmid} {dir} <url or file name>...` for all of them in one call, with any URL or file name the text gives (a label such as `Table S1` is looked for too). It prints one line per file. Found: read its converted file and go on. Still missing: go on without it; the curation notes name the missing file and the places tried, and the publication stays `selected`.
 
 The publication is curated from its full text and its interactors' UniProt entries (`uv run drakkar-read entry <accession>`), never from its record in the database: no `drakkar-read publication` or `drakkar-read row` on it. Generic names: `uv run drakkar-read curation-names {pmid} <accession>`.
 
@@ -21,4 +25,4 @@ A high-throughput screen is curated from its supplementary tables, with the auth
 
 Write each of your files under a temporary name and rename it once it is complete. You never write to the database.
 
-Reply in a few lines: descriptions, unsettled descriptions, anything you could not do.
+Reply in a few lines: descriptions, unsettled descriptions, anything you could not do; and each file you asked for with `--supplement`: the name the publication gives it, where it is cited, found or missing.
