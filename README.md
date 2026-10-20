@@ -89,7 +89,7 @@ The skill is linked from [`.claude/skills/`](.claude/skills/) and [`.agents/skil
 ## Development
 
 ```sh
-uv run pytest                    # on a test database built from tests/schema.sql and tests/fixture.sql, never Drakkar
+uv run pytest                    # on a test database built from sql/schema.sql and tests/fixture.sql, never Drakkar
 uv run ruff check && uv run ruff format
 uv run pyright
 uv run mdformat --wrap no --number docs/ skills/ AGENTS.md README.md
@@ -104,7 +104,7 @@ docs/                rules, database, tools, derived datasets, next steps (todo.
   history/           the move from manual curation to the agent's curation (closed)
 skills/curate/       SKILL.md (the batch), item.md (one publication)
 src/drakkar/         the tools
-sql/dataset.sql      the consultation view
+sql/schema.sql       the database structure (written by tests/build_fixture.py)
 tests/               tests and their fixture
 data/                releases, reports, batch directories (not versioned)
 ```

@@ -1,40 +1,8 @@
---
--- PostgreSQL database dump
---
-
-
--- Dumped from database version 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1)
--- Dumped by pg_dump version 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1)
-
-SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
-SET check_function_bodies = false;
-SET xmloption = content;
-SET client_min_messages = warning;
-SET row_security = off;
-
---
--- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
---
+-- The structure of Drakkar, written by tests/build_fixture.py: never edit it.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 
-
---
--- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: -
---
-
 COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
-
-
---
--- Name: constrain_taxon(); Type: FUNCTION; Schema: public; Owner: -
---
 
 CREATE FUNCTION public.constrain_taxon() RETURNS integer
     LANGUAGE sql STRICT SECURITY DEFINER
@@ -51,26 +19,12 @@ CREATE RULE rule_taxon_i
 SELECT 1;
 $$;
 
-
---
--- Name: unconstrain_taxon(); Type: FUNCTION; Schema: public; Owner: -
---
-
 CREATE FUNCTION public.unconstrain_taxon() RETURNS integer
     LANGUAGE sql STRICT SECURITY DEFINER
     AS $$
 DROP RULE rule_taxon_i ON taxon;
 SELECT 1;
 $$;
-
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
-
---
--- Name: associations; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.associations (
     id integer NOT NULL,
@@ -83,11 +37,6 @@ CREATE TABLE public.associations (
     CONSTRAINT associations_state_check CHECK (((state)::text = ANY (ARRAY[('pending'::character varying)::text, ('selected'::character varying)::text, ('discarded'::character varying)::text, ('curated'::character varying)::text])))
 );
 
-
---
--- Name: associations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
 CREATE SEQUENCE public.associations_id_seq
     AS integer
     START WITH 1
@@ -96,17 +45,7 @@ CREATE SEQUENCE public.associations_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
---
--- Name: associations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
 ALTER SEQUENCE public.associations_id_seq OWNED BY public.associations.id;
-
-
---
--- Name: descriptions; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.descriptions (
     id integer NOT NULL,
@@ -129,22 +68,12 @@ CREATE TABLE public.descriptions (
     annotation text DEFAULT ''::text NOT NULL
 );
 
-
---
--- Name: methods; Type: TABLE; Schema: public; Owner: -
---
-
 CREATE TABLE public.methods (
     id integer NOT NULL,
     psimi_id character varying(7) NOT NULL,
     name character varying(255) NOT NULL,
     search text
 );
-
-
---
--- Name: proteins; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.proteins (
     id integer NOT NULL,
@@ -158,11 +87,6 @@ CREATE TABLE public.proteins (
     CONSTRAINT proteins_type_check CHECK (((type)::text = ANY (ARRAY[('h'::character varying)::text, ('v'::character varying)::text])))
 );
 
-
---
--- Name: proteins_versions; Type: TABLE; Schema: public; Owner: -
---
-
 CREATE TABLE public.proteins_versions (
     accession character varying(10) NOT NULL,
     version character(7) NOT NULL,
@@ -171,11 +95,6 @@ CREATE TABLE public.proteins_versions (
     features jsonb NOT NULL,
     search text
 );
-
-
---
--- Name: runs; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.runs (
     id integer NOT NULL,
@@ -187,22 +106,12 @@ CREATE TABLE public.runs (
     CONSTRAINT runs_type_check CHECK (((type)::text = ANY (ARRAY[('hh'::character varying)::text, ('vh'::character varying)::text])))
 );
 
-
---
--- Name: taxon_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
 CREATE SEQUENCE public.taxon_pk_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
-
-
---
--- Name: taxon; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.taxon (
     taxon_id integer DEFAULT nextval('public.taxon_pk_seq'::regclass) NOT NULL,
@@ -215,21 +124,11 @@ CREATE TABLE public.taxon (
     right_value integer
 );
 
-
---
--- Name: taxon_name; Type: TABLE; Schema: public; Owner: -
---
-
 CREATE TABLE public.taxon_name (
     taxon_id integer NOT NULL,
     name character varying(255) NOT NULL,
     name_class character varying(32) NOT NULL
 );
-
-
---
--- Name: dataset; Type: MATERIALIZED VIEW; Schema: public; Owner: -
---
 
 CREATE MATERIALIZED VIEW public.dataset AS
  SELECT d.stable_id,
@@ -290,11 +189,6 @@ CREATE MATERIALIZED VIEW public.dataset AS
      LEFT JOIN public.taxon_name tn2 ON (((tn2.taxon_id = t2.taxon_id) AND ((tn2.name_class)::text = 'scientific name'::text))))
   WITH NO DATA;
 
-
---
--- Name: descriptions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
 CREATE SEQUENCE public.descriptions_id_seq
     AS integer
     START WITH 1
@@ -303,28 +197,13 @@ CREATE SEQUENCE public.descriptions_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
---
--- Name: descriptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
 ALTER SEQUENCE public.descriptions_id_seq OWNED BY public.descriptions.id;
-
-
---
--- Name: keywords; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.keywords (
     id integer NOT NULL,
     type character(1) NOT NULL,
     pattern character varying(255) NOT NULL
 );
-
-
---
--- Name: keywords_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
 
 CREATE SEQUENCE public.keywords_id_seq
     AS integer
@@ -334,17 +213,7 @@ CREATE SEQUENCE public.keywords_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
---
--- Name: keywords_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
 ALTER SEQUENCE public.keywords_id_seq OWNED BY public.keywords.id;
-
-
---
--- Name: methods_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
 
 CREATE SEQUENCE public.methods_id_seq
     AS integer
@@ -354,17 +223,7 @@ CREATE SEQUENCE public.methods_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
---
--- Name: methods_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
 ALTER SEQUENCE public.methods_id_seq OWNED BY public.methods.id;
-
-
---
--- Name: proteins_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
 
 CREATE SEQUENCE public.proteins_id_seq
     AS integer
@@ -374,28 +233,13 @@ CREATE SEQUENCE public.proteins_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
---
--- Name: proteins_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
 ALTER SEQUENCE public.proteins_id_seq OWNED BY public.proteins.id;
-
-
---
--- Name: publications; Type: TABLE; Schema: public; Owner: -
---
 
 CREATE TABLE public.publications (
     pmid bigint NOT NULL,
     populated boolean DEFAULT false,
     metadata jsonb
 );
-
-
---
--- Name: runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
 
 CREATE SEQUENCE public.runs_id_seq
     AS integer
@@ -405,308 +249,103 @@ CREATE SEQUENCE public.runs_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
---
--- Name: runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
 ALTER SEQUENCE public.runs_id_seq OWNED BY public.runs.id;
-
-
---
--- Name: associations id; Type: DEFAULT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.associations ALTER COLUMN id SET DEFAULT nextval('public.associations_id_seq'::regclass);
 
-
---
--- Name: descriptions id; Type: DEFAULT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.descriptions ALTER COLUMN id SET DEFAULT nextval('public.descriptions_id_seq'::regclass);
-
-
---
--- Name: keywords id; Type: DEFAULT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.keywords ALTER COLUMN id SET DEFAULT nextval('public.keywords_id_seq'::regclass);
 
-
---
--- Name: methods id; Type: DEFAULT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.methods ALTER COLUMN id SET DEFAULT nextval('public.methods_id_seq'::regclass);
-
-
---
--- Name: proteins id; Type: DEFAULT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.proteins ALTER COLUMN id SET DEFAULT nextval('public.proteins_id_seq'::regclass);
 
-
---
--- Name: runs id; Type: DEFAULT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.runs ALTER COLUMN id SET DEFAULT nextval('public.runs_id_seq'::regclass);
-
-
---
--- Name: associations associations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.associations
     ADD CONSTRAINT associations_pkey PRIMARY KEY (id);
 
-
---
--- Name: associations associations_run_id_pmid_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.associations
     ADD CONSTRAINT associations_run_id_pmid_key UNIQUE (run_id, pmid);
-
-
---
--- Name: descriptions descriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.descriptions
     ADD CONSTRAINT descriptions_pkey PRIMARY KEY (id);
 
-
---
--- Name: descriptions descriptions_stable_id_version_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.descriptions
     ADD CONSTRAINT descriptions_stable_id_version_id_key UNIQUE (stable_id, version);
-
-
---
--- Name: keywords keywords_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.keywords
     ADD CONSTRAINT keywords_pkey PRIMARY KEY (id);
 
-
---
--- Name: methods methods_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.methods
     ADD CONSTRAINT methods_pkey PRIMARY KEY (id);
-
-
---
--- Name: methods methods_psimi_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.methods
     ADD CONSTRAINT methods_psimi_id_key UNIQUE (psimi_id);
 
-
---
--- Name: proteins proteins_accession_version_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.proteins
     ADD CONSTRAINT proteins_accession_version_key UNIQUE (accession, version);
-
-
---
--- Name: proteins proteins_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.proteins
     ADD CONSTRAINT proteins_pkey PRIMARY KEY (id);
 
-
---
--- Name: proteins_versions proteins_versions_accession_current_version_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.proteins_versions
     ADD CONSTRAINT proteins_versions_accession_current_version_key UNIQUE (accession, current_version);
-
-
---
--- Name: proteins_versions proteins_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.proteins_versions
     ADD CONSTRAINT proteins_versions_pkey PRIMARY KEY (accession, version);
 
-
---
--- Name: publications publications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.publications
     ADD CONSTRAINT publications_pkey PRIMARY KEY (pmid);
-
-
---
--- Name: runs runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.runs
     ADD CONSTRAINT runs_pkey PRIMARY KEY (id);
 
-
---
--- Name: taxon_name taxon_name_name_name_class_taxon_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.taxon_name
     ADD CONSTRAINT taxon_name_name_name_class_taxon_id_key UNIQUE (name, name_class, taxon_id);
-
-
---
--- Name: taxon taxon_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.taxon
     ADD CONSTRAINT taxon_pkey PRIMARY KEY (taxon_id);
 
-
---
--- Name: taxon xaktaxon_left_value; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.taxon
     ADD CONSTRAINT xaktaxon_left_value UNIQUE (left_value);
-
-
---
--- Name: taxon xaktaxon_ncbi_taxon_id; Type: CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.taxon
     ADD CONSTRAINT xaktaxon_ncbi_taxon_id UNIQUE (ncbi_taxon_id);
 
-
---
--- Name: taxon xaktaxon_right_value; Type: CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.taxon
     ADD CONSTRAINT xaktaxon_right_value UNIQUE (right_value);
 
-
---
--- Name: dataset_accession1_idx; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX dataset_accession1_idx ON public.dataset USING btree (accession1);
-
-
---
--- Name: dataset_accession2_idx; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX dataset_accession2_idx ON public.dataset USING btree (accession2);
 
-
---
--- Name: dataset_description_id_key; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE UNIQUE INDEX dataset_description_id_key ON public.dataset USING btree (description_id);
-
-
---
--- Name: dataset_pmid_idx; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX dataset_pmid_idx ON public.dataset USING btree (pmid);
 
-
---
--- Name: dataset_stable_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX dataset_stable_id_idx ON public.dataset USING btree (stable_id);
-
-
---
--- Name: descriptions_association_id_key; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX descriptions_association_id_key ON public.descriptions USING btree (association_id);
 
-
---
--- Name: descriptions_method_id_key; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX descriptions_method_id_key ON public.descriptions USING btree (method_id);
-
-
---
--- Name: descriptions_protein1_id_key; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX descriptions_protein1_id_key ON public.descriptions USING btree (protein1_id);
 
-
---
--- Name: descriptions_protein2_id_key; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX descriptions_protein2_id_key ON public.descriptions USING btree (protein2_id);
-
-
---
--- Name: methods_search_key; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX methods_search_key ON public.methods USING gin (search public.gin_trgm_ops);
 
-
---
--- Name: proteins_ncbi_taxon_id_key; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX proteins_ncbi_taxon_id_key ON public.proteins USING btree (ncbi_taxon_id);
-
-
---
--- Name: proteins_versions_search_key; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX proteins_versions_search_key ON public.proteins_versions USING gin (search public.gin_trgm_ops);
 
-
---
--- Name: taxnamename; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX taxnamename ON public.taxon_name USING btree (name);
-
-
---
--- Name: taxnametaxonid; Type: INDEX; Schema: public; Owner: -
---
 
 CREATE INDEX taxnametaxonid ON public.taxon_name USING btree (taxon_id);
 
-
---
--- Name: taxparent; Type: INDEX; Schema: public; Owner: -
---
-
 CREATE INDEX taxparent ON public.taxon USING btree (parent_taxon_id);
-
-
---
--- Name: taxon rule_taxon_i; Type: RULE; Schema: public; Owner: -
---
 
 CREATE RULE rule_taxon_i AS
     ON INSERT TO public.taxon
@@ -714,84 +353,32 @@ CREATE RULE rule_taxon_i AS
            FROM public.taxon
           WHERE (taxon.ncbi_taxon_id = new.ncbi_taxon_id)) IS NOT NULL) DO INSTEAD NOTHING;
 
-
---
--- Name: taxon_name rule_taxon_name_i; Type: RULE; Schema: public; Owner: -
---
-
 CREATE RULE rule_taxon_name_i AS
     ON INSERT TO public.taxon_name
    WHERE (( SELECT taxon_name.taxon_id
            FROM public.taxon_name
           WHERE ((taxon_name.taxon_id = new.taxon_id) AND ((taxon_name.name)::text = (new.name)::text) AND ((taxon_name.name_class)::text = (new.name_class)::text))) IS NOT NULL) DO INSTEAD NOTHING;
 
-
---
--- Name: associations associations_pmid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.associations
     ADD CONSTRAINT associations_pmid_fkey FOREIGN KEY (pmid) REFERENCES public.publications(pmid);
-
-
---
--- Name: associations associations_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.associations
     ADD CONSTRAINT associations_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.runs(id);
 
-
---
--- Name: descriptions descriptions_association_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.descriptions
     ADD CONSTRAINT descriptions_association_id_fkey FOREIGN KEY (association_id) REFERENCES public.associations(id);
-
-
---
--- Name: descriptions descriptions_method_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.descriptions
     ADD CONSTRAINT descriptions_method_id_fkey FOREIGN KEY (method_id) REFERENCES public.methods(id);
 
-
---
--- Name: descriptions descriptions_protein1_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.descriptions
     ADD CONSTRAINT descriptions_protein1_id_fkey FOREIGN KEY (protein1_id) REFERENCES public.proteins(id);
-
-
---
--- Name: descriptions descriptions_protein2_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
 
 ALTER TABLE ONLY public.descriptions
     ADD CONSTRAINT descriptions_protein2_id_fkey FOREIGN KEY (protein2_id) REFERENCES public.proteins(id);
 
-
---
--- Name: taxon_name fktaxon_taxonname; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.taxon_name
     ADD CONSTRAINT fktaxon_taxonname FOREIGN KEY (taxon_id) REFERENCES public.taxon(taxon_id) ON DELETE CASCADE;
 
-
---
--- Name: proteins_versions proteins_versions_accession_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
 ALTER TABLE ONLY public.proteins_versions
     ADD CONSTRAINT proteins_versions_accession_version_fkey FOREIGN KEY (accession, version) REFERENCES public.proteins(accession, version);
-
-
---
--- PostgreSQL database dump complete
---
-
-
