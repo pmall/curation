@@ -35,10 +35,10 @@ dataset: materialized view joining everything (the export / analysis view)
 
 ### Volumes
 
-| Type | Curated pubs | Live descriptions | Deleted versions | Notes                                                                        |
-| ---- | -----------: | ----------------: | ---------------: | ---------------------------------------------------------------------------- |
-| vh   |        6,042 |           117,457 |            7,782 | manual curation, median 2 PPIs / paper                                       |
-| hh   |        9,363 |           299,446 |              450 | dominated by large screens (HuRI 32296183: 57,742; BioPlex 28514442: 56,903) |
+| Type | Curated pubs | Live descriptions | Deleted versions | Notes |
+| -- | -: | -: | -: | -- |
+| vh | 6,042 | 117,457 | 7,782 | manual curation, median 2 PPIs / paper |
+| hh | 9,363 | 299,446 | 450 | dominated by large screens (HuRI 32296183: 57,742; BioPlex 28514442: 56,903) |
 
 - Triage: 93,731 discarded vs 15,405 curated (≈ 14 % acceptance in `vh`).
 - **Backlog**: 749 `selected` associations, 744 of them in recent runs 81–87 (2025–2026).
@@ -57,18 +57,18 @@ dataset: materialized view joining everything (the export / analysis view)
 
 ### Data-level findings
 
-| #   | Check                                                                             | Result                                                                                                           |
-| --- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 1   | At most one live version per `stable_id`, and it is the max version               | holds (1,108 stable_ids fully deleted)                                                                           |
-| 2   | Live descriptions on non-`curated` associations                                   | **25** (10 `discarded`, 15 `selected`; e.g. pmid 41586518, 41902231, 10603321)                                   |
-| 3   | `curated` association with no live description                                    | **1** (assoc 51058, pmid 37097169, run 78)                                                                       |
-| 4   | Description absent from `dataset` (missing taxon)                                 | **1** (EY05645BC3, G8EFI1, taxon 1559366); 2,742 proteins have no taxon row                                      |
-| 5   | `stop > sequence length`                                                          | **417** (e.g. Q9NVV5 stop 245 vs canonical 238: coordinates seem to refer to another isoform / sequence version) |
-| 6   | Exact duplicate live descriptions (same pub, proteins, method, regions, mappings) | **69 groups / 195 rows**, all `vh`                                                                               |
-| 7   | Live descriptions on obsolete protein versions                                    | 13,756 (mostly created in 2019)                                                                                  |
-| 8   | `name1` ≠ current protein name                                                    | 1,121 (old gene symbols, e.g. AES → TLE5, AARS → AARS1)                                                          |
-| 9   | `hh` symmetric duplicates (A–B and B–A, same pub & method)                        | 0; no canonical ordering of the pair though                                                                      |
-| 10  | Dates: `deleted_at < created_at`                                                  | 0                                                                                                                |
+| # | Check | Result |
+| -- | -- | -- |
+| 1 | At most one live version per `stable_id`, and it is the max version | holds (1,108 stable_ids fully deleted) |
+| 2 | Live descriptions on non-`curated` associations | **25** (10 `discarded`, 15 `selected`; e.g. pmid 41586518, 41902231, 10603321) |
+| 3 | `curated` association with no live description | **1** (assoc 51058, pmid 37097169, run 78) |
+| 4 | Description absent from `dataset` (missing taxon) | **1** (EY05645BC3, G8EFI1, taxon 1559366); 2,742 proteins have no taxon row |
+| 5 | `stop > sequence length` | **417** (e.g. Q9NVV5 stop 245 vs canonical 238: coordinates seem to refer to another isoform / sequence version) |
+| 6 | Exact duplicate live descriptions (same pub, proteins, method, regions, mappings) | **69 groups / 195 rows**, all `vh` |
+| 7 | Live descriptions on obsolete protein versions | 13,756 (mostly created in 2019) |
+| 8 | `name1` ≠ current protein name | 1,121 (old gene symbols, e.g. AES → TLE5, AARS → AARS1) |
+| 9 | `hh` symmetric duplicates (A–B and B–A, same pub & method) | 0; no canonical ordering of the pair though |
+| 10 | Dates: `deleted_at < created_at` | 0 |
 
 ## 3. Questions for you
 

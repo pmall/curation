@@ -16,20 +16,20 @@ Each description is exact on its UniProt entries, whatever their version: the sn
 
 ## The four datasets
 
-| Dataset         | What it holds                                                                                                                                                                             |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| hh descriptions | The pairs of human interactors, both up to date.                                                                                                                                          |
+| Dataset | What it holds |
+| -- | -- |
+| hh descriptions | The pairs of human interactors, both up to date. |
 | vh descriptions | The up-to-date human interactor and the generic viral protein: (the NCBI taxon ID of the species, one generic name), whatever the strain and the UniProt version of the viral interactor. |
-| hh mappings     | Both human interactors up to date; the mapping sequences, with all the isoforms as their source.                                                                                          |
-| vh mappings     | The up-to-date human interactor as the target, and the viral source of the mapping, whatever its UniProt version, strain or isoform.                                                      |
+| hh mappings | Both human interactors up to date; the mapping sequences, with all the isoforms as their source. |
+| vh mappings | The up-to-date human interactor as the target, and the viral source of the mapping, whatever its UniProt version, strain or isoform. |
 
-**Generic viral proteins.** The vh descriptions dataset needs one generic name per viral protein of a species, across its strains (e.g. `orf14` and `orf9c` for the same protein). This is a viral curation pass of its own: list the species present in Drakkar and group their viral interactors under a single generic protein name. It is never done in the descriptions: curation keeps the names of Drakkar (`curation-rules.md` §1).
+**Generic viral proteins.** The vh descriptions dataset needs one generic name per viral protein of a species, across its strains (e.g. `orf14` and `orf9c` for the same protein). This is a viral curation pass of its own: list the species present in Drakkar and group their viral interactors under a single generic protein name. It is never done in the descriptions: curation keeps the names of Drakkar (`curation-rules.md` §1, *Names*).
 
 ## What it means for curation
 
-- Every UniProt upgrade works on all the obsolete interactors: each one is moved to the latest snapshot it can be on, a human one whenever it can be (`database.md` §3, versioning pass).
-- A description with an obsolete interactor is live and counts: it was right on its snapshots when it was curated (`curation-rules.md` §1).
+- Every UniProt upgrade works on all the obsolete interactors: each one is moved to the latest snapshot it can be on, a human one whenever it can be (the versioning pass of the `upgrade` skill).
+- A description with an obsolete interactor is live and counts: it was right on its snapshots when it was curated; when a viral protein is gone from UniProt (e.g. a patient isolate), it stays live on its old snapshot, and its mappings stay good data.
 
 ## Open questions
 
-1. Licenses: Drakkar is curated from any full text, whatever its license (`curation-rules.md` §1), and the license of each is in its publication note (`Full text` line). Many are under non-commercial licenses (CC BY-NC, BY-NC-ND). What do they allow for the published datasets?
+1. Licenses: Drakkar is curated from any full text, whatever its license (the license of a copy does not restrict curation), and the license of each is in its publication note (`Full text` line). Many are under non-commercial licenses (CC BY-NC, BY-NC-ND). What do they allow for the published datasets?

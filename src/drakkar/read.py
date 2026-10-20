@@ -234,9 +234,10 @@ def names(cur: Any, accession: str, exclude: int | None = None) -> str:
     """The generic names of the live vh descriptions on the same strain, virus and family.
 
     Viral interactors on obsolete snapshots are included, marked: their generic names stay
-    reusable, their entries do not (C5). `exclude` leaves out the descriptions of that
-    PMID, in every run: a curation sees the names of the other publications, never those of the
-    publication it curates (curated again blind in a re-curation).
+    reusable, their entries do not (`curation-rules.md` §3). `exclude` leaves out the
+    descriptions of that PMID, in every run: a curation sees the names of the other
+    publications, never those of the publication it curates (curated again blind in a
+    re-curation).
 
     Strain: the NCBI taxon of the entry; virus: its species; family: its family. Each name with
     its descriptions and viral interactors, the most used first.
@@ -786,10 +787,10 @@ def used(
     cur: Any, taxon: str, names: list[str], exclude: int | None = None, page: Page = DEFAULT
 ) -> str:
     """The viral interactors of live descriptions under the taxon, on any snapshot (an obsolete
-    one marked: its generic name stays reusable, its entry does not, C5), without those of the
-    PMID excluded. Without generic names, one line per generic name, the most used first, with
-    its most used interactors; with generic names (case aside), one line per interactor of
-    each."""
+    one marked: its generic name stays reusable, its entry does not, `curation-rules.md` §3),
+    without those of the PMID excluded. Without generic names, one line per generic name, the
+    most used first, with its most used interactors; with generic names (case aside), one line
+    per interactor of each."""
     cur.execute(
         """
         SELECT d.name2, p.accession, d.start2, d.stop2, v.accession IS NULL AS obsolete,

@@ -1,5 +1,5 @@
 """Protein sequences from NCBI (GenBank, RefSeq), for what UniProt lacks: the publication's
-strain, whose sequence gives the mappings (`docs/curation-rules.md` §3, mappings).
+strain, whose sequence gives the mappings (`docs/curation-rules.md` §3).
 
 uv run drakkar-genbank search <query>... [--limit <n>] [--offset <n>] [--all]
     the NCBI protein records of each query (NCBI search syntax, e.g. `JFH-1 AND polyprotein`):

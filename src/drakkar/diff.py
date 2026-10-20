@@ -14,9 +14,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from drakkar.write import DATE, Description, NewDescription, Revision, live_revisions
+from drakkar.write import Description, NewDescription, Revision, live_revisions
 
-CREATED = re.compile(re.escape(DATE) + r" CREATED: (.+)")
+CREATED = re.compile(r"(?:\[\S+ Claude\] )?CREATED: (.+)")
 
 Key = tuple[str, str, str, int | None, int | None]
 
@@ -76,7 +76,7 @@ def _revised_note(changes: list[str], note: str) -> str:
     if lines and (created := CREATED.fullmatch(lines[0])):
         evidence, lines = f"; {created[1]}", lines[1:]
     details = [line for line in lines if line.startswith("- ")]
-    return "\n".join([f"{DATE} REVISED: re-curation, {', '.join(changes)}{evidence}", *details])
+    return "\n".join([f"REVISED: re-curation, {', '.join(changes)}{evidence}", *details])
 
 
 def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDescription]) -> Diff:
@@ -101,7 +101,7 @@ def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDes
         assert live.description is not None
         item = by_key.pop(_key(cur, live.description), None)
         if item is None:
-            note = f"{DATE} REMOVED: not found by the re-curation"
+            note = "REMOVED: not found by the re-curation"
             diff.deleted.append(replace(live, action="remove", description=None, note=note))
         elif changes := _changes(live.description, item.description):
             note = _revised_note(changes, item.note)

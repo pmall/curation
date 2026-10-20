@@ -4,31 +4,31 @@ Descriptions and publication states are written only through these tools, from f
 
 ## Files
 
-Tab separated. Lines starting with `#` are ignored (the header is one), so files concatenate with `cat`. Every row names its publication: a file holds one publication or many. Notes follow `curation-rules.md` §5, with `[DATE Claude]` as the date (set at commit) and `\n` for line breaks. Sequences in a list are separated by `,`.
+Tab separated. Lines starting with `#` are ignored (the header is one), so files concatenate with `cat`. Every row names its publication: a file holds one publication or many. Notes follow `notes.md`, with `\n` for line breaks. Sequences in a list are separated by `,`.
 
 **Descriptions to add** (`*.add.tsv`), one row per new description:
 
-| Column                          | Content                                                                                                         |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `run_id`, `pmid`                | the publication                                                                                                 |
-| `method`                        | PSI-MI ID                                                                                                       |
-| `accession1`                    | human interactor; gene name and full-length coordinates come from its snapshot                                  |
-| `accession2`, `start2`, `stop2` | viral interactor                                                                                                |
-| `name2`                         | generic name                                                                                                    |
-| `mappings1`, `mappings2`        | mapping sequences, extra end residues in lowercase (`mSTNPK`: `nter` M); occurrences are computed at write time |
-| `below_threshold`               | mapping sequences kept below 90 % identity, explained in the note                                               |
-| `note`                          | the description note, `CREATED`                                                                                 |
+| Column | Content |
+| -- | -- |
+| `run_id`, `pmid` | the publication |
+| `method` | PSI-MI ID |
+| `accession1` | human interactor; gene name and full-length coordinates come from its snapshot |
+| `accession2`, `start2`, `stop2` | viral interactor |
+| `name2` | generic name |
+| `mappings1`, `mappings2` | mapping sequences, extra end residues in lowercase (`mSTNPK`: `nter` M); occurrences are computed at write time |
+| `below_threshold` | mapping sequences kept below 90 % identity, explained in the note |
+| `note` | the description note, `CREATED` |
 
 **Revisions** (`*.revise.tsv`), one row per revised description:
 
-| Column                 | Content                                                                                                                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stable_id`, `version` | the description and the live version the decision was made on; refused if it is no longer live                                                                                               |
-| `run_id`, `pmid`       | its publication                                                                                                                                                                              |
-| `action`               | `revise` (new version) or `remove` (no successor)                                                                                                                                            |
-| `into`                 | on a `remove` that merges a duplicate: the stable ID of the survivor; the description columns may then give what the removed description was decided to become, checked against the survivor |
-| description columns    | on a `revise`: the whole new description, as in `*.add.tsv`, from `method` to `below_threshold`                                                                                              |
-| `note`                 | `revise`: the note of the new version, `REVISED` (`UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line                                                           |
+| Column | Content |
+| -- | -- |
+| `stable_id`, `version` | the description and the live version the decision was made on; refused if it is no longer live |
+| `run_id`, `pmid` | its publication |
+| `action` | `revise` (new version) or `remove` (no successor) |
+| `into` | on a `remove` that merges a duplicate: the stable ID of the survivor; the description columns may then give what the removed description was decided to become, checked against the survivor |
+| description columns | on a `revise`: the whole new description, as in `*.add.tsv`, from `method` to `below_threshold` |
+| `note` | `revise`: the note of the new version, `REVISED` (`UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
 **Publications** (`*.publications.tsv`), one row per publication whose state or note changes: `run_id`, `pmid`, `state`, `note` (the whole publication note).
 
@@ -42,7 +42,7 @@ Writes go through these commands. Without `--commit`, a command is a dry run: it
 
 They take several files at once, and `--header` prints the header line of their format.
 
-- `uv run drakkar-move <file>... [--new-run] [--commit]`: takes publications files (`*.publications.tsv`, only `run_id` and `pmid` are read) and moves those that are `selected` with a pass date in a vh run of the PubMed query to the open special run, the one with the highest number (`curation-rules.md` §2), adding its `Moved` line to each note; the others stay where they are. `--new-run` opens the next special run first, and the first move opens `special-1`. Their descriptions move with them.
+- `uv run drakkar-move <file>... [--new-run] [--commit]`: takes publications files (`*.publications.tsv`, only `run_id` and `pmid` are read) and moves those that are `selected` with a pass date in a vh run of the PubMed query to the open special run, the one with the highest number (`database.md` §1, states), adding its `Moved` line to each note; the others stay where they are. `--new-run` opens the next special run first, and the first move opens `special-1`. Their descriptions move with them.
 - `uv run drakkar-batch <dir> [--new-run] [--commit]`: writes a curation batch from the merged files of its directory: `descriptions.revise.tsv` and `descriptions.delete.tsv` (revision rows), `descriptions.add.tsv`, and `publications.tsv`; a missing descriptions file has no rows. One transaction, in this order: the revisions and removals, the new descriptions, the publication states and notes, then the move of the publications left `selected` with a pass date, as `drakkar-move` does (`--new-run` likewise). Every invariant is checked once, on the result, so a row can rely on an earlier one (an addition on a rename). Refused rows are reported with their file and line.
 - `uv run drakkar-diff <run_id> <pmid> <file>`: read-only. Diffs the descriptions of the file (`*.add.tsv` format, all of one publication) against the live descriptions of that publication, and writes beside the file `<name>.add.tsv`, the descriptions that are not live; `<name>.revise.tsv`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.tsv`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein; `below_threshold` follows from the mappings and is not compared. An empty file puts every live description of the publication in `<name>.delete.tsv`.
 - `uv run drakkar-check <dir>`: checks every invariant, read-only.
@@ -68,9 +68,17 @@ A lookup prints the first 10 lines per input (`--limit <n>`), the closest names 
 - `uv run drakkar-read used <taxon> [<generic name>...] [--exclude <pmid>]`: the viral interactors of live descriptions under the taxon, on any snapshot, without those of `--exclude`. Without generic names, one line per generic name, the most used first, with its live descriptions and its three most used interactors; with generic names (case aside), one line per interactor of each: accession, coordinates, current or obsolete snapshot, live descriptions, the most used first. On an obsolete snapshot, the generic name stays reusable, the entry does not.
 - `uv run drakkar-read sql <query>`: free SQL for what no lookup gives, on a read-only connection where each statement stops after 30 seconds: its rows as tab-separated lines under a header of column names, paged and counted as the lookups, each cell cut at 200 characters. Written from the tables of `database.md` §1.
 
+## Releases
+
+A UniProt release is loaded in three commands, each in one transaction (without `--commit`, a dry run that rolls back), on a directory `data/<release>/` named after the release: `taxonomy/` (the NCBI taxdump loaded with this release), `uniprot/` (the FTP files and their parsed TSV) and `reports/`. Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` and `uniprot_sprot_varsplic.fasta.gz` (isoforms). What a release does to the snapshots: `database.md` §3.
+
+- `uv run drakkar-taxonomy data/<release> [--commit]`: the NCBI taxonomy, first; merged taxa are resolved with `merged.dmp`.
+- `uv run drakkar-uniprot parse data/<release>`: the UniProt XML to TSV (cached).
+- `uv run drakkar-uniprot upgrade data/<release> [--commit]`: the import; it writes `reports/uniprot_upgrade.md` (with the entries whose taxon is missing from the taxonomy) and `reports/obsolete_vh_descriptions.tsv`.
+
 ## NCBI sequences
 
-A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken from its sequence (`curation-rules.md` §3, mappings). Read-only, no database; the record used is named in the description note.
+A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken from its sequence (`curation-rules.md` §3). Read-only, no database; the record used is named in the description note.
 
 - `uv run drakkar-genbank search <query>... [--limit <n>] [--offset <n>] [--all]`: the NCBI protein records of each query, in NCBI search syntax (`JFH-1 AND polyprotein`, `"Hepatitis C virus JFH-1"[Organism]`), paged and counted as the lookups: accession and version, title, length, NCBI taxon.
 - `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: a protein record: its accession and version, title, length and sequence, or the subsequence between those coordinates (1-based, inclusive); a nucleotide record (a genome): its coding sequences, one line each, with the protein accession to read with `seq`.
@@ -85,8 +93,8 @@ A full text is fetched and converted by these tools, then read from the files th
   2. **The article**, from the first route that gives it: the PMC open access files, Europe PMC `fullTextXML`, NCBI `efetch` (each when its XML has a body); the PMC article page, which serves the PMC copies outside the open access files (when it has the body sections; one page per publication, as NCBI forbids bulk downloads); the publisher's HTML page (when it declares free access; a page that declares a paywall is never the article); then the publisher's PDF (`citation_pdf_url`) and the other free copies' PDFs (when the file is a PDF).
   3. **The supplementary files**, as the article lists them: its XML, the supplementary sections of the PMC page, or else the supplementary links of the publisher's page. Each is looked for on every route that serves one, whatever route gave the article: the PMC open access files, the link the article gives (never the PMC website's, which is behind a challenge), the publisher's page, then Europe PMC's supplementary files service. Archives are unpacked. A video, an image, the Reporting Summary and the peer review file (both by their caption) are skipped, with why.
 
-  Unpaywall is asked only with an address, `UNPAYWALL_EMAIL` in the project's `.env`. It writes `<pmid>.xml`, `<pmid>.html` or `<pmid>.pdf`, the supplementary files in `<pmid>.supp/`, and last the manifest `<pmid>.json`, so a manifest means the fetch is done. The manifest holds `outcome`: `complete` (the article and every supplementary file), `incomplete` (free, but the article or some supplementary files could not be downloaded) or `closed` (no free copy); `line`, the `Full text` line of the publication note (`curation-rules.md` §5); `free`; `file`, the article (none when there is none, with `why`); `pdf`, the PDF beside a PMC XML; `pmcid`, `pmcids`, `doi`, `source`, `url`, `license`; `supplements_from`, where the list of supplementary files comes from; `supplements` (each with the `name` the article gives it, and `asked` when the curation asked for it), `skipped_supplements` with why, and `missing_supplements`, each with every place tried; `tried`, every route of the article, with its outcome.
+  Unpaywall is asked only with an address, `UNPAYWALL_EMAIL` in the project's `.env`. It writes `<pmid>.xml`, `<pmid>.html` or `<pmid>.pdf`, the supplementary files in `<pmid>.supp/`, and last the manifest `<pmid>.json`, so a manifest means the fetch is done. The manifest records the article, or why there is none, and each supplementary file found, skipped or missing, with the places tried: `line`, the `Full text` line of the publication note (`notes.md`); `free`; `file`, the article (none when there is none, with `why`); `pdf`, the PDF beside a PMC XML; `pmcid`, `pmcids`, `doi`, `source`, `url`, `license`; `supplements_from`, where the list of supplementary files comes from; `supplements` (each with the `name` the article gives it, and `asked` when the curation asked for it), `skipped_supplements` with why, and `missing_supplements`, each with every place tried; `tried`, every route of the article, with its outcome.
 
-- `uv run drakkar-fetch --supplement <pmid> <dir> <url or file name>...`: step 3 on the files given, for a publication already fetched: each is looked for on every route of step 3, and at the URL itself when one is given; a file name may also be the label the publication gives (`Table S1`), looked for in the links' text. What is found is saved in `<pmid>.supp/` and converted to `<file>.md` beside it, as `drakkar-parse` does; the manifest is updated (the file joins `supplements` with `asked`; a file still missing joins `missing_supplements` with `asked` and every place tried) and its outcome and line recomputed. One line per file: found, with its converted text; skipped, with why; already there; or missing, with the places tried. It writes only in `<dir>`, never replaces the article or a file already there.
+- `uv run drakkar-fetch --supplement <pmid> <dir> <url or file name>...`: step 3 on the files given, for a publication already fetched: each is looked for on every route of step 3, and at the URL itself when one is given; a file name may also be the label the publication gives (`Table S1`), looked for in the links' text. What is found is saved in `<pmid>.supp/` and converted to `<file>.md` beside it, as `drakkar-parse` does; the manifest is updated (the file joins `supplements` with `asked`; a file still missing joins `missing_supplements` with `asked` and every place tried) and its line recomputed. One line per file: found, with its converted text; skipped, with why; already there; or missing, with the places tried. It writes only in `<dir>`, never replaces the article or a file already there.
 
 - `uv run drakkar-parse <file> <out>`: converts one file to text, by its type: PMC XML to Markdown (title, abstract, sections, captions, tables and supplementary materials; references, acknowledgements, notes and peer reviews left out), Elsevier XML from its article API the same way (references and the graphical abstract left out), a PMC article page by its structure, as its XML (the same blocks, the back matter left out), any other HTML page to the Markdown of its main text, a Word document (`.docx`, or `.doc` from Word 97-2003) to Markdown, a PDF to its text page by page (`--- page N ---`), a spreadsheet (`.xlsx`, `.xls`) to one TSV block per sheet, CSV and plain text as they are. A scanned PDF, a damaged file, an image or any other type is refused with the reason, and nothing is written. No network.

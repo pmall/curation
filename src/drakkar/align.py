@@ -28,7 +28,7 @@ from typing import Any
 from Bio import Align
 from Bio.Align import substitution_matrices
 
-MIN_IDENTITY = 90.0  # C4
+MIN_IDENTITY = 90.0  # curation-rules.md §3
 MAX_ALIGNMENTS = 1000  # optimal alignments read on one isoform; more only for degenerate cases
 WRITTEN = re.compile(r"([a-z]*)([A-Z]+)([a-z]*)")
 UNSCORED = str.maketrans("UOJ", "XXX")

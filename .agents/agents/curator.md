@@ -1,0 +1,1 @@
+../../prompts/agents/curator.md

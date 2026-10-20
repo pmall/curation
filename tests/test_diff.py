@@ -18,7 +18,7 @@ NEW = NewDescription(*SELECTED, Description("MI:0007", "P46934", "P25223", "P"))
 def curated_again(conn, run_id: int, pmid: int) -> dict[str, NewDescription]:
     """The live descriptions of a publication, as a curation that finds them all would give them."""
     rows = {
-        r.stable_id: NewDescription(run_id, pmid, r.description, "[DATE Claude] CREATED: Fig. 1")
+        r.stable_id: NewDescription(run_id, pmid, r.description, "CREATED: Fig. 1")
         for r in live_revisions(conn.cursor(), run_id, pmid)
         if r.description is not None
     }
@@ -70,14 +70,14 @@ def test_another_name_or_other_mappings_are_a_revision(conn):
         description=replace(
             n.description, name2="orf9b", mappings2=("MDPNQTNVVPPALHLVDPQIQLTITR",)
         ),
-        note="[DATE Claude] CREATED: Y2H (MI:0018), Table S1\n- Mapping: 1–26 (Fig. 3)",
+        note="CREATED: Y2H (MI:0018), Table S1\n- Mapping: 1–26 (Fig. 3)",
     )
     result = diff(conn, SARS, again.values())
     [revised] = result.revised
     assert (revised.stable_id, revised.version, revised.action) == ("EY73D2C965", 1, "revise")
     assert revised.description == again["EY73D2C965"].description
     assert revised.note == (
-        "[DATE Claude] REVISED: re-curation, name2 N → orf9b, mappings2 1 added, 0 removed; "
+        "REVISED: re-curation, name2 N → orf9b, mappings2 1 added, 0 removed; "
         "Y2H (MI:0018), Table S1\n- Mapping: 1–26 (Fig. 3)"
     )
     assert "EY73D2C965" not in result.same and not result.added and not result.deleted
@@ -95,7 +95,7 @@ def test_another_method_or_interactor_is_a_deletion_and_an_addition(conn):
         "remove",
         None,
     )
-    assert deleted.note == "[DATE Claude] REMOVED: not found by the re-curation"
+    assert deleted.note == "REMOVED: not found by the re-curation"
 
 
 def test_an_empty_curation_deletes_every_live_description(conn):
@@ -112,7 +112,7 @@ def test_a_description_of_another_publication_is_refused(conn):
 
 def test_a_description_curated_twice_is_refused(conn):
     with pytest.raises(ValueError, match="curated twice"):
-        diff(conn, SELECTED, [NEW, replace(NEW, note="[DATE Claude] CREATED: Fig. 2")])
+        diff(conn, SELECTED, [NEW, replace(NEW, note="CREATED: Fig. 2")])
 
 
 def test_a_publication_not_in_the_run_is_refused(conn):
@@ -133,7 +133,7 @@ def test_diff_command_writes_files_the_write_tools_take(conn, tmp_path: Path):
     added = NewDescription(
         *SARS,
         Description("MI:0007", "P46934", "Q6VA95", "N"),
-        "[DATE Claude] CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
+        "CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
     )
     path = tmp_path / "descriptions.tsv"
     write_rows(path, ADD, [format_new_description(d) for d in [*again.values(), added]])

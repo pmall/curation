@@ -18,9 +18,8 @@ Three steps, each a list of routes; a route answers yes or no by one test.
    supplementary files service. Videos, images, the Reporting Summary and the peer review
    file are skipped.
 Nothing is converted (`drakkar-parse`). Writes `<pmid>.xml|html|pdf`, the supplementary files
-in `<pmid>.supp/`, and last the manifest `<pmid>.json`, whose outcome is `complete`,
-`incomplete` (free, but the article or some supplementary files not downloaded, each named
-with every place tried) or `closed` (no free copy).
+in `<pmid>.supp/`, and last the manifest `<pmid>.json`: the article, or why there is none, and
+each supplementary file found, skipped or missing, with every place tried.
 
 `--supplement` runs step 3 on the files given, also at the URL itself when one is given,
 converts each file found to `<file>.md` beside it, and updates the manifest. It never replaces
@@ -783,11 +782,10 @@ class Fetch:
         return entry
 
     def conclude(self) -> None:
-        """The outcome and the `Full text` line of the publication note."""
+        """The `Full text` line of the publication note."""
         m = self.manifest
         missing = [x["name"] for x in m.get("missing_supplements", [])]
         if m["file"] is None:
-            m["outcome"] = "incomplete" if m["free"] else "closed"
             if m["free"]:
                 m["why"] = self.not_downloaded_why()
                 m["line"] = f"Full text: not downloaded — {m['why']}"
@@ -795,7 +793,6 @@ class Fetch:
                 m["line"] = f"Full text: closed — {m['why']}"
             return
         m.pop("why", None)
-        m["outcome"] = "incomplete" if missing else "complete"
         if m["source"] in self.pmcids:
             m["line"] = f"Full text: {m['source']} ({m['license']})"
         else:
