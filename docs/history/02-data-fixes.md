@@ -21,17 +21,17 @@ Scope measured: 117,457 live vh descriptions in 6,048 publications, and 299,446 
 
 Rows of the report on 2026-10-06, on UniProt 2021_02 (D9 and D12 redefined and measured on 2026-10-07; D12 counts the 3 edge cases decided in point 9). Every invariant not listed was at 0.
 
-| ID  | Severity |             vh |                                                    hh |
-| --- | -------- | -------------: | ----------------------------------------------------: |
-| R3  | error    |              1 |                                                     0 |
-| D2  | upgrade  |              1 |                                                14,484 |
-| D4  | error    |            264 |                                                   356 |
-| D5  | error    |      70 groups |                                                     0 |
-| D7  | warning  |          1,120 |                                                     3 |
-| D9  | error    |             53 |                                                     0 |
-| D11 | error    |              0 | 7,256 live sides + 102 deleted sides (fixed in place) |
-| D12 | warning  |              3 |                                                     0 |
-| S1  | error    | 3 publications |                                                     0 |
+| ID | Severity | vh | hh |
+| -- | -- | -: | -: |
+| R3 | error | 1 | 0 |
+| D2 | upgrade | 1 | 14,484 |
+| D4 | error | 264 | 356 |
+| D5 | error | 70 groups | 0 |
+| D7 | warning | 1,120 | 3 |
+| D9 | error | 53 | 0 |
+| D11 | error | 0 | 7,256 live sides + 102 deleted sides (fixed in place) |
+| D12 | warning | 3 | 0 |
+| S1 | error | 3 publications | 0 |
 
 R3 was an error then; it became information on 2026-10-08 (`03-versioning-pass.md`, step 3c).
 
@@ -39,18 +39,18 @@ R3 was an error then; it became information on 2026-10-08 (`03-versioning-pass.m
 
 Counts are descriptions (stable IDs), each in a single point.
 
-| #   | Problem                                                                                         | Invariants | vh descriptions | hh descriptions | Status         |
-| --- | ----------------------------------------------------------------------------------------------- | ---------- | --------------: | --------------: | -------------- |
-| 1   | Descriptions on a publication not selected or curated                                           | S1         |               7 |               0 | done           |
-| 2   | Viral protein whose species is missing from the taxonomy                                        | R3         |               1 |               0 | upgrade        |
-| 3   | Human gene name out of date (warning)                                                           | D7         |           1,120 |               0 | done           |
-| 4   | Human coordinates not 1 to the length                                                           | D4         |             264 |             346 | done           |
-| 5   | Viral name: the same (accession, name) has inconsistent coordinates across descriptions         | D10        |               0 |               — | nothing to fix |
-| 6   | Viral coordinates: the same (accession, start, stop) has inconsistent names across descriptions | D6         |               0 |               — | nothing to fix |
-| 7   | Same description recorded several times                                                         | D5         |             216 |               0 | done           |
-| 8   | Human mappings not fitting the sequences (content)                                              | D9         |               0 |               0 | nothing to fix |
-| 9   | Viral mappings not fitting the sequences (content)                                              | D9         |              36 |               — | done           |
-| 10  | Descriptions that need several fixes, fixed last                                                | several    |               0 |               3 | done           |
+| # | Problem | Invariants | vh descriptions | hh descriptions | Status |
+| -- | -- | -- | -: | -: | -- |
+| 1 | Descriptions on a publication not selected or curated | S1 | 7 | 0 | done |
+| 2 | Viral protein whose species is missing from the taxonomy | R3 | 1 | 0 | upgrade |
+| 3 | Human gene name out of date (warning) | D7 | 1,120 | 0 | done |
+| 4 | Human coordinates not 1 to the length | D4 | 264 | 346 | done |
+| 5 | Viral name: the same (accession, name) has inconsistent coordinates across descriptions | D10 | 0 | — | nothing to fix |
+| 6 | Viral coordinates: the same (accession, start, stop) has inconsistent names across descriptions | D6 | 0 | — | nothing to fix |
+| 7 | Same description recorded several times | D5 | 216 | 0 | done |
+| 8 | Human mappings not fitting the sequences (content) | D9 | 0 | 0 | nothing to fix |
+| 9 | Viral mappings not fitting the sequences (content) | D9 | 36 | — | done |
+| 10 | Descriptions that need several fixes, fixed last | several | 0 | 3 | done |
 
 ### 1. Descriptions on a publication not selected or curated [S1]
 
@@ -112,13 +112,13 @@ A description, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. 
 
 **Measured on 2026-10-07** (`data/2021_02/reports/check-2026-10-07-d9-segments/`, with `D9-details.tsv`): 53 viral vh mappings, no human mapping, nothing in hh. Every other occurrence recorded below 100 % is true: on its segment, the identity is at most 0.47 point below the recorded one (legacy gap placement), and every recorded identity was at least 96 %.
 
-| PMID               | Viral protein            | Mappings | Problem                                                                     |
-| ------------------ | ------------------------ | -------: | --------------------------------------------------------------------------- |
-| 25485706           | Q99IB8 (HCV)             |       23 | stored at 100 % but not at its coordinates (22), or outside the protein (1) |
-| 25733156           | Q99IB8 (HCV)             |        1 | stored at 100 % but not at its coordinates                                  |
-| 27375898           | P03377 (HIV-1 Env)       |       11 | stored at 100 % but not at its coordinates                                  |
-| 17868381, 19889084 | P06935                   |        2 | stored at 100 % but not at its coordinates                                  |
-| 34799561           | coronavirus polyproteins |       16 | no occurrence stored                                                        |
+| PMID | Viral protein | Mappings | Problem |
+| -- | -- | -: | -- |
+| 25485706 | Q99IB8 (HCV) | 23 | stored at 100 % but not at its coordinates (22), or outside the protein (1) |
+| 25733156 | Q99IB8 (HCV) | 1 | stored at 100 % but not at its coordinates |
+| 27375898 | P03377 (HIV-1 Env) | 11 | stored at 100 % but not at its coordinates |
+| 17868381, 19889084 | P06935 | 2 | stored at 100 % but not at its coordinates |
+| 34799561 | coronavirus polyproteins | 16 | no occurrence stored |
 
 **The fixes**, each a revision in plain SQL that copies the live row and changes only `mapping2`, the old version deleted at the same instant, every other column checked identical before committing:
 

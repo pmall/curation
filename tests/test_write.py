@@ -53,7 +53,7 @@ def new(conn) -> NewDescription:
     return NewDescription(
         *SELECTED,
         Description("MI:0007", "P46934", "P25223", "P", mappings2=(sequence[:20],)),
-        "[DATE Claude] CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
+        "CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
     )
 
 
@@ -78,7 +78,7 @@ def test_add_commits(conn, new):
     assert (version, name1, start1, name2, start2) == (1, "NEDD4", 1, "P", 1)
     assert stop1 > 1 and stop2 > 1
     assert mapping2[0]["isoforms"][0]["occurrences"][0] == {"start": 1, "stop": 20, "identity": 100}
-    assert note.startswith("[") and "CREATED" in note and "DATE" not in note
+    assert note == "CREATED: anti-tag co-IP (MI:0007), Fig. 2B"
 
 
 def test_add_refuses_a_bad_row_and_writes_none(conn, new):
@@ -102,11 +102,6 @@ def test_add_to_an_hh_run_is_refused(conn, new):
     assert "hh run" in outcome.problems[0][1]
 
 
-def test_add_checks_the_note(conn, new):
-    outcome = add_descriptions(conn, [replace(new, note="anti-tag co-IP")])
-    assert "note" in outcome.problems[0][1]
-
-
 def test_mapping_below_threshold_needs_to_be_listed(conn, new):
     low = replace(new, description=replace(new.description, mappings2=("WWWWWWWWWWWWWWWWWWWW",)))
     assert "below_threshold" in add_descriptions(conn, [low]).problems[0][1]
@@ -121,7 +116,7 @@ def test_mapping_below_threshold_needs_to_be_listed(conn, new):
 
 def test_rename_an_interactor_carried_by_two_descriptions(conn):
     rows = live(conn, *SARS)
-    note = "[DATE Claude] REVISED: name2 N → orf6, Drakkar name of the protein"
+    note = "REVISED: name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
     outcome = revise_descriptions(conn, revisions, commit=True)
     assert outcome.ok and outcome.committed
@@ -174,7 +169,7 @@ def test_merge_a_description_decided_to_be_a_duplicate(conn):
         action="remove",
         into="EY10BAD696",
         description=decided,
-        note="[DATE Claude] REMOVED: duplicate of EY10BAD696, the protein tested is P",
+        note="REMOVED: duplicate of EY10BAD696, the protein tested is P",
     )
     outcome = revise_descriptions(conn, [merge], commit=True)
     assert outcome.ok and outcome.committed
@@ -188,7 +183,7 @@ def test_merge_of_different_descriptions_is_refused(conn):
         action="remove",
         into="EY10BAD696",
         description=None,
-        note="[DATE Claude] REMOVED: duplicate",
+        note="REMOVED: duplicate",
     )
     assert "not duplicates" in revise_descriptions(conn, [merge]).problems[0][1]
 
@@ -201,35 +196,65 @@ def test_removal_needs_its_note(conn):
 # --- Publications -------------------------------------------------------------------------------
 
 
+def test_publication_curated(conn):
+    note = "CURATED: from PMC1234567, no description"
+    update = PublicationUpdate(*SELECTED, "curated", note)
+    assert "`- Pass" in update_publications(conn, [update]).problems[0][1]
+    update = replace(update, note=f"{note}\n- Pass 2026-10-18: curated from PMC1234567")
+    assert update_publications(conn, [update], commit=True).committed
+    state, ai_pass_at = conn.execute(
+        "SELECT state, ai_pass_at IS NOT NULL FROM associations "
+        "WHERE run_id = 12 AND pmid = 25031347"
+    ).fetchone()
+    assert (state, ai_pass_at) == ("curated", True)
+
+
+def test_publication_keeps_no_pre_curation_note_as_a_curator_note(conn):
+    conn.execute(
+        "UPDATE associations SET annotation = 'SELECTED: may hold a PPI', ai_pass_at = NULL "
+        "WHERE run_id = 12 AND pmid = 25031347"
+    )
+    conn.commit()
+    note = "CURATED: from PMC1234567\n- Pass 2026-10-20: curated from PMC1234567"
+    update = PublicationUpdate(*SELECTED, "curated", note)
+    assert update_publications(conn, [update], commit=True).committed
+    assert note_of(conn, SELECTED[1]) == note
+
+
+def test_publication_keeps_its_history(conn):
+    first = PublicationUpdate(*SELECTED, "selected", "SELECTED: no full text\n- Pass 2026-10-18: x")
+    assert update_publications(conn, [first], commit=True).committed
+    second = replace(first, state="curated", note="CURATED: from a PDF\n- Pass 2026-10-20: y")
+    assert update_publications(conn, [second], commit=True).committed
+    history = "- Pass 2026-10-18: x\n- Pass 2026-10-20: y"
+    assert note_of(conn, SELECTED[1]) == f"CURATED: from a PDF\n{history}"
+
+
+def test_publication_keeps_the_curator_note(conn):
+    claude = "CURATED: from PMC1234567\n- Pass 2026-10-20: curated"
+    update = PublicationUpdate(56, 34799561, "curated", claude)
+    assert update_publications(conn, [update], commit=True).committed
+    note = f"{claude}\n--- Curator note (before Claude) ---\nDone. Pierre to upload"
+    assert note_of(conn, 34799561) == note
+    given = note.replace("curated\n", "curated\n- Pass 2026-10-22: re-curated\n")
+    again = replace(update, note=given)  # the history and the block given back are kept once
+    assert update_publications(conn, [again], commit=True).committed
+    assert note_of(conn, 34799561) == note.replace(
+        "curated\n", "curated\n- Pass 2026-10-22: re-curated\n"
+    )
+
+
 def today(conn) -> str:
     result = conn.execute("SELECT current_date::text").fetchone()[0]
     conn.rollback()
     return result
 
 
-def test_publication_curated(conn):
-    note = f"[DATE Claude] CURATED: from PMC1234567, no description\n- Pass {today(conn)}: curated"
-    outcome = update_publications(
-        conn, [PublicationUpdate(*SELECTED, "curated", note)], commit=True
-    )
-    assert outcome.ok and outcome.committed
-    state, ai_pass_at = conn.execute(
-        "SELECT state, ai_pass_at FROM associations WHERE run_id = 12 AND pmid = 25031347"
-    ).fetchone()
-    assert state == "curated" and ai_pass_at is not None
-
-
-def test_publication_keeps_the_curator_note(conn):
-    note = f"[DATE Claude] CURATED: from PMC1234567\n- Pass {today(conn)}: re-curated"
-    update = PublicationUpdate(56, 34799561, "curated", note)
-    assert "curator note" in update_publications(conn, [update]).problems[0][1]
-    kept = PublicationUpdate(
-        56,
-        34799561,
-        "curated",
-        note + "\n--- Curator note (before Claude) ---\nDone. Pierre to upload",
-    )
-    assert update_publications(conn, [kept]).ok
+def note_of(conn, pmid) -> str:
+    result = conn.execute("SELECT annotation FROM associations WHERE pmid = %s", (pmid,))
+    note = result.fetchone()[0]
+    conn.rollback()
+    return note
 
 
 # --- Moving to a special run --------------------------------------------------------------------
@@ -238,9 +263,8 @@ def test_publication_keeps_the_curator_note(conn):
 def not_accessible(conn) -> str:
     """SELECTED left `selected` by a pass: what a move takes. Its note."""
     note = (
-        f"[{today(conn)} Claude] SELECTED: may hold a PPI, no full text\n"
-        "- Full text: closed — not open access anywhere\n"
-        f"- Pass {today(conn)}: not accessible (not open access)"
+        "SELECTED: may hold a PPI, no full text\n- Full text: closed — not open access anywhere\n"
+        "- Pass 2026-10-18: not accessible (not open access)"
     )
     update = PublicationUpdate(*SELECTED, "selected", note)
     assert update_publications(conn, [update], commit=True).committed
@@ -267,14 +291,14 @@ def test_move_to_the_special_run(conn, new):
     run_id, name, moved = run_of(conn, SELECTED[1])
     assert name == "special-1" and moved == f"{note}\n- Moved {today(conn)}: from run 32"
     assert stable_id in live(conn, run_id, SELECTED[1])
-    day = today(conn)
-    header = "[DATE Claude] CURATED: from a PDF provided by the user"
-    passed = f"- Pass {day}: curated from a PDF provided by the user"
-    lost = PublicationUpdate(run_id, SELECTED[1], "curated", f"{header}\n{passed}")
-    assert "`Moved`" in update_publications(conn, [lost]).problems[0][1]
-    history = f"- Pass {day}: not accessible (not open access)\n- Moved {day}: from run 32"
-    kept = replace(lost, note=f"{header}\n{history}\n{passed}")
-    assert update_publications(conn, [kept]).ok
+    header = "CURATED: from a PDF provided by the user"
+    passed = "- Pass 2026-10-20: curated from a PDF provided by the user"
+    update = PublicationUpdate(run_id, SELECTED[1], "curated", f"{header}\n{passed}")
+    assert update_publications(conn, [update], commit=True).committed
+    history = (
+        f"- Pass 2026-10-18: not accessible (not open access)\n- Moved {today(conn)}: from run 32"
+    )
+    assert note_of(conn, SELECTED[1]) == f"{header}\n{history}\n{passed}"  # the history is kept
 
 
 def test_move_to_a_new_special_run(conn):
@@ -329,14 +353,14 @@ def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationU
     """SARS's `N` renamed `orf6` with a new `orf6` description, which holds only after the
     renames; SELECTED left `selected`, which the batch then moves."""
     rows = live(conn, *SARS)
-    note = "[DATE Claude] REVISED: name2 N → orf6, Drakkar name of the protein"
+    note = "REVISED: name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
     added = NewDescription(
         *SARS,
         Description("MI:0007", "P46934", "Q6VA95", "orf6"),
-        "[DATE Claude] CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
+        "CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
     )
-    note = f"[DATE Claude] SELECTED: no full text\n- Pass {today(conn)}: not accessible"
+    note = "SELECTED: no full text\n- Pass 2026-10-18: not accessible"
     return revisions, [added], [PublicationUpdate(*SELECTED, "selected", note)]
 
 

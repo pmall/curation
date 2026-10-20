@@ -128,7 +128,8 @@ def test_pmc_open_access_files(tmp_path: Path):
             f"{PMC_AWS}/PMC9.2/s1.xlsx": ok(b"cells"),
         },
     )
-    assert (manifest["outcome"], manifest["line"]) == ("complete", "Full text: PMC9 (cc by)")
+    assert manifest["line"] == "Full text: PMC9 (cc by)"
+    assert manifest["missing_supplements"] == []
     assert (manifest["file"], manifest["pdf"]) == (f"{PMID}.xml", f"{PMID}.pdf")
     assert manifest["supplements"] == [
         {"name": "s1.xlsx", "file": f"{PMID}.supp/s1.xlsx", "url": f"{PMC_AWS}/PMC9.2/s1.xlsx"}
@@ -165,7 +166,7 @@ def test_supplement_archive_is_unpacked(tmp_path: Path):
     assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
     assert (tmp_path / f"{PMID}.supp" / "s1.xlsx").read_text() == "cells"
     assert [s["why"] for s in manifest["skipped_supplements"]] == ["video"]
-    assert manifest["outcome"] == "complete"
+    assert manifest["missing_supplements"] == []
 
 
 def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
@@ -188,7 +189,6 @@ def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
     )
     assert manifest["file"] == f"{PMID}.xml"
     assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
-    assert manifest["outcome"] == "incomplete"
     assert (
         manifest["line"]
         == "Full text: PMC9 (no license given), supplementary files missing: s3.pdf"
@@ -236,7 +236,7 @@ def test_pmc_page_without_body_sections_is_no_article(tmp_path: Path):
     )
     assert manifest["file"] is None
     assert outcomes(manifest)[f"{PMC_PAGE}/PMC9/"] == "HTTP 200, no body sections"
-    assert (manifest["outcome"], manifest["free"]) == ("incomplete", True)
+    assert manifest["free"] is True
 
 
 def test_pmcid_known_only_to_openalex():
@@ -280,7 +280,7 @@ def test_publisher_page_declaring_free_access(tmp_path: Path):
     ]
     assert f"{media}MOESM2_ESM.pdf" not in server.asked
     assert f"{media}MOESM3_ESM.pdf" not in server.asked
-    assert manifest["outcome"] == "complete"
+    assert manifest["missing_supplements"] == []
 
 
 def test_page_declaring_a_creative_commons_license(tmp_path: Path):
@@ -335,7 +335,7 @@ def test_paywalled_page_is_no_article_but_lists_the_files(tmp_path: Path):
     assert [s["file"] for s in manifest["supplements"]] == [
         f"{PMID}.supp/10495_2023_1883_MOESM1_ESM.docx"
     ]
-    assert manifest["outcome"] == "complete"
+    assert manifest["missing_supplements"] == []
 
 
 def test_plos_link_names_the_file_without_its_extension(tmp_path: Path):
@@ -358,7 +358,7 @@ def test_plos_link_names_the_file_without_its_extension(tmp_path: Path):
         },
     )
     assert [s["file"] for s in manifest["supplements"]] == [f"{PMID}.supp/ppat.1002331.s004.doc"]
-    assert manifest["outcome"] == "complete"
+    assert manifest["missing_supplements"] == []
 
 
 def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
@@ -394,7 +394,7 @@ def test_closed(tmp_path: Path):
             PUBLISHER: page("springer-paywall.html"),
         },
     )
-    assert (manifest["free"], manifest["file"], manifest["outcome"]) == (False, None, "closed")
+    assert (manifest["free"], manifest["file"]) == (False, None)
     assert manifest["line"] == "Full text: closed — not open access anywhere"
 
 
@@ -416,7 +416,7 @@ def test_free_but_blocked(tmp_path: Path):
             PUBLISHER + ".pdf": Response(PUBLISHER + ".pdf", 403, "", b""),
         },
     )
-    assert (manifest["free"], manifest["outcome"]) == (True, "incomplete")
+    assert (manifest["free"], manifest["file"]) == (True, None)
     assert manifest["line"] == (
         f"Full text: not downloaded — a free copy at {PUBLISHER} but download blocked (HTTP 403)"
     )
@@ -467,7 +467,7 @@ def test_unpaywall_is_not_asked_without_an_address(tmp_path: Path):
         tmp_path, {SEARCH: json_ok({"resultList": {"result": [{"doi": DOI}]}}), WORK: json_ok({})}
     )
     assert not any(url.startswith(UNPAYWALL) for url in server.asked)
-    assert manifest["outcome"] == "closed"
+    assert (manifest["free"], manifest["file"]) == (False, None)
 
 
 def test_error_page_sent_as_success(tmp_path: Path):
@@ -489,7 +489,7 @@ def fetched_with_a_missing_file(tmp_path: Path) -> dict[str, Response]:
         f"{PMC_AWS}/PMC9.1/s1.xlsx": ok(b"cells"),
     }
     manifest, _ = run(tmp_path, responses)
-    assert manifest["outcome"] == "incomplete"
+    assert [x["name"] for x in manifest["missing_supplements"]] == ["s3.csv"]
     return responses
 
 
@@ -509,10 +509,7 @@ def test_supplement_found_at_a_url(tmp_path: Path):
         "asked": True,
     }
     assert manifest["missing_supplements"] == []
-    assert (manifest["outcome"], manifest["line"]) == (
-        "complete",
-        "Full text: PMC9 (no license given)",
-    )
+    assert manifest["line"] == "Full text: PMC9 (no license given)"
     assert (tmp_path / f"{PMID}.xml").read_bytes().startswith(b"<article")
 
 
@@ -530,7 +527,6 @@ def test_supplement_by_its_label_on_the_publisher_page(tmp_path: Path):
     manifest = json.loads((tmp_path / f"{PMID}.json").read_text())
     assert [x["name"] for x in manifest["missing_supplements"]] == ["s3.csv", "Table S30"]
     assert manifest["missing_supplements"][-1]["asked"] is True
-    assert manifest["outcome"] == "incomplete"
 
 
 def test_supplement_still_missing_and_already_there(tmp_path: Path):

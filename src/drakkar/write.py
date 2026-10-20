@@ -15,7 +15,8 @@ coordinates, the mappings, the note. What involves other descriptions (duplicate
 names) is left to the full check, on the result of the whole list: a rename carried by several
 descriptions passes through inconsistent states and is valid at the end.
 
-Notes may use `[DATE Claude]`: the date is set at write time.
+A description note carries no date (its version has `created_at`); a publication note keeps the
+dated history of its passes and moves.
 """
 
 import json
@@ -29,8 +30,6 @@ import psycopg
 
 from drakkar import check
 from drakkar.align import MIN_IDENTITY, best_identity, map_sequence, read_written, written
-
-DATE = "[DATE Claude]"
 
 
 class InvalidRow(ValueError):
@@ -129,8 +128,7 @@ Applied = tuple[list[str], list[tuple[int, str]]]  # what was written, the probl
 def _apply_rows[T](
     cur: Any,
     rows: Sequence[T],
-    apply: Callable[[Any, T, str], str],
-    today: str,
+    apply: Callable[[Any, T], str],
     first: int = 1,
     order: Callable[[T], int] = lambda _: 0,
 ) -> Applied:
@@ -140,21 +138,19 @@ def _apply_rows[T](
     for number, row in sorted(enumerate(rows, first), key=lambda n_row: order(n_row[1])):
         try:
             with cur.connection.transaction():
-                written.append(apply(cur, row, today))
+                written.append(apply(cur, row))
         except InvalidRow as e:
             problems += [(number, p) for p in e.problems]
     return written, problems
 
 
-def _write(conn: psycopg.Connection, commit: bool, apply: Callable[[Any, str], Applied]) -> Outcome:
+def _write(conn: psycopg.Connection, commit: bool, apply: Callable[[Any], Applied]) -> Outcome:
     """Apply the rows in one transaction, check everything, commit or roll back."""
     if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
         raise RuntimeError("the connection has a transaction in progress")
     with conn.transaction() as tx:
         cur = conn.cursor()
-        cur.execute("SELECT current_date::text")
-        today: str = cast(tuple[str], cur.fetchone())[0]
-        written, problems = apply(cur, today)
+        written, problems = apply(cur)
         results = check.run_checks(cur)
         committed = commit and not problems and not check.errors(results)
         if not committed:
@@ -232,32 +228,11 @@ def _association(cur: Any, run_id: int, pmid: int) -> _Association:
     return association
 
 
-CLAUDE_HEADER = re.compile(r"\[(\d{4}-\d{2}-\d{2}) Claude\] ([A-Z]+): (.+)")
-
-
-def _note(note: str, today: str, *actions: str, required: bool = False) -> str:
-    """A description note dated today, checked against the template (`curation-rules.md` §5)."""
-    note = note.replace(DATE, f"[{today} Claude]").strip()
-    if not note:
-        if required:
-            raise InvalidRow(f"the note must hold the {' or '.join(actions)} decision")
-        return note
-    problems: list[str] = []
-    lines = note.split("\n")
-    if CLAUDE_HEADER.fullmatch(lines[0]) is None:
-        problems.append("the note must start with `[DATE Claude] ACTION: summary`")
-    for line in lines:
-        if line.startswith("- ") and len(line) > 2:
-            continue
-        header = CLAUDE_HEADER.fullmatch(line)
-        if header is None:
-            problems.append(f"note line is neither a decision nor a `- ` detail: {line!r}")
-        elif header[1] != today:
-            problems.append(f"note decision dated {header[1]}, not today")
-        elif header[2] not in actions:
-            problems.append(f"note action {header[2]} is not {' or '.join(actions)}")
-    if problems:
-        raise InvalidRow(*problems)
+def _note(note: str, action: str = "", *, required: bool = False) -> str:
+    """A description note (`notes.md`); a removal must say why."""
+    note = note.strip()
+    if required and not note:
+        raise InvalidRow(f"the note must hold the {action} decision")
     return note
 
 
@@ -392,11 +367,11 @@ def _new_stable_id(cur: Any) -> str:
             return candidate
 
 
-def _add(cur: Any, item: NewDescription, today: str) -> str:
+def _add(cur: Any, item: NewDescription) -> str:
     association = _association(cur, item.run_id, item.pmid)
     if association.run_type != "vh":
         raise InvalidRow(f"run {item.run_id} is an hh run: new descriptions go to a vh run")
-    note = _note(item.note, today, "CREATED")
+    note = _note(item.note)
     row = _build(cur, association, item.description)
     stable_id = _new_stable_id(cur)
     _insert(cur, stable_id, 1, row, note)
@@ -407,7 +382,7 @@ def add_descriptions(
     conn: psycopg.Connection, items: Sequence[NewDescription], *, commit: bool = False
 ) -> Outcome:
     """Add new descriptions, each with a new `CW` stable ID, version 1."""
-    return _write(conn, commit, lambda cur, today: _apply_rows(cur, items, _add, today))
+    return _write(conn, commit, lambda cur: _apply_rows(cur, items, _add))
 
 
 # --- Revising -----------------------------------------------------------------------------------
@@ -480,7 +455,7 @@ def _check_merge(cur: Any, revision: Revision, removed: tuple[Any, ...]) -> None
             )
 
 
-def _revise(cur: Any, revision: Revision, today: str) -> str:
+def _revise(cur: Any, revision: Revision) -> str:
     live_id, version, association = _live(cur, revision)
     cur.execute(LIVE_DESCRIPTION, (revision.stable_id,))
     _, method_id, a1, id1, a2, id2, start2, stop2, mappings1, mappings2 = cur.fetchone()
@@ -488,7 +463,7 @@ def _revise(cur: Any, revision: Revision, today: str) -> str:
     item = revision.description
 
     if revision.action == "remove":
-        note = _note(revision.note, today, "REMOVED", required=True)
+        note = _note(revision.note, "REMOVED", required=True)
         if revision.into:
             # The removed description, as it is or as it was decided to be, is its survivor.
             if item is None:
@@ -512,8 +487,7 @@ def _revise(cur: Any, revision: Revision, today: str) -> str:
 
     if item is None:
         raise InvalidRow(f"{revision.stable_id}: a revision needs its description")
-    # REVISED in curation and re-curation, UPDATED in a versioning pass, FIXED for a fix.
-    note = _note(revision.note, today, "REVISED", "FIXED", "UPDATED")
+    note = _note(revision.note)
     row = _build(cur, association, item, kept)
     cur.execute(COLUMNS, (live_id,))
     old = dict(zip(row, cur.fetchone(), strict=True))  # same order; JSON columns come parsed
@@ -577,9 +551,7 @@ def revise_descriptions(
     as revised.
     """
     _once(revisions)
-    return _write(
-        conn, commit, lambda cur, today: _apply_rows(cur, revisions, _revise, today, order=_removal)
-    )
+    return _write(conn, commit, lambda cur: _apply_rows(cur, revisions, _revise, order=_removal))
 
 
 def _once(revisions: Sequence[Revision]) -> None:
@@ -599,56 +571,47 @@ def _removal(revision: Revision) -> bool:
 
 # --- Publications -------------------------------------------------------------------------------
 
-PASS_LINE = re.compile(r"- Pass (\d{4}-\d{2}-\d{2}): \S")
-HISTORY_LINE = re.compile(r"- (Pass|Moved) \d{4}-\d{2}-\d{2}: \S")
 CURATOR_BLOCK = "--- Curator note (before Claude) ---"
+# A note of Claude starts with its state, dated in the notes of earlier passes.
+CLAUDE_NOTE = re.compile(r"(\[\d{4}-\d{2}-\d{2} Claude\] )?(PENDING|SELECTED|DISCARDED|CURATED): ")
 
 
-def _publication_note_problems(old: str, note: str, today: str, state: str) -> list[str]:
-    """Problems of a publication note against the template of `curation-rules.md` §5.
+PASS_LINE = re.compile(r"- Pass (\d{4}-\d{2}-\d{2}): \S")
+HISTORY = ("- Pass ", "- Moved ")
 
-    `old` is the note before this pass: its history (`Pass` and `Moved` lines) and its curator
-    block are kept, and a note not written by Claude becomes the curator block, verbatim.
-    """
-    problems: list[str] = []
-    body, _, block = note.partition(f"\n{CURATOR_BLOCK}\n")
-    lines = body.split("\n")
-    header = CLAUDE_HEADER.fullmatch(lines[0])
-    if header is None or header[1] != today or header[2] != state.upper():
-        problems.append(f"the note must start with `[{today} Claude] {state.upper()}: <summary>`")
-    passes = [line for line in lines if PASS_LINE.match(line)]
-    if not passes or not passes[-1].startswith(f"- Pass {today}:"):
-        problems.append(f"the note must end its pass history with `- Pass {today}: <outcome>`")
+
+def _publication_note(note: str, old: str, passed: bool) -> str:
+    """The note of a pass: Claude's lines, then the history (the `Pass` and `Moved`
+    lines of the note before it, then this pass's `Pass` line, dated by the curation), then the
+    curator block. Before Claude's first pass, a note that is not Claude's is a curator's, kept
+    verbatim."""
     old = old.strip()
-    if CLAUDE_HEADER.match(old):
-        old_body, _, old_block = old.partition(f"\n{CURATOR_BLOCK}\n")
-        old_history = [line for line in old_body.split("\n") if HISTORY_LINE.match(line)]
-        history = [line for line in lines if HISTORY_LINE.match(line)]
-        if history[: len(old_history)] != old_history:
-            problems.append(
-                "the note must keep the previous `Pass` and `Moved` lines, unchanged and first"
-            )
+    if passed or not old or CLAUDE_NOTE.match(old):
+        old_body, _, curator = old.partition(f"\n{CURATOR_BLOCK}\n")
     else:
-        old_block = old
-    if block != old_block:
-        problems.append(
-            f"the note must end with `{CURATOR_BLOCK}` and the previous curator note, verbatim"
-            if old_block
-            else f"the note has a `{CURATOR_BLOCK}` block but there was no curator note"
-        )
-    return problems
+        old_body, curator = "", old
+    history = [line for line in old_body.split("\n") if line.startswith(HISTORY)]
+    given = note.partition(f"\n{CURATOR_BLOCK}\n")[0].strip().split("\n")
+    passes = [line for line in given if PASS_LINE.match(line)]
+    if not passes:
+        raise InvalidRow("the note needs its `- Pass <curation date>: <outcome>` line")
+    passes = [line for line in passes if line not in history] or passes[-1:]
+    body = [line for line in given if not line.startswith(HISTORY)]
+    lines = [*body, *history, *passes]
+    if curator:
+        lines += [CURATOR_BLOCK, curator]
+    return "\n".join(lines)
 
 
-def _publication(cur: Any, update: PublicationUpdate, today: str) -> str:
+def _publication(cur: Any, update: PublicationUpdate) -> str:
     association = _association(cur, update.run_id, update.pmid)
     if association.run_type != "vh":
         raise InvalidRow(f"run {update.run_id} is an hh run: hh curation is frozen")
     if update.state not in ("selected", "curated"):
         raise InvalidRow(f"state {update.state!r} is not selected or curated")
-    cur.execute("SELECT annotation FROM associations WHERE id = %s", (association.id,))
-    note = update.note.replace(DATE, f"[{today} Claude]").strip()
-    if problems := _publication_note_problems(cur.fetchone()[0], note, today, update.state):
-        raise InvalidRow(*problems)
+    cur.execute("SELECT annotation, ai_pass_at FROM associations WHERE id = %s", (association.id,))
+    old, passed_at = cur.fetchone()
+    note = _publication_note(update.note, old, passed_at is not None)
     cur.execute(
         "UPDATE associations SET state = %s, annotation = %s, ai_pass_at = now(), "
         "updated_at = now() WHERE id = %s",
@@ -661,7 +624,7 @@ def update_publications(
     conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
 ) -> Outcome:
     """Set the state and note of publications of vh runs at the end of a pass (`ai_pass_at`)."""
-    return _write(conn, commit, lambda cur, today: _apply_rows(cur, updates, _publication, today))
+    return _write(conn, commit, lambda cur: _apply_rows(cur, updates, _publication))
 
 
 # --- Moving to a special run --------------------------------------------------------------------
@@ -698,7 +661,7 @@ def _special_run(cur: Any, new: bool) -> tuple[int, str]:
     return cur.fetchone()[0], name
 
 
-def _move(cur: Any, move: Move, target_id: int, target: str, today: str) -> str:
+def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
     cur.execute(
         "SELECT 1 FROM associations WHERE run_id = %s AND pmid = %s", (target_id, move.pmid)
     )
@@ -706,9 +669,8 @@ def _move(cur: Any, move: Move, target_id: int, target: str, today: str) -> str:
         raise InvalidRow(f"publication {move.pmid} is already in run {target}")
     cur.execute("SELECT annotation FROM associations WHERE id = %s", (move.association_id,))
     body, block, curator = cur.fetchone()[0].strip().partition(f"\n{CURATOR_BLOCK}\n")
-    if CLAUDE_HEADER.match(body) is None:
-        raise InvalidRow("the note does not start with a Claude header")
-    note = f"{body}\n- Moved {today}: from run {move.run}{block}{curator}"
+    cur.execute("SELECT current_date::text")
+    note = f"{body}\n- Moved {cur.fetchone()[0]}: from run {move.run}{block}{curator}"
     cur.execute(
         "UPDATE associations SET run_id = %s, annotation = %s, updated_at = now() WHERE id = %s",
         (target_id, note, move.association_id),
@@ -735,7 +697,7 @@ def move_publications(
         raise ValueError(f"publications not in their run: {', '.join(missing)}")
     if not moves:
         return moves, Outcome([], [], [], False)
-    return moves, _write(conn, commit, lambda cur, today: _apply_moves(cur, moves, new_run, today))
+    return moves, _write(conn, commit, lambda cur: _apply_moves(cur, moves, new_run))
 
 
 def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> tuple[list[Move], list[str]]:
@@ -766,13 +728,9 @@ def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> tuple[list[Mo
     return moves, missing
 
 
-def _apply_moves(
-    cur: Any, moves: Sequence[Move], new_run: bool, today: str, first: int = 1
-) -> Applied:
+def _apply_moves(cur: Any, moves: Sequence[Move], new_run: bool, first: int = 1) -> Applied:
     target_id, target = _special_run(cur, new_run)
-    return _apply_rows(
-        cur, moves, lambda c, move, day: _move(c, move, target_id, target, day), today, first
-    )
+    return _apply_rows(cur, moves, lambda c, move: _move(c, move, target_id, target), first)
 
 
 # --- A curation batch ---------------------------------------------------------------------------
@@ -797,17 +755,17 @@ def write_batch(
     _once(revisions)
     moves: list[Move] = []
 
-    def apply(cur: Any, today: str) -> Applied:
+    def apply(cur: Any) -> Applied:
         stages = [
-            _apply_rows(cur, revisions, _revise, today, order=_removal),
-            _apply_rows(cur, additions, _add, today, len(revisions) + 1),
-            _apply_rows(cur, updates, _publication, today, len(revisions) + len(additions) + 1),
+            _apply_rows(cur, revisions, _revise, order=_removal),
+            _apply_rows(cur, additions, _add, len(revisions) + 1),
+            _apply_rows(cur, updates, _publication, len(revisions) + len(additions) + 1),
         ]
         # A publication not in its run is already refused by its update.
         moves.extend(_movable(cur, [(u.run_id, u.pmid) for u in updates])[0])
         if moves:
             first = len(revisions) + len(additions) + len(updates) + 1
-            stages.append(_apply_moves(cur, moves, new_run, today, first))
+            stages.append(_apply_moves(cur, moves, new_run, first))
         return [w for s in stages for w in s[0]], [p for s in stages for p in s[1]]
 
     return moves, _write(conn, commit, apply)

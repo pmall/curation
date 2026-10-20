@@ -4,16 +4,16 @@ The occurrences of every non-deleted mapping were recomputed with the fixed rule
 
 Non-deleted descriptions with a mapping: 10,162 vh, 8,760 hh. The rules reproduced the stored occurrences of 9,601 vh and 7,450 hh; 1,871 descriptions were revised (561 vh, 1,310 hh), 2,060 mappings:
 
-| Change                                           |      vh |        hh |
-| ------------------------------------------------ | ------: | --------: |
-| occurrences removed                              |     159 |       869 |
-| occurrences added                                |     386 |       129 |
-| identity changed                                 |       0 |       166 |
-| occurrences added and removed                    |       7 |       144 |
-| duplicate occurrences removed                    |       8 |         0 |
-| identity changed and occurrences removed         |       0 |         2 |
-| duplicate occurrences removed, occurrences added |       1 |         0 |
-| **Total**                                        | **561** | **1,310** |
+| Change | vh | hh |
+| -- | -: | -: |
+| occurrences removed | 159 | 869 |
+| occurrences added | 386 | 129 |
+| identity changed | 0 | 166 |
+| occurrences added and removed | 7 | 144 |
+| duplicate occurrences removed | 8 | 0 |
+| identity changed and occurrences removed | 0 | 2 |
+| duplicate occurrences removed, occurrences added | 1 | 0 |
+| **Total** | **561** | **1,310** |
 
 - Removed: isoforms below the best score, and overlapping occurrences clustered into one (e.g. P0CG48, three 229-residue mappings over the ubiquitin repeats: 1–229).
 - Added: isoforms or copies that reach the best score but were never recorded.

@@ -106,19 +106,19 @@ A description is revised once, when every obsolete protein it uses is decided.
 
 1,877 accessions on an obsolete snapshot used by live descriptions (`data/2026_03/reports/versioning/proteins.tsv`, from `data/2026_03/scripts/proteins_to_upgrade.py`). Description counts are per protein: a description using two upgraded proteins is counted on both lines.
 
-| Protein | What 2026_03 did                          | Accessions | vh descriptions | hh descriptions |
-| ------- | ----------------------------------------- | ---------: | --------------: | --------------: |
-| Human   | kept, moves automatically                 |      1,199 |           4,019 |          37,646 |
-| Human   | kept, name check failed                   |         11 |              18 |             203 |
-| Human   | deleted, merged into another entry        |         14 |               7 |             147 |
-| Human   | deleted, same sequence in another entry   |          2 |              17 |              21 |
-| Human   | deleted, sequence nowhere                 |         28 |               6 |             195 |
-| Viral   | kept, moves automatically                 |         83 |           1,671 |               0 |
-| Viral   | kept, region changed                      |         15 |              66 |               0 |
-| Viral   | kept, taxon check failed or taxon missing |         18 |             519 |               0 |
-| Viral   | deleted, merged into another entry        |         25 |             562 |               0 |
-| Viral   | deleted, same sequence in another entry   |        189 |           3,543 |               0 |
-| Viral   | deleted, sequence nowhere                 |        293 |           4,532 |               0 |
+| Protein | What 2026_03 did | Accessions | vh descriptions | hh descriptions |
+| -- | -- | -: | -: | -: |
+| Human | kept, moves automatically | 1,199 | 4,019 | 37,646 |
+| Human | kept, name check failed | 11 | 18 | 203 |
+| Human | deleted, merged into another entry | 14 | 7 | 147 |
+| Human | deleted, same sequence in another entry | 2 | 17 | 21 |
+| Human | deleted, sequence nowhere | 28 | 6 | 195 |
+| Viral | kept, moves automatically | 83 | 1,671 | 0 |
+| Viral | kept, region changed | 15 | 66 | 0 |
+| Viral | kept, taxon check failed or taxon missing | 18 | 519 | 0 |
+| Viral | deleted, merged into another entry | 25 | 562 | 0 |
+| Viral | deleted, same sequence in another entry | 189 | 3,543 | 0 |
+| Viral | deleted, sequence nowhere | 293 | 4,532 | 0 |
 
 "Moves automatically" here predates the same-position rule: 3 human accessions (Q8IWI9, Q68DK2, P24928) move to the warnings once it is added.
 
@@ -130,16 +130,16 @@ Every group of this table was decided in the steps above.
 
 992 descriptions (656 vh, 336 hh) stay on their old snapshots, each counted once (a description with two reasons under the first; 4 vh have reasons A and D):
 
-| Reason                                                                                                                                               | Proteins |      vh |      hh |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------: | ------: | ------: |
-| A. Human protein deleted by UniProt, not moved: moving to another accession would be re-curation (step 3d)                                           |       40 |      29 |     316 |
-| B. The name the curator read points to another protein (MPP6, TAZ, CHTF8, DUSP13), or cannot tell (LRTOMT, MPP6, TAZ) (steps 3a, 3b)                 |        5 |       5 |      19 |
-| C. The mapped stretch no longer fits the new sequence (NBPF14 Q5TI25: repeat protein, recorded positions gone)                                       |        1 |       0 |       1 |
-| D. Viral protein deleted, near match ≥ 90 %, but the mapping check failed or it is an HIV-1 patient isolate with no strain in the abstracts (step 4) |       22 |     115 |       0 |
-| E. Viral protein deleted, best match 70–90 %: another isolate or virus                                                                               |       11 |     102 |       0 |
-| F. Viral protein deleted, close match only in another species                                                                                        |       13 |      50 |       0 |
-| G. Viral protein deleted, no match                                                                                                                   |       17 |     355 |       0 |
-| **Total**                                                                                                                                            |          | **656** | **336** |
+| Reason | Proteins | vh | hh |
+| -- | -: | -: | -: |
+| A. Human protein deleted by UniProt, not moved: moving to another accession would be re-curation (step 3d) | 40 | 29 | 316 |
+| B. The name the curator read points to another protein (MPP6, TAZ, CHTF8, DUSP13), or cannot tell (LRTOMT, MPP6, TAZ) (steps 3a, 3b) | 5 | 5 | 19 |
+| C. The mapped stretch no longer fits the new sequence (NBPF14 Q5TI25: repeat protein, recorded positions gone) | 1 | 0 | 1 |
+| D. Viral protein deleted, near match ≥ 90 %, but the mapping check failed or it is an HIV-1 patient isolate with no strain in the abstracts (step 4) | 22 | 115 | 0 |
+| E. Viral protein deleted, best match 70–90 %: another isolate or virus | 11 | 102 | 0 |
+| F. Viral protein deleted, close match only in another species | 13 | 50 | 0 |
+| G. Viral protein deleted, no match | 17 | 355 | 0 |
+| **Total** |  | **656** | **336** |
 
 Mappings of the deleted viral proteins put aside (64 distinct sequences, 105 descriptions): 27 exist nowhere else in the current viral entries, only 3 of them short (CSWCLAFLWV on A2PZS6, MAEKWFERWV on Q9Q9R1, TTQNTASQTTSA on B9UNL2); the others are long stretches of deleted isolates (SARS-like and pangolin coronavirus spikes, HIV-1 Env and Nef, HCV NS4B, papillomavirus E2, herpesvirus fragments). The short motifs (PTAP, ESEV, PIPPPR, GGKWSKLS…) exist in many current entries, but the near match often lacks them: why the mapping check put them aside. For re-curation, a useful candidate is an entry of the same species containing all the description's mappings exactly.
 

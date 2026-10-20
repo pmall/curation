@@ -56,7 +56,7 @@ def test_bad_header_and_bad_rows_are_refused(tmp_path: Path):
 def test_revise_command(dbname, tmp_path: Path):
     rows = run("drakkar-read", "row", "EY73D2C965", "EYF737084C").stdout.splitlines()
     assert rows[0] == header(REVISE)
-    note = "[DATE Claude] REVISED: name2 N → orf6"
+    note = "REVISED: name2 N → orf6"
     edited = [rows[0]]
     for row in rows[1:]:
         fields = row.split("\t")
@@ -88,18 +88,16 @@ def test_add_command_reports_the_refused_row(dbname, tmp_path: Path):
 def test_batch_command(conn, tmp_path: Path):
     """The merged files of a batch: two renames, an addition that relies on them (no delete
     file), and a publication left `selected`, moved last."""
-    note = "[DATE Claude] REVISED: name2 N → orf6"
+    note = "REVISED: name2 N → orf6"
     renames = [
         replace(r, description=replace(r.description, name2="orf6"), note=note)
         for r in live_revisions(conn.cursor(), *SARS)
         if r.description is not None and r.description.name2 == "N"
     ]
-    day = conn.execute("SELECT current_date::text").fetchone()[0]
-    conn.rollback()
     added = NewDescription(
-        *SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "[DATE Claude] CREATED: Fig. 2B"
+        *SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "CREATED: Fig. 2B"
     )
-    selected = f"[DATE Claude] SELECTED: no full text\\n- Pass {day}: not accessible"
+    selected = "SELECTED: no full text\\n- Pass 2026-10-20: not accessible"
     write_rows(tmp_path / "descriptions.revise.tsv", REVISE, [format_revision(r) for r in renames])
     write_rows(tmp_path / "descriptions.add.tsv", ADD, [format_new_description(added)])
     write_rows(tmp_path / "publications.tsv", PUBLICATIONS, [f"12\t25031347\tselected\t{selected}"])
