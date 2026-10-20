@@ -1,31 +1,21 @@
-"""Read what a curation decision needs, complete and short (read-only).
+"""Read what a curation decision needs from Drakkar, on its current snapshots (read-only).
 
-uv run drakkar-read publication <run_id> <pmid>   title, abstract, note, live descriptions
-uv run drakkar-read entry <accession>             snapshots, names, chains (also by a secondary
-                                                  accession)
-uv run drakkar-read names <accession>             generic names used near a viral protein
-uv run drakkar-read curation-names <pmid> <accession>
-                                                  the same, for the curation of a publication
-uv run drakkar-read row <stable_id>...            live descriptions as revision rows
-
-The lookups, on the current snapshots: each takes many inputs and prints a page of lines per
-input (`--limit`, `--offset`, `--all`), each starting with the input it answers, and says what
-it leaves out:
-
-uv run drakkar-read methods [<text>...]           PSI-MI terms by name or synonym
-uv run drakkar-read search [<text>...] [--taxon <taxon>] [--human | --viral] [--reviewed]
-                                                  entries by gene names, taxon, protein name
-uv run drakkar-read taxon <text>... [--taxon <taxon>]
-                                                  taxa by name
-uv run drakkar-read closest <sequence>... --taxon <taxon>
-                                                  the entries of a taxon by identity
+uv run drakkar-read methods <text>...             PSI-MI terms by name or synonym
+uv run drakkar-read taxon <text>...               taxa by name, with their lineage
+uv run drakkar-read entry <accession>...          an entry: lineage, isoforms, names, chains
+uv run drakkar-read search <text>... [--taxon <ID>]
+                                                  entries by accession, gene or protein name
 uv run drakkar-read seq <accession>[:<start>-<stop>]...
                                                   sequences and subsequences
-uv run drakkar-read map <accession>[:<start>-<stop>] <sequence>...
-                                                  the occurrences the write would compute
-uv run drakkar-read used <taxon> [<generic name>...] [--exclude <pmid>]
-                                                  viral interactors of live descriptions
-uv run drakkar-read sql <query>                   free read-only SQL, as tab-separated rows
+uv run drakkar-read names <taxon ID>...           generic names used under each taxon
+uv run drakkar-read sql <query>                   free read-only SQL
+
+Each takes many inputs. `entry` prints a block per entry; the others print tab-separated lines
+under a `#` header, each starting with the input it answers, the best first. `--limit <n>`
+bounds the lines per input (20); a list that is cut ends with how many there are. A taxon is
+given by its NCBI ID, and written `<ID> <name>`; a lineage `<ID> <name> < …` up to the family; a
+stretch of a protein `<accession>:<start>-<stop>`, then `obsolete` on an obsolete snapshot. An
+input that cannot be read gets its line, with why.
 """
 
 import argparse
@@ -38,84 +28,194 @@ from typing import Any, cast
 
 import psycopg
 
-from drakkar.align import MIN_IDENTITY, best_identity, map_sequence, read_written
-from drakkar.check import AMINO_ACIDS
 from drakkar.db import connect
-from drakkar.files import REVISE, format_revision, header
-from drakkar.write import (
-    InvalidRow,
-    _snapshot,  # pyright: ignore[reportPrivateUsage]
-    live_revisions,
-)
+
+LIMIT = 20  # lines per input by default
+CELL = 200  # characters shown of an `sql` cell
+LOCATION = re.compile(r"([A-Z0-9]+)(-\d+)?(?::(\d+)-(\d+))?")  # P26662-2:810-1026
 
 
-def _text(value: Any) -> str:
-    """PubMed XML as JSON: a string, or a structure whose strings are the text."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return " ".join(_text(v) for v in cast(list[Any], value))
-    if isinstance(value, dict):
-        fields = cast(dict[str, Any], value)
-        return " ".join(_text(v) for k, v in fields.items() if k != "@attributes")
-    return "" if value is None else str(value)
+@dataclass(frozen=True)
+class Page:
+    """At most `limit` lines per input, the best first; a list that is cut ends with how many
+    there are."""
+
+    limit: int = LIMIT
+
+    def cut[T](self, items: list[T]) -> list[T]:
+        return items[: self.limit]
+
+    def lines(self, label: str, lines: list[str], total: int | None = None) -> list[str]:
+        """An input's lines, each after its label, cut to the page; `lines` may already be the
+        page, of `total` lines."""
+        prefix = f"{label}\t" if label else ""
+        total = len(lines) if total is None else total
+        if not total:
+            return [f"{prefix}(none)"]
+        shown = [prefix + line for line in self.cut(lines)]
+        if len(shown) < total:
+            shown.append(f"{prefix}… {len(shown)} of {total}")
+        return shown
 
 
-def publication(cur: Any, run_id: int, pmid: int) -> str:
+DEFAULT = Page()
+
+
+# --- The taxonomy ------------------------------------------------------------------------------
+
+
+def subtree(cur: Any, ncbi_taxon_id: int) -> list[int]:
+    """The NCBI IDs of the taxon and every taxon under it, by the nested set; the taxon itself
+    even when the taxonomy lacks it, for the entries whose taxon it lacks."""
     cur.execute(
         """
-        SELECT r.type, a.state, a.annotation, a.ai_pass_at,
-               p.metadata->'PubmedArticle'->'MedlineCitation'->'Article'
-        FROM associations AS a JOIN runs AS r ON r.id = a.run_id
-        JOIN publications AS p ON p.pmid = a.pmid
-        WHERE a.run_id = %s AND a.pmid = %s
+        SELECT t.ncbi_taxon_id
+        FROM taxon AS top
+        JOIN taxon AS t ON t.left_value BETWEEN top.left_value AND top.right_value
+        WHERE top.ncbi_taxon_id = %s
         """,
-        (run_id, pmid),
+        (ncbi_taxon_id,),
     )
-    row = cur.fetchone()
-    if row is None:
-        sys.exit(f"publication {pmid} is not in run {run_id}")
-    run_type, state, note, ai_pass_at, article = row
-    article = cast(dict[str, Any], article or {})
-    pass_at = f", Claude's pass {ai_pass_at:%Y-%m-%d}" if ai_pass_at else ""
-    lines = [
-        f"# PMID {pmid}, run {run_id} ({run_type}), {state}{pass_at}",
-        "",
-        f"Title: {_text(article.get('ArticleTitle'))}",
-        "",
-        f"Abstract: {_text(article.get('Abstract')) or '(none)'}",
-        "",
-        "Note:" + (f"\n{note}" if note else " (empty)"),
-    ]
+    return sorted({ncbi_taxon_id} | {r[0] for r in cur.fetchall()})
+
+
+def _ancestors(cur: Any, taxon_ids: list[int]) -> dict[int, tuple[int, int, str, str]]:
+    """The taxa and every taxon above them up to their family: taxon ID → (parent taxon ID, NCBI
+    ID, rank, scientific name). Walked up by parent, one level per query: an ancestor is an index
+    lookup, where the nested set would scan the taxa on one side of it."""
+    found: dict[int, tuple[int, int, str, str]] = {}
+    level = taxon_ids
+    while level:
+        cur.execute(
+            """
+            SELECT t.taxon_id, t.parent_taxon_id, t.ncbi_taxon_id, t.node_rank, n.name
+            FROM taxon AS t
+            LEFT JOIN taxon_name AS n
+              ON n.taxon_id = t.taxon_id AND n.name_class = 'scientific name'
+            WHERE t.taxon_id = ANY(%s)
+            """,
+            (level,),
+        )
+        rows = cur.fetchall()
+        found.update({t: (p, i, r, n or str(i)) for t, p, i, r, n in rows})
+        level = list({p for t, p, _, r, _ in rows if r != "family" and p != t} - found.keys())
+    return found
+
+
+def _lineage(
+    nodes: dict[int, tuple[int, int, str, str]], taxon_id: int
+) -> list[tuple[int, str, str]]:
+    """A taxon and the taxa above it up to its family, in the nodes of `_ancestors`: NCBI ID,
+    rank, scientific name."""
+    walked: list[tuple[int, str, str]] = []
+    node = taxon_id
+    while node in nodes:
+        parent, ncbi_id, rank, name = nodes[node]
+        walked.append((ncbi_id, rank, name))
+        if rank == "family" or parent == node:
+            break
+        node = parent
+    return walked
+
+
+def _written(lineage: list[tuple[int, str, str]]) -> str:
+    return " < ".join(f"{ncbi_id} {name}" for ncbi_id, _, name in lineage)
+
+
+def taxon_names(cur: Any, taxa: set[int]) -> dict[int, str]:
     cur.execute(
         """
-        SELECT d.stable_id, d.version, m.psimi_id, d.name1, p1.accession, d.name2, p2.accession,
-               d.start2, d.stop2, d.mapping1::text, d.mapping2::text, d.annotation
-        FROM descriptions AS d
-        JOIN associations AS a ON a.id = d.association_id
-        JOIN methods AS m ON m.id = d.method_id
-        JOIN proteins AS p1 ON p1.id = d.protein1_id
-        JOIN proteins AS p2 ON p2.id = d.protein2_id
-        WHERE a.run_id = %s AND a.pmid = %s AND d.deleted_at IS NULL
-        ORDER BY p2.accession, d.start2, d.name1, d.stable_id
+        SELECT t.ncbi_taxon_id, n.name FROM taxon AS t
+        JOIN taxon_name AS n ON n.taxon_id = t.taxon_id AND n.name_class = 'scientific name'
+        WHERE t.ncbi_taxon_id = ANY(%s)
         """,
-        (run_id, pmid),
+        (list(taxa),),
     )
-    rows = cur.fetchall()
-    lines += ["", f"## Live descriptions: {len(rows)}", ""]
-    for stable_id, version, method, n1, a1, n2, a2, s2, e2, m1, m2, annotation in rows:
-        mappings = [_mapping_lengths(m) for m in (m1, m2)]
-        line = f"- {stable_id} v{version} {method}: {n1} ({a1}) – {n2} {a2}[{s2}-{e2}]"
-        if any(mappings):
-            line += f"; mappings {mappings[0] or '-'} / {mappings[1] or '-'}"
-        lines.append(line)
-        lines += [f"  {n}" for n in annotation.split("\n") if annotation]
+    return dict(cur.fetchall())
+
+
+# --- The lookups -------------------------------------------------------------------------------
+
+
+def _like(text: str) -> str:
+    """An ILIKE pattern for `text` anywhere, its wildcards escaped."""
+    return "%" + re.sub(r"([\\%_])", r"\\\1", text) + "%"
+
+
+def _rank(text: str, names: list[str]) -> int:
+    """How closely a text matches names, case aside: 0 a name is the text, 1 a name starts with
+    it, 2 a name contains it, 3 none."""
+    wanted = text.casefold()
+    folded = [n.casefold() for n in names]
+    if wanted in folded:
+        return 0
+    if any(n.startswith(wanted) for n in folded):
+        return 1
+    return 2 if any(wanted in n for n in folded) else 3
+
+
+def database(reviewed: bool) -> str:
+    return "SP" if reviewed else "TR"
+
+
+def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
+    """The PSI-MI terms whose name or a synonym contains each text, case aside: the closest names
+    first, then the detection methods, then the most used."""
+    cur.execute(
+        """
+        WITH uses AS (
+            SELECT method_id, count(*) AS descriptions FROM descriptions
+            WHERE deleted_at IS NULL GROUP BY method_id
+        )
+        SELECT m.psimi_id, m.name, m.synonyms, m.is_detection, coalesce(u.descriptions, 0)
+        FROM methods AS m LEFT JOIN uses AS u ON u.method_id = m.id
+        ORDER BY m.psimi_id
+        """
+    )
+    terms = cur.fetchall()
+    lines = ["#text\tpsimi_id\tname (synonym matched)\tis_detection\tlive_descriptions"]
+    for text in texts:
+        found = [m for m in terms if _rank(text, [m[1], *m[2]]) < 3]
+        found.sort(key=lambda m: (_rank(text, [m[1], *m[2]]), not m[3], -m[4], m[0]))
+        shown: list[str] = []
+        for psimi_id, name, synonyms, detection, count in found:
+            also = [s for s in synonyms if text.casefold() in s.casefold()]
+            if also and text.casefold() not in name.casefold():
+                name = f"{name} ({also[0]})"
+            shown.append(f"{psimi_id}\t{name}\t{'yes' if detection else 'no'}\t{count}")
+        lines += page.lines(text, shown)
     return "\n".join(lines)
 
 
-def _mapping_lengths(text: str) -> str:
-    mappings = cast(list[dict[str, Any]], json.loads(text))
-    return ", ".join(f"{len(m['sequence'])} aa" for m in mappings)
+def taxa(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
+    """The taxa one of whose names contains each text, case aside, the closest names first: the
+    taxon (with the name matched), its rank, and the taxa above it up to its family."""
+    found: dict[str, list[tuple[int, list[str]]]] = {}
+    for text in texts:
+        cur.execute(
+            "SELECT taxon_id, search FROM taxon WHERE search ILIKE %s ORDER BY ncbi_taxon_id",
+            (_like(text),),
+        )
+        ranked = [(taxon_id, search.split(" | ")) for taxon_id, search in cur.fetchall()]
+        ranked.sort(key=lambda r: _rank(text, r[1]))  # stable: NCBI ID order among equals
+        found[text] = ranked
+    shown = {t for rows in found.values() for t, _ in page.cut(rows)}
+    nodes = _ancestors(cur, sorted(shown))
+
+    def line(text: str, taxon_id: int, names: list[str]) -> str:
+        (ncbi_id, rank, name), *above = _lineage(nodes, taxon_id)
+        matched = [n for n in names if text.casefold() in n.casefold()]
+        also = "" if text.casefold() in name.casefold() else f" ({matched[0]})"
+        return f"{ncbi_id} {name}{also}\t{rank}\t{_written(above) or '-'}"
+
+    lines = ["#text\ttaxon (name matched)\trank\tlineage"]
+    for text, rows in found.items():
+        lines += page.lines(text, [line(text, t, n) for t, n in page.cut(rows)], len(rows))
+    return "\n".join(lines)
+
+
+def entries(cur: Any, accessions: list[str]) -> str:
+    return "\n\n".join(entry(cur, accession) for accession in accessions)
 
 
 def entry(cur: Any, accession: str) -> str:
@@ -139,7 +239,7 @@ def entry(cur: Any, accession: str) -> str:
         )
         primaries = [r[0] for r in cur.fetchall()]
         if not primaries:
-            sys.exit(f"{accession}: no snapshot, and no current entry holds it as secondary")
+            return f"# {accession}: no snapshot, and no current entry holds it as secondary"
         return "\n\n".join(
             f"# {accession} is a secondary accession of {p}\n{entry(cur, p)}" for p in primaries
         )
@@ -147,11 +247,17 @@ def entry(cur: Any, accession: str) -> str:
     latest = current[0] if current else snapshots[-1]
     id_, version, type_, gene, description, taxon, sequences, is_current = latest
     isoforms = cast(dict[str, str], json.loads(sequences))
-    kind = "human" if type_ == "h" else "viral"
+    cur.execute("SELECT taxon_id FROM taxon WHERE ncbi_taxon_id = %s", (taxon,))
+    row = cur.fetchone()
+    lineage = (
+        _written(_lineage(_ancestors(cur, [row[0]]), row[0]))
+        if row
+        else f"{taxon} not in the NCBI taxonomy"
+    )
     lines = [
         f"# {accession}: {description}",
         "",
-        f"{kind}, taxon {taxon} ({_taxon_name(cur, taxon)})"
+        f"{'human' if type_ == 'h' else 'viral'}, taxon {lineage}"
         + (f", gene name {gene}" if type_ == "h" else ""),
         f"Snapshot {id_} ({version}), {'current' if is_current else 'obsolete: no current one'}; "
         f"length {len(isoforms.get(accession, ''))}",
@@ -183,425 +289,47 @@ def entry(cur: Any, accession: str) -> str:
                 f"- {f['start']}-{f['stop']} {f['type']}: {f.get('description', '')}"
                 for f in sorted(parts, key=lambda f: (f["start"], -f["stop"]))
             ]
-    lines += ["", f"Sequence: drakkar-read seq {accession}[:<start>-<stop>]"]
     return "\n".join(lines)
 
 
-def _taxon_name(cur: Any, ncbi_taxon_id: int) -> str:
-    return _taxon_names(cur, {ncbi_taxon_id}).get(ncbi_taxon_id, "not in the NCBI taxonomy")
-
-
-def _lineages(cur: Any, taxa: set[int]) -> dict[int, dict[str, tuple[int, str]]]:
-    """Species and family (NCBI ID, scientific name) of each taxon, given by its NCBI ID."""
-    cur.execute(
-        "SELECT ncbi_taxon_id, taxon_id FROM taxon WHERE ncbi_taxon_id = ANY(%s)", (list(taxa),)
-    )
-    leaves = cur.fetchall()
-    nodes = _ascend(cur, [taxon_id for _, taxon_id in leaves])
-    lineages: dict[int, dict[str, tuple[int, str]]] = defaultdict(dict)
-    for leaf, taxon_id in leaves:
-        for ncbi_id, rank, name in _walk(nodes, taxon_id):
-            if rank in ("species", "family"):
-                lineages[leaf].setdefault(rank, (ncbi_id, name))
-    return lineages
-
-
-LEVELS = (("strain", None), ("virus", "species"), ("family", "family"))
-
-
-def names(cur: Any, accession: str, exclude: int | None = None) -> str:
-    """The generic names of the live vh descriptions on the same strain, virus and family.
-
-    Viral interactors on obsolete snapshots are included, marked: their generic names stay
-    reusable, their entries do not (`curation-rules.md` §3). `exclude` leaves out the
-    descriptions of that PMID, in every run: a curation sees the names of the other
-    publications, never those of the publication it curates (curated again blind in a
-    re-curation).
-
-    Strain: the NCBI taxon of the entry; virus: its species; family: its family. Each name with
-    its descriptions and viral interactors, the most used first.
-    """
-    cur.execute(
-        """
-        SELECT p.ncbi_taxon_id, p.description FROM proteins AS p
-        LEFT JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
-        WHERE p.accession = %s AND p.type = 'v'
-        ORDER BY v.accession IS NOT NULL DESC, p.id DESC LIMIT 1
-        """,
-        (accession,),
-    )
-    row = cur.fetchone()
-    if row is None:
-        sys.exit(f"{accession}: no viral protein with this accession")
-    taxon, description = row
-    cur.execute(
-        """
-        SELECT p.ncbi_taxon_id, p.accession, d.start2, d.stop2, d.name2,
-               v.accession IS NULL AS obsolete, count(*)
-        FROM descriptions AS d
-        JOIN associations AS a ON a.id = d.association_id
-        JOIN runs AS r ON r.id = a.run_id
-        JOIN proteins AS p ON p.id = d.protein2_id
-        LEFT JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
-        WHERE d.deleted_at IS NULL AND r.type = 'vh' AND a.pmid IS DISTINCT FROM %s
-        GROUP BY p.ncbi_taxon_id, p.accession, d.start2, d.stop2, d.name2, obsolete
-        """,
-        (exclude,),
-    )
-    uses = cur.fetchall()
-    lineages = _lineages(cur, {u[0] for u in uses} | {taxon})
-    own = lineages.get(taxon, {})
-
-    def level(use_taxon: int) -> str | None:
-        if use_taxon == taxon:
-            return "strain"
-        other = lineages.get(use_taxon, {})
-        for label, rank in LEVELS[1:]:
-            if rank in own and other.get(rank) == own[rank]:
-                return label
-        return None
-
-    found: dict[str, dict[str, dict[str, int]]] = {label: defaultdict(dict) for label, _ in LEVELS}
-    for use_taxon, acc, start, stop, name, obsolete, count in uses:
-        if (label := level(use_taxon)) is not None:
-            found[label][name][f"{acc}[{start}-{stop}]" + (" obsolete" if obsolete else "")] = count
-
-    lines = [f"# Generic names near {accession} ({description})"]
-    for label, rank in LEVELS:
-        if rank is None:
-            head = f"{_taxon_name(cur, taxon)} ({taxon})"
-        elif rank in own:
-            ncbi_id, scientific_name = own[rank]
-            others = "other viruses" if rank == "family" else "other strains"
-            head = f"{scientific_name} ({ncbi_id}), {others}"
-        else:
-            lines += ["", f"{label.capitalize()}: not in the NCBI lineage"]
-            continue
-        lines += ["", f"{label.capitalize()}: {head}"]
-        if not found[label]:
-            lines.append("- no generic name")
-        ranked = sorted(found[label].items(), key=lambda kv: (-sum(kv[1].values()), kv[0]))
-        for name, interactors in ranked:
-            listed = sorted(interactors.items(), key=lambda kv: -kv[1])
-            shown = ", ".join(f"{i} ({c})" for i, c in listed[:3])
-            more = f", {len(listed) - 3} more" if len(listed) > 3 else ""
-            lines.append(f"- `{name}` {sum(interactors.values())}: {shown}{more}")
-    return "\n".join(lines)
-
-
-def rows(cur: Any, stable_ids: list[str]) -> str:
-    cur.execute(
-        "SELECT DISTINCT d.stable_id, a.run_id, a.pmid FROM descriptions AS d "
-        "JOIN associations AS a ON a.id = d.association_id "
-        "WHERE d.stable_id = ANY(%s) AND d.deleted_at IS NULL",
-        (stable_ids,),
-    )
-    found = {s: (r, p) for s, r, p in cur.fetchall()}
-    if missing := [s for s in stable_ids if s not in found]:
-        sys.exit(f"no live description: {', '.join(missing)}")
-    by_id = {
-        r.stable_id: r
-        for run_id, pmid in set(found.values())
-        for r in live_revisions(cur, run_id, pmid)
-    }
-    return "\n".join([header(REVISE), *(format_revision(by_id[s]) for s in stable_ids)])
-
-
-# --- lookups ----------------------------------------------------------------------------------
-
-LIMIT = 10  # lines per input of a lookup by default; the footer says when there are more
-CELL = 200  # characters shown of an `sql` cell
-LOCATION = re.compile(r"([A-Z0-9]+)(-\d+)?(?::(\d+)-(\d+))?")  # P26662-2:810-1026
-
-
-@dataclass(frozen=True)
-class Page:
-    """Which lines of each input a lookup prints, in its order: `limit` from `offset` (all of
-    them when `limit` is None)."""
-
-    offset: int = 0
-    limit: int | None = LIMIT
-
-    def cut[T](self, items: list[T]) -> list[T]:
-        """The items of the page."""
-        return items[self.offset : None if self.limit is None else self.offset + self.limit]
-
-    def lines(
-        self, label: str, lines: list[str], narrow: str, total: int | None = None
-    ) -> list[str]:
-        """The page of an input's lines, each after its label, then a footer when some are not
-        shown: which ones are, out of how many, and how to see the others. `lines` may already
-        be the page, of `total` lines."""
-        prefix = f"{label}\t" if label else ""
-        if total is None:
-            total = len(lines)
-            lines = self.cut(lines)
-        if not total:
-            return [f"{prefix}(none)"]
-        shown = [prefix + line for line in lines]
-        if len(lines) < total:
-            first, last = self.offset + 1, self.offset + len(lines)
-            span = f"{first}-{last}" if lines else "none"
-            more = f" --offset {last} for the next;" if last < total else ""
-            shown.append(f"{prefix}… {span} of {total} shown:{more} narrow with {narrow}, or --all")
-        return shown
-
-
-DEFAULT = Page()
-
-
-def _like(text: str) -> str:
-    """An ILIKE pattern for `text` anywhere, its wildcards escaped."""
-    return "%" + re.sub(r"([\\%_])", r"\\\1", text) + "%"
-
-
-def _rank(text: str, names: list[str]) -> int:
-    """How closely a text matches names, case aside: 0 a name is the text, 1 a name starts with
-    it, 2 a name contains it, 3 none."""
-    wanted = text.casefold()
-    folded = [n.casefold() for n in names]
-    if wanted in folded:
-        return 0
-    if any(n.startswith(wanted) for n in folded):
-        return 1
-    return 2 if any(wanted in n for n in folded) else 3
-
-
-def _db(reviewed: bool) -> str:
-    return "SP" if reviewed else "TR"
-
-
-def _taxon(cur: Any, text: str) -> int:
-    """The NCBI taxon ID given as is, or of the one taxon with that name, case aside."""
-    if text.isdigit():
-        return int(text)
-    cur.execute(
-        """
-        SELECT DISTINCT t.ncbi_taxon_id, s.name
-        FROM taxon AS t
-        JOIN taxon_name AS n ON n.taxon_id = t.taxon_id
-        LEFT JOIN taxon_name AS s ON s.taxon_id = t.taxon_id AND s.name_class = 'scientific name'
-        WHERE t.search ILIKE %s AND lower(n.name) = lower(%s)
-        ORDER BY t.ncbi_taxon_id
-        """,
-        (_like(text), text),
-    )
-    found = cur.fetchall()
-    if not found:
-        sys.exit(f"{text}: no taxon has this name (drakkar-read taxon finds names)")
-    if len(found) > 1:
-        sys.exit(f"{text}: several taxa, give the ID: " + ", ".join(f"{i} {n}" for i, n in found))
-    return found[0][0]
-
-
-def _descend(cur: Any, taxon_ids: list[int]) -> dict[int, tuple[int, int]]:
-    """The taxa and every taxon under them: taxon ID → (parent taxon ID, NCBI ID). Walked one
-    level per query (a recursive query is planned as a scan of the whole taxonomy per level)."""
-    cur.execute(
-        "SELECT taxon_id, parent_taxon_id, ncbi_taxon_id FROM taxon WHERE taxon_id = ANY(%s)",
-        (taxon_ids,),
-    )
-    found = {t: (parent, ncbi_id) for t, parent, ncbi_id in cur.fetchall()}
-    level = list(found)
-    while level:
-        cur.execute(
-            "SELECT taxon_id, parent_taxon_id, ncbi_taxon_id FROM taxon "
-            "WHERE parent_taxon_id = ANY(%s) AND taxon_id <> parent_taxon_id",  # the root
-            (level,),
-        )
-        new = {t: (parent, ncbi_id) for t, parent, ncbi_id in cur.fetchall() if t not in found}
-        found.update(new)
-        level = list(new)
-    return found
-
-
-def _ascend(cur: Any, taxon_ids: list[int]) -> dict[int, tuple[int, int, str, str]]:
-    """The taxa and every taxon above them up to their family: taxon ID → (parent taxon ID,
-    NCBI ID, rank, scientific name). Walked one level per query, as `_descend`."""
-    found: dict[int, tuple[int, int, str, str]] = {}
-    level = taxon_ids
-    while level:
+def search(cur: Any, texts: list[str], taxon: int | None = None, page: Page = DEFAULT) -> str:
+    """The current entries whose `search` text (accession, gene names, taxon, protein name)
+    contains each text, case aside, under the taxon when given: Swiss-Prot first, then the
+    closest names."""
+    under = None if taxon is None else subtree(cur, taxon)
+    found: dict[str, list[tuple[Any, ...]]] = {}
+    for text in texts:
         cur.execute(
             """
-            SELECT t.taxon_id, t.parent_taxon_id, t.ncbi_taxon_id, t.node_rank, n.name
-            FROM taxon AS t
-            LEFT JOIN taxon_name AS n
-              ON n.taxon_id = t.taxon_id AND n.name_class = 'scientific name'
-            WHERE t.taxon_id = ANY(%s)
+            SELECT p.accession, v.reviewed, p.name, p.description, p.ncbi_taxon_id, v.names,
+                   length(p.sequences->>p.accession)
+            FROM proteins_versions AS v
+            JOIN proteins AS p ON p.accession = v.accession AND p.version = v.version
+            WHERE v.search ILIKE %(like)s
+              AND (%(taxa)s::int[] IS NULL OR p.ncbi_taxon_id = ANY(%(taxa)s))
             """,
-            (level,),
+            {"like": _like(text), "taxa": under},
         )
-        rows = cur.fetchall()
-        found.update({t: (p, i, r, n or str(i)) for t, p, i, r, n in rows})
-        level = list({p for t, p, _, r, _ in rows if r != "family" and p != t} - found.keys())
-    return found
-
-
-def _walk(nodes: dict[int, tuple[int, int, str, str]], taxon_id: int) -> list[tuple[int, str, str]]:
-    """The lineage of a taxon in the nodes of `_ascend`, from the taxon up to its family: NCBI ID,
-    rank, scientific name."""
-    walked: list[tuple[int, str, str]] = []
-    node = taxon_id
-    while node in nodes:
-        parent, ncbi_id, rank, name = nodes[node]
-        walked.append((ncbi_id, rank, name))
-        if rank == "family" or parent == node:
-            break
-        node = parent
-    return walked
-
-
-def _subtree_taxa(cur: Any, ncbi_taxon_id: int) -> dict[int, tuple[int, int]]:
-    """`_descend` from the taxon of that NCBI ID."""
-    cur.execute("SELECT taxon_id FROM taxon WHERE ncbi_taxon_id = %s", (ncbi_taxon_id,))
-    return _descend(cur, [r[0] for r in cur.fetchall()])
-
-
-def _subtree(cur: Any, ncbi_taxon_id: int) -> list[int]:
-    """The NCBI IDs of the taxon and every taxon under it."""
-    below = _subtree_taxa(cur, ncbi_taxon_id)
-    return sorted({ncbi_taxon_id} | {i for _, i in below.values()})
-
-
-def _taxon_names(cur: Any, taxa: set[int]) -> dict[int, str]:
-    cur.execute(
-        """
-        SELECT t.ncbi_taxon_id, n.name FROM taxon AS t
-        JOIN taxon_name AS n ON n.taxon_id = t.taxon_id AND n.name_class = 'scientific name'
-        WHERE t.ncbi_taxon_id = ANY(%s)
-        """,
-        (list(taxa),),
-    )
-    return dict(cur.fetchall())
-
-
-def _fetch(cur: Any, query: str, params: dict[str, Any]) -> list[tuple[Any, ...]]:
-    cur.execute(query, params)  # type: ignore[arg-type]
-    return cur.fetchall()
-
-
-def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
-    """The PSI-MI terms whose name or a synonym contains each text, case aside (all of them
-    without text): the closest names first, then the detection methods, then the most used."""
-    cur.execute(
-        """
-        WITH uses AS (
-            SELECT method_id, count(*) AS descriptions FROM descriptions
-            WHERE deleted_at IS NULL GROUP BY method_id
-        )
-        SELECT m.psimi_id, m.name, m.synonyms, m.is_detection, coalesce(u.descriptions, 0)
-        FROM methods AS m LEFT JOIN uses AS u ON u.method_id = m.id
-        ORDER BY m.psimi_id
-        """
-    )
-    terms = cur.fetchall()
-
-    def line(psimi_id: str, name: str, synonyms: list[str], detection: bool, count: int) -> str:
-        return f"{psimi_id}\t{name}\t{'yes' if detection else 'no'}\t{count}"
-
-    columns = "psimi_id\tname (synonym matched)\tis_detection\tlive_descriptions"
-    if not texts:
-        return "\n".join([f"#{columns}", *page.lines("", [line(*m) for m in terms], "a text")])
-    lines = [f"#text\t{columns}"]
-    for text in texts:
-        found = [m for m in terms if _rank(text, [m[1], *m[2]]) < 3]
-        found.sort(key=lambda m: (_rank(text, [m[1], *m[2]]), not m[3], -m[4], m[0]))
-        shown: list[str] = []
-        for psimi_id, name, synonyms, detection, count in found:
-            also = [s for s in synonyms if text.casefold() in s.casefold()]
-            if also and text.casefold() not in name.casefold():
-                name = f"{name} ({also[0]})"
-            shown.append(line(psimi_id, name, synonyms, detection, count))
-        lines += page.lines(text, shown, "a closer text")
-    return "\n".join(lines)
-
-
-def search(
-    cur: Any,
-    texts: list[str],
-    taxon: str | None = None,
-    kind: str | None = None,
-    reviewed: bool = False,
-    page: Page = DEFAULT,
-) -> str:
-    """The current entries whose `search` text (accession, gene names, taxon, protein name)
-    contains each text, case aside; every current entry of the taxon without text. Swiss-Prot
-    first, then the closest names."""
-    if not texts and taxon is None:
-        sys.exit("search: give a text or a taxon")
-    params: dict[str, Any] = {
-        "taxa": _subtree(cur, _taxon(cur, taxon)) if taxon is not None else None,
-        "type": kind,
-        "reviewed": reviewed,
-    }
-    query = """
-        SELECT p.accession, v.reviewed, p.name, p.description, p.ncbi_taxon_id, v.names,
-               length(p.sequences->>p.accession)
-        FROM proteins_versions AS v
-        JOIN proteins AS p ON p.accession = v.accession AND p.version = v.version
-        WHERE (%(taxa)s::int[] IS NULL OR p.ncbi_taxon_id = ANY(%(taxa)s))
-          AND (%(type)s::char IS NULL OR p.type = %(type)s)
-          AND (v.reviewed OR NOT %(reviewed)s)
-    """
-    results = {
-        text: _fetch(cur, query + " AND v.search ILIKE %(like)s", {**params, "like": _like(text)})
-        for text in texts
-    } or {"": _fetch(cur, query, params)}
-    pages: dict[str, list[tuple[Any, ...]]] = {}
-    for text, found in results.items():
-        found.sort(key=lambda r: (not r[1], _rank(text, [r[2], r[3], *r[5]]), r[0]))
-        pages[text] = page.cut(found)
-    names = _taxon_names(cur, {r[4] for rows in pages.values() for r in rows})
+        rows: list[tuple[Any, ...]] = cur.fetchall()
+        rows.sort(key=lambda r: (not r[1], _rank(text, [r[2], r[3], *r[5]]), r[0]))
+        found[text] = rows
+    names = taxon_names(cur, {r[4] for rows in found.values() for r in page.cut(rows)})
 
     def line(row: tuple[Any, ...]) -> str:
         accession, is_reviewed, gene, description, taxon_id, _, length = row
         taxon_name = names.get(taxon_id, "not in the NCBI taxonomy")
         return (
-            f"{accession}\t{_db(is_reviewed)}\t{gene}\t{description}\t"
+            f"{accession}\t{database(is_reviewed)}\t{gene}\t{description}\t"
             f"{taxon_id} {taxon_name}\t{length}"
         )
 
-    narrow = "--taxon, --reviewed, --human or --viral" + (", or a closer text" if texts else "")
-    columns = "accession\tdb\tgene\tprotein\ttaxon\tlength"
-    lines = [f"#text\t{columns}" if texts else f"#{columns}"]
-    for text, found in results.items():
-        lines += page.lines(text, [line(r) for r in pages[text]], narrow, len(found))
+    lines = ["#text\taccession\tdb\tgene\tprotein\ttaxon\tlength"]
+    for text, rows in found.items():
+        lines += page.lines(text, [line(r) for r in page.cut(rows)], len(rows))
     return "\n".join(lines)
 
 
-def taxa(cur: Any, texts: list[str], taxon: str | None = None, page: Page = DEFAULT) -> str:
-    """The taxa whose `search` text (all their names) contains each text, case aside (under the
-    taxon, when given): rank and lineage up to the family, the closest names first."""
-    within = set(_subtree_taxa(cur, _taxon(cur, taxon))) if taxon is not None else None
-    found: dict[str, list[tuple[int, str]]] = {}
-    for text in texts:
-        cur.execute(
-            "SELECT taxon_id, search FROM taxon WHERE search ILIKE %s ORDER BY ncbi_taxon_id",
-            (_like(text),),
-        )
-        found[text] = [r for r in cur.fetchall() if within is None or r[0] in within]
-    pages: dict[str, list[tuple[int, list[str]]]] = {}
-    for text, rows in found.items():
-        ranked = [(t, s.split(" | ")) for t, s in rows]
-        ranked.sort(key=lambda r: _rank(text, r[1]))  # stable: NCBI ID order among equals
-        pages[text] = page.cut(ranked)
-    nodes = _ascend(cur, sorted({t for rows in pages.values() for t, _ in rows}))
-
-    def line(text: str, taxon_id: int, names: list[str]) -> str:
-        """NCBI ID, scientific name (with the name matched), rank, lineage up to the family."""
-        (ncbi_id, rank, name), *above = _walk(nodes, taxon_id)
-        matched = [n for n in names if text.casefold() in n.casefold()]
-        also = "" if text.casefold() in name.casefold() else f" ({matched[0]})"
-        return f"{ncbi_id}\t{name}{also}\t{rank}\t{' < '.join(n for *_, n in above) or '-'}"
-
-    lines = ["#text\ttaxon\tname (name matched)\trank\tlineage"]
-    for text, rows in found.items():
-        shown = [line(text, t, names) for t, names in pages[text]]
-        lines += page.lines(text, shown, "--taxon or a closer text", len(rows))
-    return "\n".join(lines)
-
-
-def _location(text: str) -> tuple[str, str, int | None, int | None]:
+def location(text: str) -> tuple[str, str, int | None, int | None]:
     """(entry accession, isoform accession, start, stop) of `P26662[-2][:810-1026]`."""
     match = LOCATION.fullmatch(text)
     if match is None:
@@ -615,9 +343,9 @@ def _location(text: str) -> tuple[str, str, int | None, int | None]:
     )
 
 
-def _sequence(cur: Any, text: str) -> str:
+def sequence_of(cur: Any, text: str) -> str:
     """The sequence of `<accession>[:<start>-<stop>]` on its current snapshot; ValueError."""
-    accession, isoform, start, stop = _location(text)
+    accession, isoform, start, stop = location(text)
     cur.execute(
         """
         SELECT p.sequences->>%s FROM proteins AS p
@@ -641,178 +369,48 @@ def _sequence(cur: Any, text: str) -> str:
 
 def seq(cur: Any, locations: list[str]) -> str:
     """The sequence of each entry or isoform, or between its coordinates (1-based, inclusive)."""
-    lines: list[str] = []
+    lines = ["#location\tsequence"]
     for text in locations:
         try:
-            lines.append(f"{text}\t{_sequence(cur, text)}")
+            lines.append(f"{text}\t{sequence_of(cur, text)}")
         except ValueError as e:
             lines.append(f"{text}\t{e}")
     return "\n".join(lines)
 
 
-def _region(mapping: dict[str, Any], canonical: str) -> str:
-    """The occurrences of a mapping: `1-15` on the canonical isoform, `P04439-2:1-15` on another,
-    each with its identity when below the best."""
-    best = best_identity(mapping)
-    return ", ".join(
-        ("" if i["accession"] == canonical else f"{i['accession']}:")
-        + f"{o['start']}-{o['stop']}"
-        + ("" if o["identity"] == best else f" ({o['identity']:g} %)")
-        for i in mapping["isoforms"]
-        for o in i["occurrences"]
-    )
-
-
-def _map_entry(query: str, accession: str, sequences: str) -> dict[str, Any]:
-    """A sequence mapped on a whole entry, its isoforms given as JSON."""
-    isoforms = cast(dict[str, str], json.loads(sequences))
-    return map_sequence(query, isoforms, accession, 1, len(isoforms[accession]))
-
-
-def closest(
-    cur: Any,
-    sequences: list[str],
-    taxon: str,
-    min_identity: float = 0.0,
-    page: Page = DEFAULT,
-) -> str:
-    """The current entries of the taxon ranked by identity with each sequence, as the write
-    computes it for a mapping on the whole entry, then Swiss-Prot first."""
-    queries: dict[str, str] = {}
-    for text in sequences:
-        if any(c.isdigit() for c in text):  # an accession, never a sequence
-            try:
-                queries[text] = _sequence(cur, text)
-            except ValueError as e:
-                sys.exit(f"{text}: {e}")
-        elif AMINO_ACIDS.fullmatch(text.upper()):
-            queries[text if len(text) <= 20 else f"{text[:20]}…({len(text)} aa)"] = text.upper()
-        else:
-            sys.exit(f"{text[:20]}: neither an accession nor an amino acid sequence")
-    cur.execute(
-        """
-        SELECT p.accession, v.reviewed, p.description, p.ncbi_taxon_id, p.sequences::text
-        FROM proteins_versions AS v
-        JOIN proteins AS p ON p.accession = v.accession AND v.version = p.version
-        WHERE p.ncbi_taxon_id = ANY(%s)
-        """,
-        (_subtree(cur, _taxon(cur, taxon)),),
-    )
-    entries = cur.fetchall()
-    names = _taxon_names(cur, {e[3] for e in entries})
-    lines = ["#sequence\taccession\tdb\tprotein\ttaxon\tidentity\tregion"]
-    for label, query in queries.items():
-        ranked: list[tuple[float, bool, str, str]] = []
-        for accession, is_reviewed, description, taxon_id, isoforms in entries:
-            mapping = _map_entry(query, accession, isoforms)
-            identity = best_identity(mapping)
-            if identity < min_identity:
-                continue
-            taxon_name = names.get(taxon_id, "not in the NCBI taxonomy")
-            ranked.append(
-                (
-                    identity,
-                    is_reviewed,
-                    accession,
-                    f"{accession}\t{_db(is_reviewed)}\t{description}\t{taxon_id} {taxon_name}"
-                    f"\t{identity:.1f} %\t{_region(mapping, accession) or 'aligns nowhere'}",
-                )
-            )
-        ranked.sort(key=lambda r: (-r[0], not r[1], r[2]))
-        lines += page.lines(label, [r[3] for r in ranked], "--taxon or --min-identity")
-    return "\n".join(lines)
-
-
-def map_(cur: Any, interactor: str, sequences: list[str]) -> str:
-    """What the write computes for each mapping sequence on the interactor (its current
-    snapshot): extra end residues, occurrences on each isoform with their identity (on the
-    canonical isoform, relative to the interactor's start), and whether it is below 90 %."""
-    try:
-        accession, isoform, start, stop = _location(interactor)
-        if isoform != accession:
-            raise ValueError("an interactor is an entry, not an isoform")
-        snapshot = _snapshot(cur, accession)
-    except (ValueError, InvalidRow) as e:
-        sys.exit(f"{interactor}: {e}")
-    length = len(snapshot.sequences[accession])
-    start, stop = start or 1, stop or length
-    if not 1 <= start <= stop <= length:
-        sys.exit(f"{interactor}: {start}-{stop} is outside 1-{length}")
-    lines = [f"# on {accession}[{start}-{stop}]", "#sequence\tnter\tcter\toccurrences\tverdict"]
-    for text in sequences:
-        try:
-            sequence, nter, cter = read_written(text)
-        except ValueError as e:
-            lines.append(f"{text}\t{e}")
-            continue
-        if not AMINO_ACIDS.fullmatch(sequence):
-            lines.append(f"{text}\tnot an amino acid sequence")
-            continue
-        mapping = map_sequence(sequence, snapshot.sequences, accession, start, stop, nter, cter)
-        identity = best_identity(mapping)
-        verdict = (
-            "aligns nowhere"
-            if not mapping["isoforms"]
-            else f"below {MIN_IDENTITY:g} %"
-            if identity < MIN_IDENTITY
-            else "ok"
+def names(cur: Any, taxa: list[int], page: Page = DEFAULT) -> str:
+    """The generic names of the viral interactors of live descriptions under each taxon: the most
+    used first, each with its live descriptions and its three most used interactors, on any
+    snapshot (an obsolete one marked: its generic name stays reusable, its entry does not,
+    `curation-rules.md` §3)."""
+    lines = ["#taxon\tgeneric_name\tlive_descriptions\tinteractors (live descriptions)"]
+    for taxon in taxa:
+        cur.execute(
+            """
+            SELECT d.name2, p.accession, d.start2, d.stop2, v.accession IS NULL AS obsolete,
+                   count(*) AS descriptions
+            FROM descriptions AS d
+            JOIN proteins AS p ON p.id = d.protein2_id
+            LEFT JOIN proteins_versions AS v
+              ON v.accession = p.accession AND v.version = p.version
+            WHERE d.deleted_at IS NULL AND p.type = 'v' AND p.ncbi_taxon_id = ANY(%s)
+            GROUP BY d.name2, p.accession, d.start2, d.stop2, obsolete
+            ORDER BY descriptions DESC, d.name2, p.accession, d.start2
+            """,
+            (subtree(cur, taxon),),
         )
-        occurrences = "; ".join(
-            f"{i['accession']} "
-            + ", ".join(f"{o['start']}-{o['stop']} ({o['identity']:g} %)" for o in i["occurrences"])
-            for i in mapping["isoforms"]
-        )
-        lines.append(f"{text}\t{nter or '-'}\t{cter or '-'}\t{occurrences or '-'}\t{verdict}")
-    return "\n".join(lines)
-
-
-def used(
-    cur: Any, taxon: str, names: list[str], exclude: int | None = None, page: Page = DEFAULT
-) -> str:
-    """The viral interactors of live descriptions under the taxon, on any snapshot (an obsolete
-    one marked: its generic name stays reusable, its entry does not, `curation-rules.md` §3),
-    without those of the PMID excluded. Without generic names, one line per generic name, the
-    most used first, with its most used interactors; with generic names (case aside), one line
-    per interactor of each."""
-    cur.execute(
-        """
-        SELECT d.name2, p.accession, d.start2, d.stop2, v.accession IS NULL AS obsolete,
-               count(*) AS descriptions
-        FROM descriptions AS d
-        JOIN associations AS a ON a.id = d.association_id
-        JOIN proteins AS p ON p.id = d.protein2_id
-        LEFT JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
-        WHERE d.deleted_at IS NULL AND p.type = 'v' AND p.ncbi_taxon_id = ANY(%s)
-          AND a.pmid IS DISTINCT FROM %s
-        GROUP BY d.name2, p.accession, d.start2, d.stop2, obsolete
-        ORDER BY descriptions DESC, d.name2, p.accession, d.start2
-        """,
-        (_subtree(cur, _taxon(cur, taxon)), exclude),
-    )
-    found = cur.fetchall()
-    if not names:
-        by_name: dict[str, list[str]] = defaultdict(list)
+        interactors: dict[str, list[str]] = defaultdict(list)
         totals: dict[str, int] = defaultdict(int)
-        for name2, accession, start, stop, obsolete, count in found:
-            mark = ", obsolete snapshot" if obsolete else ""
-            by_name[name2].append(f"{accession} {start}-{stop} ({count}{mark})")
+        for name2, accession, start, stop, obsolete, count in cur.fetchall():
+            stretch = f"{accession}:{start}-{stop}" + (" obsolete" if obsolete else "")
+            interactors[name2].append(f"{stretch} ({count})")
             totals[name2] += count
-        ranked = sorted(by_name, key=lambda n: (-totals[n], n))
         shown = [
-            f"{n}\t{totals[n]}\t{', '.join(by_name[n][:3])}"
-            + (f", {len(by_name[n]) - 3} more" if len(by_name[n]) > 3 else "")
-            for n in ranked
+            f"{name}\t{totals[name]}\t{', '.join(interactors[name][:3])}"
+            + (f", {len(interactors[name]) - 3} more" if len(interactors[name]) > 3 else "")
+            for name in sorted(interactors, key=lambda n: (-totals[n], n))
         ]
-        lines = ["#generic_name\tlive_descriptions\tinteractors (live descriptions)"]
-        return "\n".join(lines + page.lines("", shown, "generic names"))
-    lines = ["#generic_name\tname\taccession\tcoordinates\tsnapshot\tlive_descriptions"]
-    for name in names:
-        rows = [
-            f"{n}\t{accession}\t{start}-{stop}\t{'obsolete' if obsolete else 'current'}\t{count}"
-            for n, accession, start, stop, obsolete, count in found
-            if n.casefold() == name.casefold()
-        ]
-        lines += page.lines(name, rows, "a closer taxon")
+        lines += page.lines(str(taxon), shown)
     return "\n".join(lines)
 
 
@@ -822,10 +420,10 @@ def _cell(value: Any) -> str:
 
 
 def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
-    """The rows of a free query, tab-separated under a header of column names: a page of them,
-    their total, and each cell cut at `CELL` characters. A query is run once, through a cursor
-    that skips, fetches and counts on the server; a statement no cursor takes (EXPLAIN, SHOW)
-    is run as is."""
+    """The rows of a free query, tab-separated under a `#` header of column names: a page of
+    them, their total, and each cell cut at `CELL` characters. A query is run once, through a
+    cursor that fetches and counts on the server; a statement no cursor takes (EXPLAIN, SHOW) is
+    run as is."""
     query = query.strip().rstrip(";")
     try:
         cur.execute("SAVEPOINT lookup")
@@ -839,107 +437,54 @@ def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
             columns = [c.name for c in cur.description]
             rows = cur.fetchall()
             total = len(rows)
-            rows = page.cut(rows)
         else:
-            skipped = 0
-            if page.offset:
-                cur.execute(f"MOVE FORWARD {page.offset} IN lookup")
-                skipped = cur.rowcount
-            cur.execute(f"FETCH {'ALL' if page.limit is None else page.limit} FROM lookup")
+            cur.execute(f"FETCH {page.limit} FROM lookup")
             columns = [c.name for c in cur.description]
             rows = cur.fetchall()
             cur.execute("MOVE FORWARD ALL IN lookup")
-            total = skipped + len(rows) + cur.rowcount
+            total = len(rows) + cur.rowcount
     except psycopg.Error as e:
         sys.exit(f"sql: {e}".strip())
-    shown = ["\t".join(_cell(v) for v in row) for row in rows]
-    return "\n".join(["\t".join(columns), *page.lines("", shown, "WHERE", total)])
+    shown = ["\t".join(_cell(v) for v in row) for row in page.cut(rows)]
+    return "\n".join(["#" + "\t".join(columns), *page.lines("", shown, total)])
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Read what a curation decision needs.")
     commands = parser.add_subparsers(dest="command", required=True)
-    p = commands.add_parser("publication", help="title, abstract, note, live descriptions")
-    p.add_argument("run_id", type=int)
-    p.add_argument("pmid", type=int)
-    e = commands.add_parser("entry", help="snapshots, sequences, names, chains of an accession")
-    e.add_argument("accession")
-    n = commands.add_parser("names", help="generic names used near a viral protein")
-    n.add_argument("accession")
-    c = commands.add_parser(
-        "curation-names", help="the same, without the descriptions of the publication curated"
-    )
-    c.add_argument("pmid", type=int)
-    c.add_argument("accession")
-    r = commands.add_parser("row", help="live descriptions as revision rows, to edit")
-    r.add_argument("stable_ids", nargs="+")
-    paged = argparse.ArgumentParser(add_help=False)
-    paged.add_argument("--limit", type=int, default=LIMIT, help=f"lines per input ({LIMIT})")
-    paged.add_argument("--offset", type=int, default=0, help="lines skipped per input")
-    paged.add_argument("--all", action="store_true", help="every line")
-    m = commands.add_parser("methods", parents=[paged], help="PSI-MI terms by name or synonym")
-    m.add_argument("texts", nargs="*")
-    s = commands.add_parser(
-        "search", parents=[paged], help="current entries by gene names, taxon, protein name"
-    )
-    s.add_argument("texts", nargs="*")
-    s.add_argument("--taxon", help="NCBI taxon ID or name: its whole subtree")
-    kind = s.add_mutually_exclusive_group()
-    kind.add_argument("--human", action="store_const", const="h", dest="kind")
-    kind.add_argument("--viral", action="store_const", const="v", dest="kind")
-    s.add_argument("--reviewed", action="store_true", help="Swiss-Prot only")
-    t = commands.add_parser("taxon", parents=[paged], help="taxa by name: rank, lineage")
+    limit = argparse.ArgumentParser(add_help=False)
+    limit.add_argument("--limit", type=int, default=LIMIT, help=f"lines per input ({LIMIT})")
+    m = commands.add_parser("methods", parents=[limit], help="PSI-MI terms by name or synonym")
+    m.add_argument("texts", nargs="+")
+    t = commands.add_parser("taxon", parents=[limit], help="taxa by name, with their lineage")
     t.add_argument("texts", nargs="+")
-    t.add_argument("--taxon", help="only the taxa under it (NCBI taxon ID or name)")
-    o = commands.add_parser(
-        "closest", parents=[paged], help="the current entries of a taxon by identity"
-    )
-    o.add_argument("sequences", nargs="+", help="a sequence, or <accession>[:<start>-<stop>]")
-    o.add_argument("--taxon", required=True, help="NCBI taxon ID or name: its whole subtree")
-    o.add_argument(
-        "--min-identity", type=float, default=0.0, help="only entries at this %% or more"
-    )
+    e = commands.add_parser("entry", help="an entry: lineage, isoforms, names, chains")
+    e.add_argument("accessions", nargs="+")
+    s = commands.add_parser("search", parents=[limit], help="entries by accession or name")
+    s.add_argument("texts", nargs="+")
+    s.add_argument("--taxon", type=int, help="NCBI taxon ID: only the entries under it")
     q = commands.add_parser("seq", help="sequences, or subsequences between coordinates")
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
-    a = commands.add_parser("map", help="the occurrences the write computes for mappings")
-    a.add_argument("interactor", help="<accession>[:<start>-<stop>]")
-    a.add_argument("sequences", nargs="+", help="extra end residues in lowercase")
-    u = commands.add_parser(
-        "used", parents=[paged], help="viral interactors of live descriptions under a taxon"
-    )
-    u.add_argument("taxon", help="NCBI taxon ID or name: its whole subtree")
-    u.add_argument("names", nargs="*", help="generic names")
-    u.add_argument("--exclude", type=int, metavar="PMID", help="leave out its descriptions")
-    x = commands.add_parser("sql", parents=[paged], help="free read-only SQL, a page of its rows")
+    n = commands.add_parser("names", parents=[limit], help="generic names used under each taxon")
+    n.add_argument("taxa", nargs="+", type=int, help="NCBI taxon ID: its whole subtree")
+    x = commands.add_parser("sql", parents=[limit], help="free read-only SQL")
     x.add_argument("query")
     args = parser.parse_args()
     with connect(readonly=True) as conn, conn.cursor() as cur:
         cur.execute("SET statement_timeout = '30s'")
-        if args.command == "publication":
-            print(publication(cur, args.run_id, args.pmid))
-        elif args.command == "entry":
-            print(entry(cur, args.accession))
-        elif args.command == "names":
-            print(names(cur, args.accession))
-        elif args.command == "curation-names":
-            print(names(cur, args.accession, exclude=args.pmid))
-        elif args.command == "row":
-            print(rows(cur, args.stable_ids))
+        if args.command == "entry":
+            print(entries(cur, args.accessions))
         elif args.command == "seq":
             print(seq(cur, args.locations))
-        elif args.command == "map":
-            print(map_(cur, args.interactor, args.sequences))
         else:
-            page = Page(args.offset, None if args.all else args.limit)
+            page = Page(args.limit)
             if args.command == "methods":
                 print(methods(cur, args.texts, page))
-            elif args.command == "search":
-                print(search(cur, args.texts, args.taxon, args.kind, args.reviewed, page))
             elif args.command == "taxon":
-                print(taxa(cur, args.texts, args.taxon, page))
-            elif args.command == "closest":
-                print(closest(cur, args.sequences, args.taxon, args.min_identity, page))
-            elif args.command == "used":
-                print(used(cur, args.taxon, args.names, args.exclude, page))
+                print(taxa(cur, args.texts, page))
+            elif args.command == "search":
+                print(search(cur, args.texts, args.taxon, page))
+            elif args.command == "names":
+                print(names(cur, args.taxa, page))
             else:
                 print(sql(cur, args.query, page))

@@ -53,13 +53,13 @@ def test_bad_header_and_bad_rows_are_refused(tmp_path: Path):
         read_rows([path], REVISE)
 
 
-def test_revise_command(dbname, tmp_path: Path):
-    rows = run("drakkar-read", "row", "EY73D2C965", "EYF737084C").stdout.splitlines()
-    assert rows[0] == header(REVISE)
+def test_revise_command(conn, tmp_path: Path):
+    live = {r.stable_id: r for r in live_revisions(conn.cursor(), *SARS)}
+    conn.rollback()
     note = "REVISED: name2 N → orf6"
-    edited = [rows[0]]
-    for row in rows[1:]:
-        fields = row.split("\t")
+    edited = [header(REVISE)]
+    for stable_id in ("EY73D2C965", "EYF737084C"):
+        fields = format_revision(live[stable_id]).split("\t")
         fields[REVISE.index("name2")] = "orf6"
         fields[REVISE.index("note")] = note
         edited.append("\t".join(fields))

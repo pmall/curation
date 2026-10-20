@@ -1,7 +1,8 @@
 """Write descriptions and publication states (`docs/tools.md`).
 
-Four functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
-`update_publications`, `move_publications`; `write_batch` runs the four on a curation batch.
+Three functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
+`update_publications`; `write_batch` runs the three on a curation batch, then moves the
+publications it leaves `selected` to the special run.
 Each writes its lists in one transaction:
 
 1. every row is applied in its own savepoint; a row with a problem is not written, and its
@@ -641,28 +642,6 @@ def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
     return f"{move.run}/{move.pmid} → {target}"
 
 
-def move_publications(
-    conn: psycopg.Connection,
-    publications: Sequence[tuple[int, int]],
-    *,
-    new_run: bool = False,
-    commit: bool = False,
-) -> tuple[list[Move], Outcome]:
-    """Move the publications given as (run_id, pmid) that are `selected` with a pass date in a vh
-    run of the PubMed query to the open special run (a new one with `new_run`), each with a
-    `Moved` note first in its note. The others are left where they are.
-
-    Raises `ValueError` for a publication that is not in its run.
-    """
-    with conn.transaction(), conn.cursor() as cur:
-        moves, missing = _movable(cur, publications)
-    if missing:
-        raise ValueError(f"publications not in their run: {', '.join(missing)}")
-    if not moves:
-        return moves, Outcome([], [], [], False)
-    return moves, _write(conn, commit, lambda cur: _apply_moves(cur, moves, new_run))
-
-
 def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> tuple[list[Move], list[str]]:
     """The publications given as (run_id, pmid) that a move takes, and those not in their run."""
     cur.execute(
@@ -710,8 +689,9 @@ def write_batch(
 ) -> tuple[list[Move], Outcome]:
     """Write a curation batch in one transaction, in this order: the revisions and removals, the
     new descriptions, the publication updates, then the move of the updated publications left
-    `selected` to the special run, as `move_publications` does. Every invariant is checked once,
-    on the result, so a row can rely on an earlier one (an addition on a rename).
+    `selected` with a pass date in a vh run of the PubMed query to the open special run (a new
+    one with `new_run`), each with a `Moved` note first in its note. Every invariant is checked
+    once, on the result, so a row can rely on an earlier one (an addition on a rename).
 
     Rows are numbered across the three lists, in that order, then the moves.
     """

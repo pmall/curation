@@ -1,7 +1,7 @@
 """Protein sequences from NCBI (GenBank, RefSeq), for what UniProt lacks: the publication's
 strain, whose sequence gives the mappings (`docs/curation-rules.md` §3).
 
-uv run drakkar-genbank search <query>... [--limit <n>] [--offset <n>] [--all]
+uv run drakkar-genbank search <query>... [--limit <n>]
     the NCBI protein records of each query (NCBI search syntax, e.g. `JFH-1 AND polyprotein`):
     accession, title, length, taxon
 uv run drakkar-genbank seq <accession>[:<start>-<stop>]...
@@ -85,7 +85,7 @@ def _cds(header: str) -> tuple[str, str]:
 def seq(eutils: Eutils, locations: list[str]) -> str:
     """The sequence of each protein record, or between its coordinates; the coding sequences of
     each nucleotide record."""
-    lines = ["#input\taccession\ttitle\tlength\tsequence"]
+    lines = ["#location\taccession\ttitle\tlength\tsequence"]
     for text in locations:
         match = LOCATION.fullmatch(text)
         if match is None:
@@ -124,10 +124,7 @@ def search(eutils: Eutils, queries: list[str], page: Page = DEFAULT) -> str:
     """The NCBI protein records of each query, in NCBI's order: a page of them, and how many."""
     lines = ["#query\taccession\ttitle\tlength\ttaxon"]
     for query in queries:
-        retmax = 10_000 if page.limit is None else page.limit
-        status, body = eutils(
-            ESEARCH, db="protein", term=query, retstart=page.offset, retmax=retmax, retmode="json"
-        )
+        status, body = eutils(ESEARCH, db="protein", term=query, retmax=page.limit, retmode="json")
         if status != 200:
             lines.append(f"{query}\tNCBI search failed (HTTP {status})")
             continue
@@ -144,7 +141,7 @@ def search(eutils: Eutils, queries: list[str], page: Page = DEFAULT) -> str:
                     f"{s.get('accessionversion', uid)}\t{_title(s.get('title', '?'))}\t"
                     f"{s.get('slen', '?')}\t{s.get('taxid', '?')}"
                 )
-        lines += page.lines(query, rows, "a closer query (NCBI search syntax)", total)
+        lines += page.lines(query, rows, total)
     return "\n".join(lines)
 
 
@@ -154,13 +151,11 @@ def main() -> None:
     s = commands.add_parser("search", help="the NCBI protein records of each query")
     s.add_argument("queries", nargs="+")
     s.add_argument("--limit", type=int, default=LIMIT, help=f"records per query ({LIMIT})")
-    s.add_argument("--offset", type=int, default=0, help="records skipped per query")
-    s.add_argument("--all", action="store_true", help="every record")
     q = commands.add_parser("seq", help="protein sequences, or a genome's coding sequences")
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
     args = parser.parse_args()
     eutils = Eutils()
     if args.command == "search":
-        print(search(eutils, args.queries, Page(args.offset, None if args.all else args.limit)))
+        print(search(eutils, args.queries, Page(args.limit)))
     else:
         print(seq(eutils, args.locations))

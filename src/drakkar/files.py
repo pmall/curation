@@ -7,13 +7,12 @@ In a note, `\\n` is a line break. Lists (mappings, below_threshold) are separate
     uv run drakkar-revise <file>... [--commit]
     uv run drakkar-publications <file>... [--commit]
     uv run drakkar-diff <run_id> <pmid> <file>
-    uv run drakkar-move <file>... [--new-run] [--commit]
     uv run drakkar-batch <dir> [--new-run] [--commit]
 
 Without `--commit`, a dry run: everything is applied and checked, then rolled back. The diff is
 read-only: it writes the add, revise and delete files of a curated publication beside its file.
-The move takes publications files: it moves those Claude could not curate fully to a special run.
-The batch writes the merged files of a curation batch, the move last, in one transaction.
+The batch writes the merged files of a curation batch in one transaction, then moves the
+publications Claude could not curate fully to a special run.
 """
 
 import argparse
@@ -31,7 +30,6 @@ from drakkar.write import (
     PublicationUpdate,
     Revision,
     add_descriptions,
-    move_publications,
     revise_descriptions,
     update_publications,
     write_batch,
@@ -263,33 +261,6 @@ def publications_main() -> None:
     _command(
         "Set the state and note of publications.", PUBLICATIONS, publication, update_publications
     )
-
-
-def move_main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Move the publications Claude could not curate fully to the open special run."
-    )
-    parser.add_argument("files", type=Path, nargs="+", help="publications files (docs/tools.md)")
-    parser.add_argument("--new-run", action="store_true", help="open a new special run first")
-    parser.add_argument("--commit", action="store_true", help="commit if everything passes")
-    args = parser.parse_args()
-    try:
-        rows = read_rows(cast(list[Path], args.files), PUBLICATIONS)
-        publications = [
-            (_int(where, row, "run_id"), _int(where, row, "pmid")) for where, row in rows
-        ]
-        with connect() as conn:
-            moves, outcome = move_publications(
-                conn, publications, new_run=args.new_run, commit=args.commit
-            )
-    except ValueError as e:  # a file error, or a publication not in its run
-        sys.exit(str(e))
-    if not moves:
-        print("nothing to move")
-        return
-    print("\n".join(outcome.written))
-    print(report(outcome, [(f"{move.run}/{move.pmid}", {}) for move in moves]))
-    sys.exit(0 if outcome.ok else 1)
 
 
 def batch_main() -> None:

@@ -41,7 +41,6 @@ Drakkar is the curation database of virus–human protein–protein interactions
 - The database is big (millions of protein snapshots, the whole NCBI taxonomy): every query must be fast. Check the indexes (`pg_indexes`) and, when unsure, the plan (`EXPLAIN`); set a `statement_timeout` so a bad plan fails fast; aggregate first, then join the small result; time each step.
 - SQL is written for a human reader: plain joins, named columns in `GROUP BY` and `ORDER BY`, clear aliases; a complex form only when speed needs it, with a comment saying so.
 - Timestamps are `timestamp(0)`: compare with `now()::timestamp(0)`.
-- Taxonomy: never a per-row nested-set lookup (`left_value`/`right_value`) in a big query; collect the distinct taxa, then walk their lineage once by `parent_taxon_id`.
 
 ## Python
 
