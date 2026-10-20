@@ -1,6 +1,6 @@
 """A fresh test database per test, copied from a template built once per session.
 
-The template is `schema.sql` and `fixture.sql` (`build_fixture.py`), loaded into
+The template is `sql/schema.sql` and `fixture.sql` (`build_fixture.py`), loaded into
 `<POSTGRES_DB>_test_template` on the server of `.env`. Each test gets its own copy,
 `<POSTGRES_DB>_test`, so tests can commit.
 """
@@ -45,7 +45,7 @@ def template() -> Iterator[str]:
     name = TEMPLATE
     _admin(f"DROP DATABASE IF EXISTS {name}")
     _admin(f"CREATE DATABASE {name}")
-    for path in ("schema.sql", "fixture.sql"):
+    for path in (HERE.parent / "sql" / "schema.sql", HERE / "fixture.sql"):
         subprocess.run(
             [
                 "psql",
@@ -61,7 +61,7 @@ def template() -> Iterator[str]:
                 "-d",
                 name,
                 "-f",
-                str(HERE / path),
+                str(path),
             ],
             env={**os.environ, "PGPASSWORD": os.environ.get("POSTGRES_PASSWORD", "")},
             check=True,

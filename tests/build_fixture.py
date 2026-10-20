@@ -1,8 +1,10 @@
-"""Build the test database files from the Drakkar database: `schema.sql` and `fixture.sql`.
+"""Write the structure of the Drakkar database, `sql/schema.sql`, and the test fixture,
+`tests/fixture.sql`: the tests load both.
 
 The fixture is a few real publications, with every version of their descriptions, the snapshots
 they use and the current snapshots of the same proteins, the taxa of those proteins with their
-lineage, and all the methods. Run it again only to change the fixture:
+lineage, and all the methods. Its rows follow the columns of the schema, so both are written
+together. Run it again when the structure changes, or to change the fixture:
 
     uv run python tests/build_fixture.py
 """
@@ -17,6 +19,8 @@ from dotenv import load_dotenv
 from drakkar.db import connect
 
 HERE = Path(__file__).parent
+SCHEMA = HERE.parent / "sql" / "schema.sql"
+SCHEMA_HEADER = "-- The structure of Drakkar, written by tests/build_fixture.py: never edit it."
 
 # (run ID, PMID): why it is in the fixture.
 PUBLICATIONS = {
@@ -74,8 +78,17 @@ def schema() -> str:
         text=True,
         check=True,
     ).stdout
-    # `\restrict` lines carry a random key: drop them so the file only changes with the schema.
-    return "".join(line for line in dump.splitlines(True) if not line.startswith("\\"))
+    # Keep the statements only: drop pg_dump's comments and session settings, and its `\restrict`
+    # lines, which carry a random key, so the file only changes with the schema.
+    lines = [
+        line
+        for line in dump.splitlines()
+        if not line.startswith(("--", "SET ", "SELECT pg_catalog.set_config", "\\"))
+    ]
+    text = "\n".join(lines)
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    return f"{SCHEMA_HEADER}\n\n{text.strip()}\n"
 
 
 def fixture() -> str:
@@ -146,7 +159,7 @@ def fixture() -> str:
 
 
 def main() -> None:
-    (HERE / "schema.sql").write_text(schema())
+    SCHEMA.write_text(schema())
     (HERE / "fixture.sql").write_text(fixture())
 
 
