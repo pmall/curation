@@ -1,6 +1,6 @@
 # Notes
 
-The notes are Claude's memory of its curation: from them alone, Claude can tell what it read on a publication, what it kept and left out and why, and how each description was decided, to curate it again, update it and report on it. A description note carries no date: a version is dated by its `created_at`. A publication note keeps the dated history of its passes and moves. Notes are short, a few words per line, with fixed labels so they can be searched: a report reads the headers for the states and the dates of the passes, the `Not read` lines for the relevant files missing, the `Not kept` lines for what was left out, and the `best-effort` description lines for the values a reviewer should see. A note never holds a number the database already gives, such as the count of descriptions.
+The notes are Claude's memory of its curation: from them alone, Claude can tell what it read on a publication, what it kept and left out and why, and how each description was decided, to curate it again, update it and report on it. A description note carries no date: a version is dated by its `created_at`. A publication note keeps the dated history of its passes and moves. Notes are free text, never a data structure: short lines, a few words each, under the labels below, which make them easy to read and search. A note never holds a number the database already gives, such as the count of descriptions.
 
 ## Publication note
 
@@ -21,7 +21,7 @@ Detail lines, in this order:
 
 ## Description note
 
-`descriptions.annotation`, one note per version. A version made by a curation holds the curation's note: the method and where the publication shows it (`anti-tag co-IP (MI:0007), Fig. 2B and 5C`), then `- ` detail lines; whether it is a first curation or a re-curation, its version and `created_at` say. A version made otherwise, and what was decided on a version later without a new version (an interactor not moved, an in-place correction, a removal), are each a line `ACTION: summary` followed by `- ` detail lines. The history of a description is its notes read version by version.
+`descriptions.annotation`, one note per version. A version made by a curation holds the curation's note: the method and where the publication shows it (`anti-tag co-IP (MI:0007), Fig. 2B and 5C`), with the assay as published when the term is only the closest one, then `- ` detail lines; whether it is a first curation or a re-curation, its version and `created_at` say. A version made otherwise, and what was decided on a version later without a new version (an interactor not moved, an in-place correction, a removal), are each a line `ACTION: summary` followed by `- ` detail lines. The history of a description is its notes read version by version.
 
 | Action | Why | Example summary |
 | -- | -- | -- |
@@ -34,7 +34,7 @@ The detail lines of a curation's note are written for each value that is not obv
 - `Entry: <as published> (<where>) → <accession> (<strain of the entry>), <label>: <evidence>`; for a family or a complex, the member chosen and why.
 - `Coordinates: <start>–<stop>, <label>: <evidence>`, for a mature protein.
 - `Mapping: <as published> (<where>), <label>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept.
-- `Remark: <what was arbitrary, what stays uncertain, what would change the decision>`.
+- `Remark: <what else the decision needs>`: a tie broken by judgement, a disagreement between the publication's sources, a natural post-translational modification, what would change the decision.
 
 ## Examples
 
