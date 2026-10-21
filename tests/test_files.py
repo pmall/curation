@@ -30,7 +30,7 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_revision_rows_round_trip(conn, tmp_path: Path):
     revisions = live_revisions(conn.cursor(), *SARS)
     path = tmp_path / "rows.tsv"
-    path.write_text("\n".join([header(REVISE), *map(format_revision, revisions)]) + "\n")
+    write_rows(path, REVISE, [format_revision(r) for r in revisions])
     assert [revision(w, r) for w, r in read_rows([path], REVISE)] == revisions
 
 
@@ -41,6 +41,14 @@ def test_files_concatenate(tmp_path: Path):
     paths = [tmp_path / "a.tsv", tmp_path / "b.tsv"]
     rows = read_rows(paths, REVISE)
     assert len(rows) == 2 and revision(*rows[0]).note == "a\nb"
+
+
+def test_files_merge_with_cat(tmp_path: Path):
+    """A batch file merged with `cat`: each file's header line is skipped, wherever it is."""
+    row = "\t".join(["EY73D2C965", "1", "1", "22046132", "remove", "", *[""] * 9, "note"])
+    path = tmp_path / "merged.tsv"
+    path.write_text(f"{header(REVISE)}\n{row}\n{header(REVISE)}\n{row}\n{header(REVISE)}\n")
+    assert len(read_rows([path], REVISE)) == 2
 
 
 def test_a_header_without_its_hash_is_the_header(tmp_path: Path):
@@ -59,18 +67,36 @@ def test_bad_header_and_bad_rows_are_refused(tmp_path: Path):
         read_rows([path], REVISE)
 
 
+def test_a_row_with_too_few_or_too_many_fields_names_the_columns(tmp_path: Path):
+    """The columns left without a field, or the fields beyond the last one, then each field
+    under the column it was read as."""
+    fields = ["12", "25031347", "MI:0007", "P46934", "Q6VA95", "", "", "N", "", "", ""]
+    path = tmp_path / "short.tsv"
+    path.write_text("\t".join(fields) + "\n")
+    with pytest.raises(FileError) as short:
+        read_rows([path], ADD)
+    assert str(short.value).startswith(
+        f"{path}:1: 11 fields, expected 12: no field for note; read as run_id=12 | pmid=25031347"
+    )
+    path.write_text("\t".join([*fields, "a note that is rather long", "more"]) + "\n")
+    with pytest.raises(FileError) as long:
+        read_rows([path], ADD)
+    assert "13 fields, expected 12: 1 more after note; " in str(long.value)
+    assert str(long.value).endswith("note=a note that is rathe… | (extra)=more")
+
+
 def test_revise_command(conn, tmp_path: Path):
     live = {r.stable_id: r for r in live_revisions(conn.cursor(), *SARS)}
     conn.rollback()
     note = "name2 N → orf6"
-    edited = [header(REVISE)]
+    edited: list[str] = []
     for stable_id in ("EY73D2C965", "EYF737084C"):
         fields = format_revision(live[stable_id]).split("\t")
         fields[REVISE.index("name2")] = "orf6"
         fields[REVISE.index("note")] = note
         edited.append("\t".join(fields))
     path = tmp_path / "22046132.revise.tsv"
-    path.write_text("\n".join(edited) + "\n")
+    write_rows(path, REVISE, edited)
 
     dry = run("drakkar-revise", str(path))
     assert dry.returncode == 0, dry.stdout + dry.stderr

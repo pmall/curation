@@ -36,12 +36,31 @@ from drakkar.write import InvalidRow, snapshot_of
 SEARCH: Any = pyopal.Aligner("BLOSUM62", gap_open=11, gap_extend=1)  # pyopal is not typed
 
 
+def _label(text: str) -> str:
+    """An input as its line shows it: whitespace as one space, cut at 20 characters."""
+    text = " ".join(text.split())
+    return text if len(text) <= 20 else f"{text[:20]}…({len(text)} characters)"
+
+
+def _spaced(text: str) -> str | None:
+    """Why an input holding whitespace is not one sequence: several sequences in one argument
+    (an unquoted shell variable, in zsh), or one with whitespace around it (a line of a file);
+    every letter is an amino acid, so a name with spaces is told the same."""
+    if len(text.split()) > 1:
+        return f"{len(text.split())} parts separated by whitespace: one sequence per argument"
+    if text != text.strip():
+        return "leading or trailing whitespace around the argument"
+    return None
+
+
 def _queries(cur: Any, texts: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     """The sequences to search, by their label, and the inputs that are none, with why."""
     queries: dict[str, str] = {}
     unread: dict[str, str] = {}
     for text in texts:
-        if any(c.isdigit() for c in text):  # an accession, never a sequence
+        if why := _spaced(text):
+            unread[_label(text)] = why
+        elif any(c.isdigit() for c in text):  # an accession, never a sequence
             try:
                 queries[text] = sequence_of(cur, text)
             except ValueError as e:
@@ -49,7 +68,7 @@ def _queries(cur: Any, texts: list[str]) -> tuple[dict[str, str], dict[str, str]
         elif AMINO_ACIDS.fullmatch(text.upper()):
             queries[text if len(text) <= 20 else f"{text[:20]}…({len(text)} aa)"] = text.upper()
         else:
-            unread[text[:20]] = "neither an accession nor an amino acid sequence"
+            unread[_label(text)] = "neither an accession nor an amino acid sequence"
     return queries, unread
 
 
@@ -146,7 +165,7 @@ def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
     snapshot): extra end residues, occurrences on each isoform with their identity, in the
     entry's numbering, and whether it is below 90 %."""
     for text in sequences:
-        if any(c.isdigit() for c in text):  # an accession, never a sequence
+        if not _spaced(text) and any(c.isdigit() for c in text):  # an accession, not a sequence
             sys.exit(f"{text}: an accession where a sequence is expected: one interactor per call")
     try:
         accession, isoform, start, stop = location(interactor)
@@ -161,6 +180,9 @@ def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
         sys.exit(f"{interactor}: {start}-{stop} is outside 1-{length}")
     lines = ["#sequence\tnter\tcter\toccurrences\tverdict"]
     for text in sequences:
+        if why := _spaced(text):
+            lines.append(f"{_label(text)}\t{why}")
+            continue
         try:
             sequence, nter, cter = read_written(text)
         except ValueError as e:

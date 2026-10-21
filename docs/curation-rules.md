@@ -54,29 +54,28 @@ The tested sequence can carry, at its N- or C-terminal end, residues that are no
 
 ## 4. How each value is identified
 
-Each value is identified by the first tier that gives it, in the three lists below, from the most direct to the most inferred. Each tier gives its label, the case it applies to, and how it identifies the value; a description note names the tier of a value by its label (`notes.md`). The lists apply to the human and the viral interactors alike.
+Each value is identified by the first tier that gives it, in the three lists below, from the most direct to the most inferred. Each tier gives its label, the case it applies to, and how it identifies the value; a description note names the tier of a value by its label (`notes.md`). The lists of the entry and of the mappings apply to the human and the viral interactors alike.
 
-- A tier whose case does not apply, or that gives no value, passes to the next: a UniProt accession the publication gives that is not in Drakkar passes to `cross-reference`.
+- A tier whose case does not apply, or that gives no value, passes to the next: a UniProt accession the publication gives that is not in Drakkar passes to `reference`.
 - A tier that would give a value the criteria forbid (a human entry outside the Swiss-Prot human reference proteome, a TrEMBL entry where Swiss-Prot fits) gives no value, and passes to the next.
-- When two sources of the publication disagree, the value of the earlier tier is used, and the description note records the disagreement.
+- When two sources of the publication disagree, the value of the earlier tier is used; within one tier, the curator chooses by judgement. The description note records the disagreement.
 - When a tier leaves several values equally supported, and nothing in the publication breaks the tie, the curator chooses by judgement, and the description note says the tie could not be broken (§1, right and not wrong).
 
 ### The UniProt entry
 
 1. `accession`: when the publication gives a UniProt accession, its current entry.
-2. `cross-reference`: when the publication gives an identifier of another database (a GenBank or RefSeq accession, a PDB code, a clone, a plasmid, a commercial construct), the current entry it cross-references, otherwise the current entry identical to its sequence.
-3. `name`: when the publication names the protein (a human protein by its gene name, a viral protein with its strain), its current entry.
-4. `sequence`: when the protein's sequence is known, from the publication or another database (e.g. the GenBank record of a strain UniProt does not have), the current entry closest to it by sequence, of the same virus for a viral protein (e.g. isolate HCV-N, not in UniProt: its GenBank sequence AF139594 is closest to P26662, strain H77). The whole sequence of the protein is aligned, never a part of it (a fragment, a peptide).
-5. `virus`: when the strain of a viral protein is not given and its sequence is not known, the Swiss-Prot entry of the virus for that protein, otherwise the entry most used in Drakkar for that virus and generic name.
-6. `best-effort`: in any other case, any way possible. When there is none (UniProt has the protein of no strain of that virus), the pair is not kept (03, 05): an entry of another virus, however close its sequence, is wrong.
+2. `reference`: when the publication gives another identifier or a name — a GenBank, RefSeq or PDB accession, a clone, a plasmid, a commercial construct, a human gene name, a viral protein with its strain — the current entry it designates.
+3. `sequence`: when the protein's sequence is known, from the publication or another database (e.g. the GenBank record of a strain UniProt does not have), the current entry closest to it by sequence, of the same virus for a viral protein (e.g. isolate HCV-N, not in UniProt: its GenBank sequence AF139594 is closest to P26662, strain H77). The whole sequence of the protein is aligned, never a part of it (a fragment, a peptide).
+4. `virus`: when the strain of a viral protein is not given and its sequence is not known, the Swiss-Prot entry of the virus for that protein, otherwise the entry most used in Drakkar for that virus and generic name.
+5. `best-effort`: in any other case, any way possible. When there is none (UniProt has the protein of no strain of that virus), the pair is not kept (03, 05): an entry of another virus, however close its sequence, is wrong.
 
-### The coordinates of a mature protein
+### The coordinates of a mature protein (viral interactors only)
 
-1. `chain`: when the entry has a chain feature for the mature protein, that chain.
-2. `publication`: when the publication gives the mature protein's boundaries, those boundaries, on the entry, or on the publication's sequence aligned on the entry.
-3. `GenBank`: when the entry's GenBank or RefSeq record has a mature peptide feature for it, that feature.
-4. `other-strain`: when another entry of the virus (another strain) has a chain feature for the same mature protein, that chain, aligned on the entry.
-5. `best-effort`: in any other case, any way possible.
+1. `publication`: the boundaries the publication gives, only when the entry has the sequence the publication used (same strain or clone; a shift in numbering is corrected).
+2. `annotation`: when the entry has a chain or a region feature for the mature protein, that feature.
+3. `drakkar`: when Drakkar already records a span for that entry and that generic name, that span.
+4. `GenBank`: when the entry's GenBank or RefSeq record has a mature peptide feature for it, that feature.
+5. `best-effort`: in any other case, any way possible, for instance the chain of another strain's entry, carried over by alignment.
 
 ### The mappings
 

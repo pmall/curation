@@ -2,7 +2,8 @@
 
 uv run drakkar-read methods <text>...             PSI-MI terms by name or synonym
 uv run drakkar-read taxon <text>...               taxa by name, with their lineage
-uv run drakkar-read entry <accession>...          an entry: lineage, isoforms, names, chains
+uv run drakkar-read entry <accession>...          an entry: lineage, isoforms, names, chains,
+                                                  regions, generic names
 uv run drakkar-read search <text>... [--taxon <ID>]
                                                   entries by accession, gene or protein name
 uv run drakkar-read seq <accession>[:<start>-<stop>]...
@@ -33,13 +34,21 @@ from drakkar.db import connect
 
 LIMIT = 20  # lines per input by default
 CELL = 200  # characters shown of an `sql` cell
+# The features `entry` prints, by their UniProt type: the parts of the protein a mature
+# protein's coordinates can come from (`curation-rules.md` §4, tier `annotation`).
+FEATURES = {
+    "chain": "chain",
+    "peptide": "peptide",
+    "propeptide": "propeptide",
+    "region of interest": "region",
+}
 LOCATION = re.compile(r"([A-Z0-9]+)(-\d+)?(?::(\d+)-(\d+))?")  # P26662-2:810-1026
 
 
 @dataclass(frozen=True)
 class Page:
     """At most `limit` lines per input, the best first; a list that is cut ends with how many
-    there are."""
+    there are, and the limit that cut it."""
 
     limit: int = LIMIT
 
@@ -54,7 +63,7 @@ class Page:
             return [f"{label}\t(none)"]
         shown = [f"{label}\t{line}" for line in self.cut(lines)]
         if len(shown) < total:
-            shown.append(f"{label}\t… {len(shown)} of {total}")
+            shown.append(f"{label}\t… {len(shown)} of {total} shown, cut by --limit {self.limit}")
         return shown
 
 
@@ -302,16 +311,42 @@ def entry(cur: Any, accession: str) -> str:
         names = [n for n in names if n and n != "N/A"]
         if names:
             lines.append(f"Names: {', '.join(names)}")
-        parts = [
-            f for f in json.loads(features) if f.get("type") in ("chain", "peptide", "propeptide")
-        ]
+        parts = [f for f in json.loads(features) if f.get("type") in FEATURES]
         if parts:
-            lines += ["", "Chains and peptides:"]
+            lines += ["", "Chains, peptides and regions:"]
             lines += [
-                f"- {f['start']}-{f['stop']} {f['type']}: {f.get('description', '')}"
+                f"- {f['start']}-{f['stop']} {FEATURES[f['type']]}: {f.get('description', '')}"
                 for f in sorted(parts, key=lambda f: (f["start"], -f["stop"]))
             ]
+    if type_ == "v":
+        lines += _generic_names(cur, [s[0] for s in snapshots], id_)
     return "\n".join(lines)
+
+
+def _generic_names(cur: Any, snapshot_ids: list[int], latest: int) -> list[str]:
+    """The generic names of the live descriptions of an entry's snapshots, each with its span
+    and its live descriptions, by snapshot: one span per name and one name per span on each
+    (`curation-rules.md` §1, names; invariants D6 and D10)."""
+    cur.execute(
+        """
+        SELECT protein2_id, name2, start2, stop2, count(*) AS descriptions
+        FROM descriptions
+        WHERE protein2_id = ANY(%s) AND deleted_at IS NULL
+        GROUP BY protein2_id, name2, start2, stop2
+        ORDER BY protein2_id, start2, stop2, name2
+        """,
+        (snapshot_ids,),
+    )
+    by_snapshot: dict[int, list[str]] = defaultdict(list)
+    for snapshot, name2, start, stop, count in cur.fetchall():
+        by_snapshot[snapshot].append(f"- {start}-{stop} {name2} ({count})")
+    if not by_snapshot:
+        return ["", "Generic names (live descriptions): none"]
+    lines: list[str] = []
+    for snapshot in sorted(by_snapshot, key=lambda s: (s != latest, s)):
+        which = "" if snapshot == latest else f", on obsolete snapshot {snapshot}"
+        lines += ["", f"Generic names (live descriptions){which}:", *by_snapshot[snapshot]]
+    return lines
 
 
 def search(cur: Any, texts: list[str], taxon: int | None = None, page: Page = DEFAULT) -> str:

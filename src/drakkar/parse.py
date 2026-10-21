@@ -150,6 +150,11 @@ def _grid(table: _Element) -> list[list[str]]:
     return rows
 
 
+def _tables(tables: Iterable[_Element]) -> list[str]:
+    """The tables in Markdown; without any, the table is given as an image."""
+    return [markdown_table(_grid(table)) for table in tables] or ["(table given as an image)"]
+
+
 def _jats(children: Iterable[_Element], level: int) -> Iterator[str]:
     for child in children:
         tag = tag_name(child)
@@ -166,11 +171,7 @@ def _jats(children: Iterable[_Element], level: int) -> Iterator[str]:
             yield _caption(child, "Figure")
         elif tag == "table-wrap":
             yield _caption(child, "Table")
-            tables = list(child.iter("{*}table"))
-            for table in tables:
-                yield markdown_table(_grid(table))
-            if not tables:
-                yield "(table given as an image)"
+            yield from _tables(child.iter("{*}table"))
             for foot in child.iter("{*}table-wrap-foot"):
                 yield _text(foot)
         elif tag == "supplementary-material":
@@ -239,11 +240,7 @@ def _pmc_page(children: Iterable[_Element], level: int) -> Iterator[str]:
                 caption = child.find("div[@class='caption p']")
                 label = _text(head) if head is not None else "Table."
                 yield f"**{label}** {_text(caption) if caption is not None else ''}".rstrip()
-                tables = list(child.iter("table"))
-                for table in tables:
-                    yield markdown_table(_grid(table))
-                if not tables:
-                    yield "(table given as an image)"
+                yield from _tables(child.iter("table"))
                 for foot in child.iterfind(".//div"):
                     if "tw-foot" in class_names(foot):
                         yield _text(foot)

@@ -20,7 +20,8 @@ def test_methods(conn):
     assert "western blot\tMI:0113\twestern blot\tno\t0" in lines
     first = methods(conn.cursor(), ["two hybrid"], Page(3)).splitlines()
     assert first[1] == "two hybrid\tMI:0018\ttwo hybrid\tyes\t90"  # the exact name first
-    assert len(first) == 1 + 3 + 1 and first[-1] == "two hybrid\t… 3 of 17"
+    assert len(first) == 1 + 3 + 1
+    assert first[-1] == "two hybrid\t… 3 of 17 shown, cut by --limit 3"
     words = methods(conn.cursor(), ["biolayer interferometry", "pulldown"]).splitlines()
     assert words[1:] == [
         "biolayer interferometry\tMI:0969\tbio-layer interferometry\tyes\t0",
@@ -44,14 +45,18 @@ def test_taxon(conn):
 
 
 def test_entry(conn):
-    """Its lineage with the IDs, its chains; many at once, a secondary accession followed."""
+    """Its lineage with the IDs, its chains and regions, its generic names; many at once, a
+    secondary accession followed."""
     text = entry(conn.cursor(), "P26662")
     assert "- 810-1026 chain: Protease NS2" in text
+    assert "- 2-75 region: Disordered" in text
     assert "viral, taxon 11116 Hepatitis C virus (isolate Japanese) < 31647 " in text
     assert (
         "< 3052230 Orthohepacivirus hominis < 11102 Orthohepacivirus < 3700683 Hepaciviridae\n"
         in text
     )
+    assert "\nGeneric names (live descriptions):\n- 810-1026 NS2-3 (" in text
+    assert "Generic names" not in entry(conn.cursor(), "Q14258")  # human
     secondary = entry(conn.cursor(), "O00297")
     assert secondary.startswith("# O00297 is a secondary accession of O00499\n# O00499: ")
     both = entries(conn.cursor(), ["P26662", "X1"])
@@ -75,7 +80,7 @@ def test_search(conn):
         "Uncharacterized\tQ6VA95\tTR\tN/A\tUncharacterized protein\t"
         "239241 SARS coronavirus CUHK-AG01\t63"
     ) in under
-    assert under[-1] == "Uncharacterized\t… 3 of 5"
+    assert under[-1] == "Uncharacterized\t… 3 of 5 shown, cut by --limit 3"
     assert search(conn.cursor(), ["brf1"], taxon=694009).splitlines()[1] == "brf1\t(none)"
 
 
@@ -99,7 +104,7 @@ def test_names(conn):
         "694009\tnsp3\t19\tP0C6U8:819-2740 (8), P0C6X7:819-2740 (5), D3W8N4:1-1922 (4), 1 more",
         "694009\tN\t13\tP59595:1-422 (7), Q3I5I7:1-421 (4), Q6VA95:1-63 (2)",
         "694009\tnsp12\t11\tP0C6X7:4370-5301 (11)",
-        "694009\t… 3 of 20",
+        "694009\t… 3 of 20 shown, cut by --limit 3",
     ]
     every = names(conn.cursor(), [3418604], Page(100)).splitlines()
     assert "3418604\tnsp15\t1\tQ6SRE2:1-312 obsolete (1)" in every

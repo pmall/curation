@@ -18,12 +18,18 @@ def test_closest(conn):
         "694009 Severe acute respiratory syndrome-related coronavirus\t100.0 %\t100.0 %\t1-20",
         "P0C6X7:1-20\tP0C6W6\tSP\tReplicase polyprotein 1ab\t"
         "349344 Bat SARS CoV Rp3/2004\t95.0 %\t100.0 %\t1-20",
-        "P0C6X7:1-20\t… 3 of 18",
+        "P0C6X7:1-20\t… 3 of 18 shown, cut by --limit 3",
     ]
-    unread = closest(conn.cursor(), ["X1", "MESLVLGVNE", "not a sequence"], 694009).splitlines()
+    unread = closest(conn.cursor(), ["X1", "MESLVLGVNE", "NS-protease"], 694009).splitlines()
     assert unread[-2:] == [
         "X1\tX1 has no current snapshot",
-        "not a sequence\tneither an accession nor an amino acid sequence",
+        "NS-protease\tneither an accession nor an amino acid sequence",
+    ]
+    spaced = closest(conn.cursor(), ["MESLVLGVNE\n", "MESLVLGVNE KTHVQLSLPV"], 694009)
+    assert spaced.splitlines()[1:] == [
+        "MESLVLGVNE\tleading or trailing whitespace around the argument",
+        "MESLVLGVNE KTHVQLSLP…(21 characters)\t2 parts separated by whitespace: one sequence "
+        "per argument",
     ]
 
 
@@ -44,6 +50,11 @@ def test_mapping(conn):
         "mDREMAASCGG\tM\t-\tP26662 811-820 (100 %)\tok",
     ]
     assert lines[2].endswith("below 90 %")
+    spaced = mapping(conn.cursor(), "P26662:810-1026", ["mDREMAASCGG WWWWW", " DREMAASCGG"])
+    assert spaced.splitlines()[1:] == [
+        "mDREMAASCGG WWWWW\t2 parts separated by whitespace: one sequence per argument",
+        "DREMAASCGG\tleading or trailing whitespace around the argument",
+    ]
 
 
 def test_mapping_refuses_a_second_interactor(dbname):
