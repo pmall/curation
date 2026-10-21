@@ -30,7 +30,7 @@ Tab separated. Lines starting with `#` are ignored (the header is one), so files
 | description columns | on a `revise`: the whole new description, as in `*.add.tsv`, from `method` to `below_threshold` |
 | `note` | `revise`: the note of the new version, `REVISED` (`UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
-**Publications** (`*.publications.tsv`), one row per publication whose state or note changes: `run_id`, `pmid`, `state`, `note` (the note of the pass, put first in the publication's note, the previous notes after a line `---`).
+**Publications** (`*.publications.tsv`), one row per publication whose state or note changes: `run_id`, `pmid`, `state`, `note` (the note of the pass, its header naming the state, `CURATED: …` or `SELECTED: …`, or the row is refused; the write dates the header and puts the note first in the publication's note, the previous notes after a line `---`).
 
 ## Tools
 
@@ -90,7 +90,7 @@ A full text is fetched and converted by these tools, then read from the files th
 
   Unpaywall is asked only with an address, `UNPAYWALL_EMAIL` in the project's `.env`. It writes the article, `<pmid>.xml`, `<pmid>.html` or `<pmid>.pdf`, and the supplementary files in `<pmid>.supp/`, each converted as `drakkar-parse` does: the article to `<pmid>.md`, a supplementary file to `<file>.md` beside it. Last, only when the article could be converted, the manifest `manifest.json`, the files the curation can use: `article`, with `file`, the original, and `text`, its text; `supplements`, each with the `name` the article gives it, `file` and `text`. Paths are relative to `<dir>`. A publication directory set up from files the user provides holds the same: each file converted with `drakkar-parse`, and the manifest in this format.
 
-  It prints its report. First the `Full text` line of the publication note (`notes.md`): `Full text: <PMCID> (<license>)` or `Full text: <source> (<license>, <URL>)`, ending with `, supplementary files missing: <names>` when some are; without the article, `Full text: closed — <why>`, or `Full text: not downloaded — <why>` when it is free but no copy could be downloaded, then every route tried with its outcome. Then one line per file that could not be converted, with why, and per supplementary file missing, with every place tried.
+  It prints its report. First a line saying where the article comes from: `Full text: <PMCID> (<license>)` or `Full text: <source> (<license>, <URL>)`, ending with `, supplementary files missing: <names>` when some are; without the article, `Full text: closed — <why>`, or `Full text: not downloaded — <why>` when it is free but no copy could be downloaded, then every route tried with its outcome. Then one line per file that could not be converted, with why, and per supplementary file missing, with every place tried.
 
 - `uv run drakkar-download <url> <dir>`: the file at a URL, a supplementary file the article links to: saved in `<dir>` (the type from the response when its name gives none), an archive unpacked (its videos and images left out), each file converted to `<file>.md` beside it, as `drakkar-parse` does. One line per file: its text, or why it could not be had (the HTTP outcome, skipped, not converted).
 

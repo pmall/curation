@@ -5,7 +5,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 ## Where things are
 
 - `docs/`, the source of truth, read before acting: `glossary.md` (one meaning per term, used everywhere), `curation-rules.md` (the biological rules: what a right description is, and the evidence for it), `notes.md` (the publication and description notes), `database.md` (structure, states, versioning, invariants, writes), `tools.md` (the files and the tools that write and read the database, the dry run, the tools that fetch and convert full texts, the release tools), `derived-datasets.md` (what is exported, and what it means for curation).
-- `prompts/`: what the agents run. `prompts/skills/` (linked from `.claude/skills/` and `.agents/skills/`): `curate`, a batch of publications curated, new or already curated; `upgrade`, a UniProt release loaded and its versioning pass. `prompts/agents/` (linked from `.claude/agents/` and `.agents/agents/`): `curator.md`, the subagent that curates one publication.
+- `prompts/`: what the agents run. `prompts/skills/` (linked from `.claude/skills/` and `.agents/skills/`): `curate`, a batch of publications curated, new or already curated. `prompts/agents/` (linked from `.claude/agents/` and `.agents/agents/`): `curator.md`, the subagent that curates one publication.
 - `src/drakkar/`: the tools (`tools.md`). `tests/`: their tests.
 - `docs/history/`: the record of the move from manual curation to Claude's curation, with its dates, counts and measurements, one file each. Closed: nothing is added to it. The reference docs never point to it.
 - `data/`, reports and scratch files are disposable: docs never point to them, what a reader needs is written in the doc itself.

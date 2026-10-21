@@ -97,7 +97,7 @@ def test_batch_command(conn, tmp_path: Path):
     added = NewDescription(
         *SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "CREATED: Fig. 2B"
     )
-    selected = "SELECTED: no full text\\n- Pass 2026-10-20: not accessible"
+    selected = "SELECTED: no full text, closed"
     write_rows(tmp_path / "descriptions.revise.tsv", REVISE, [format_revision(r) for r in renames])
     write_rows(tmp_path / "descriptions.add.tsv", ADD, [format_new_description(added)])
     write_rows(tmp_path / "publications.tsv", PUBLICATIONS, [f"12\t25031347\tselected\t{selected}"])

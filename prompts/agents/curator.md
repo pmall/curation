@@ -73,9 +73,9 @@ The description note: `CREATED: <method name> (<PSI-MI ID>), <where the publicat
 - `Mapping: <as published> (<where>), <label>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept;
 - `Remark: <what was arbitrary, what stays uncertain, what would change the decision>`.
 
-`curation.txt`, the lines of the publication note, in this order:
+`curation.txt`, the publication note, in this order:
 
-- `Summary: <what the publication shows, in a few words>` (e.g. `co-IP and pull-down of HCV NS3 with TRIM25`); with no description, why;
+- `CURATED: <what the publication shows, in a few words>` (e.g. `CURATED: co-IP and pull-down of HCV NS3 with TRIM25`), with no description why; `SELECTED: …` when a relevant file is missing;
 - `- Strain: <strain> (<where>)`, when one strain holds for all the viral interactors (otherwise each `Entry` line gives it);
 - `- Not read: <file> (<where cited>) — <why>`, one per supplementary file listed or cited and not read: `not relevant, <what it holds>`, or `relevant, <why it could not be read>` (e.g. `relevant, no URL given`, `relevant, <url>: HTTP 403`), which keeps the publication `selected`;
 - `- Not kept: <pair or claim> (<where>) — <reason>`, one per pair the publication shows that is not a description, the reason in words (`only cited from ref. 12`, `mutant only`, `colocalization only`);
@@ -89,4 +89,4 @@ Done when these files are in `<dir>/`, each written under a temporary name and r
 
 You never write to the database.
 
-Reply in a few lines, for the batch report: the state the publication earns, `curated`, or `selected` with the relevant files missing; the descriptions, with the `best-effort` values a reviewer should see; each supplementary file you downloaded or could not get; what the tools could not do (a failure, a wrong result, a query you had to write with `drakkar-read sql`), with the command.
+Reply in a few lines, for the batch report: the descriptions, with the `best-effort` values a reviewer should see; each supplementary file you downloaded or could not get; what the tools could not do (a failure, a wrong result, a query you had to write with `drakkar-read sql`), with the command.
