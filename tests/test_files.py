@@ -43,6 +43,12 @@ def test_files_concatenate(tmp_path: Path):
     assert len(rows) == 2 and revision(*rows[0]).note == "a\nb"
 
 
+def test_a_header_without_its_hash_is_the_header(tmp_path: Path):
+    path = tmp_path / "rows.tsv"
+    path.write_text(header(ADD).removeprefix("#") + "\n")
+    assert read_rows([path], ADD) == []
+
+
 def test_bad_header_and_bad_rows_are_refused(tmp_path: Path):
     path = tmp_path / "bad.tsv"
     path.write_text("#stable_id\tversion\n")

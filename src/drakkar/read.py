@@ -8,11 +8,12 @@ uv run drakkar-read search <text>... [--taxon <ID>]
 uv run drakkar-read seq <accession>[:<start>-<stop>]...
                                                   sequences and subsequences
 uv run drakkar-read names <taxon ID>...           generic names used under each taxon
-uv run drakkar-read sql <query>                   free read-only SQL
+uv run drakkar-read sql <query> --limit <n>       free read-only SQL, refused beyond n rows
 
 Each takes many inputs. `entry` prints a block per entry; the others print tab-separated lines
 under a `#` header, each starting with the input it answers, the best first. `--limit <n>`
-bounds the lines per input (20); a list that is cut ends with how many there are. A taxon is
+bounds the lines per input (20); a list that is cut ends with how many there are. `sql` is never
+cut: its `--limit` is required, and a query returning more rows is refused. A taxon is
 given by its NCBI ID, and written `<ID> <name>`; a lineage `<ID> <name> < …` up to the family; a
 stretch of a protein `<accession>:<start>-<stop>`, then `obsolete` on an obsolete snapshot. An
 input that cannot be read gets its line, with why.
@@ -48,13 +49,12 @@ class Page:
     def lines(self, label: str, lines: list[str], total: int | None = None) -> list[str]:
         """An input's lines, each after its label, cut to the page; `lines` may already be the
         page, of `total` lines."""
-        prefix = f"{label}\t" if label else ""
         total = len(lines) if total is None else total
         if not total:
-            return [f"{prefix}(none)"]
-        shown = [prefix + line for line in self.cut(lines)]
+            return [f"{label}\t(none)"]
+        shown = [f"{label}\t{line}" for line in self.cut(lines)]
         if len(shown) < total:
-            shown.append(f"{prefix}… {len(shown)} of {total}")
+            shown.append(f"{label}\t… {len(shown)} of {total}")
         return shown
 
 
@@ -154,13 +154,35 @@ def _rank(text: str, names: list[str]) -> int:
     return 2 if any(wanted in n for n in folded) else 3
 
 
+def _bare(text: str) -> str:
+    """A text without case or punctuation: `Bio-layer` is `biolayer`."""
+    return re.sub(r"[\W_]+", "", text.casefold())
+
+
+def _term_rank(text: str, names: list[str]) -> int:
+    """How closely a text matches the names of a term, case and punctuation aside: 0 a name is
+    the text, 1 a name starts with it, 2 a name contains it, 3 a name contains each of its
+    words, 4 none."""
+    wanted, words = _bare(text), [w for w in map(_bare, text.split()) if w]
+    bare = [_bare(n) for n in names]
+    if not wanted:
+        return 4
+    if wanted in bare:
+        return 0
+    if any(n.startswith(wanted) for n in bare):
+        return 1
+    if any(wanted in n for n in bare):
+        return 2
+    return 3 if any(all(w in n for w in words) for n in bare) else 4
+
+
 def database(reviewed: bool) -> str:
     return "SP" if reviewed else "TR"
 
 
 def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
-    """The PSI-MI terms whose name or a synonym contains each text, case aside: the closest names
-    first, then the detection methods, then the most used."""
+    """The PSI-MI terms whose name or a synonym holds each word of the text, case and punctuation
+    aside: the closest names first, then the detection methods, then the most used."""
     cur.execute(
         """
         WITH uses AS (
@@ -175,12 +197,12 @@ def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
     terms = cur.fetchall()
     lines = ["#text\tpsimi_id\tname (synonym matched)\tis_detection\tlive_descriptions"]
     for text in texts:
-        found = [m for m in terms if _rank(text, [m[1], *m[2]]) < 3]
-        found.sort(key=lambda m: (_rank(text, [m[1], *m[2]]), not m[3], -m[4], m[0]))
+        found = [m for m in terms if _term_rank(text, [m[1], *m[2]]) < 4]
+        found.sort(key=lambda m: (_term_rank(text, [m[1], *m[2]]), not m[3], -m[4], m[0]))
         shown: list[str] = []
         for psimi_id, name, synonyms, detection, count in found:
-            also = [s for s in synonyms if text.casefold() in s.casefold()]
-            if also and text.casefold() not in name.casefold():
+            also = [s for s in synonyms if _term_rank(text, [s]) < 4]
+            if also and _term_rank(text, [name]) == 4:
                 name = f"{name} ({also[0]})"
             shown.append(f"{psimi_id}\t{name}\t{'yes' if detection else 'no'}\t{count}")
         lines += page.lines(text, shown)
@@ -419,11 +441,11 @@ def _cell(value: Any) -> str:
     return text if len(text) <= CELL else f"{text[:CELL]}…({len(text)} chars)"
 
 
-def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
-    """The rows of a free query, tab-separated under a `#` header of column names: a page of
-    them, their total, and each cell cut at `CELL` characters. A query is run once, through a
-    cursor that fetches and counts on the server; a statement no cursor takes (EXPLAIN, SHOW) is
-    run as is."""
+def sql(cur: Any, query: str, limit: int) -> str:
+    """The rows of a free query, tab-separated under a `#` header of column names, each cell cut
+    at `CELL` characters; refused when it returns more than `limit` rows, so that no result is
+    ever cut. A query is run through a cursor that fetches on the server; a statement no cursor
+    takes (EXPLAIN, SHOW) is run as is."""
     query = query.strip().rstrip(";")
     try:
         cur.execute("SAVEPOINT lookup")
@@ -435,18 +457,17 @@ def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
             if cur.description is None:
                 return ""
             columns = [c.name for c in cur.description]
-            rows = cur.fetchall()
-            total = len(rows)
+            rows = cur.fetchmany(limit + 1)
         else:
-            cur.execute(f"FETCH {page.limit} FROM lookup")
+            cur.execute(f"FETCH {limit + 1} FROM lookup")
             columns = [c.name for c in cur.description]
             rows = cur.fetchall()
-            cur.execute("MOVE FORWARD ALL IN lookup")
-            total = len(rows) + cur.rowcount
     except psycopg.Error as e:
         sys.exit(f"sql: {e}".strip())
-    shown = ["\t".join(_cell(v) for v in row) for row in page.cut(rows)]
-    return "\n".join(["#" + "\t".join(columns), *page.lines("", shown, total)])
+    if len(rows) > limit:
+        sys.exit(f"sql: more than {limit} rows, none printed: narrow the query or raise --limit")
+    shown = ["\t".join(_cell(v) for v in row) for row in rows]
+    return "\n".join(["#" + "\t".join(columns), *shown])
 
 
 def main() -> None:
@@ -467,8 +488,9 @@ def main() -> None:
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
     n = commands.add_parser("names", parents=[limit], help="generic names used under each taxon")
     n.add_argument("taxa", nargs="+", type=int, help="NCBI taxon ID: its whole subtree")
-    x = commands.add_parser("sql", parents=[limit], help="free read-only SQL")
+    x = commands.add_parser("sql", help="free read-only SQL")
     x.add_argument("query")
+    x.add_argument("--limit", type=int, required=True, help="rows: refused beyond")
     args = parser.parse_args()
     with connect(readonly=True) as conn, conn.cursor() as cur:
         cur.execute("SET statement_timeout = '30s'")
@@ -476,6 +498,8 @@ def main() -> None:
             print(entries(cur, args.accessions))
         elif args.command == "seq":
             print(seq(cur, args.locations))
+        elif args.command == "sql":
+            print(sql(cur, args.query, args.limit))
         else:
             page = Page(args.limit)
             if args.command == "methods":
@@ -484,7 +508,5 @@ def main() -> None:
                 print(taxa(cur, args.texts, page))
             elif args.command == "search":
                 print(search(cur, args.texts, args.taxon, page))
-            elif args.command == "names":
-                print(names(cur, args.taxa, page))
             else:
-                print(sql(cur, args.query, page))
+                print(names(cur, args.taxa, page))

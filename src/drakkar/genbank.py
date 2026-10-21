@@ -2,8 +2,8 @@
 strain, whose sequence gives the mappings (`docs/curation-rules.md` §3).
 
 uv run drakkar-genbank search <query>... [--limit <n>]
-    the NCBI protein records of each query (NCBI search syntax, e.g. `JFH-1 AND polyprotein`):
-    accession, title, length, taxon
+    the NCBI protein records of each query (NCBI search syntax, e.g. `JFH-1 AND polyprotein`),
+    or of a nucleotide accession (a genome): accession, title, length, taxon
 uv run drakkar-genbank seq <accession>[:<start>-<stop>]...
     a protein record: its accession and version, title, length and sequence, or the subsequence
     between those coordinates (1-based, inclusive); a nucleotide record (a genome): its coding
@@ -29,6 +29,8 @@ from drakkar.read import DEFAULT, LIMIT, Page
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 ESEARCH = f"{EUTILS}/esearch.fcgi"
 ESUMMARY = f"{EUTILS}/esummary.fcgi"
+ELINK = f"{EUTILS}/elink.fcgi"
+ACCESSION = re.compile(r"[A-Z]+_?\d+(?:\.\d+)?")  # AF177036, NC_045512.2
 LOCATION = re.compile(r"([A-Za-z0-9_.]+?)(?::(\d+)-(\d+))?")  # BAB32872.1:1-191
 TITLE = 120  # characters shown of a title: those of Swiss-Prot records list every name
 
@@ -120,8 +122,47 @@ def seq(eutils: Eutils, locations: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _summaries(eutils: Eutils, ids: list[str]) -> list[str]:
+    """A line per protein record: accession and version, title, length, taxon."""
+    if not ids:
+        return []
+    status, body = eutils(ESUMMARY, db="protein", id=",".join(ids), retmode="json")
+    summaries = cast(dict[str, Any], json.loads(body)["result"]) if status == 200 else {}
+    rows: list[str] = []
+    for uid in ids:
+        s = cast(dict[str, Any], summaries.get(uid, {}))
+        rows.append(
+            f"{s.get('accessionversion', uid)}\t{_title(s.get('title', '?'))}\t"
+            f"{s.get('slen', '?')}\t{s.get('taxid', '?')}"
+        )
+    return rows
+
+
+def _coded(eutils: Eutils, accession: str) -> list[str]:
+    """The protein records a nucleotide record codes for, by NCBI's link, in its order."""
+    status, body = eutils(ESEARCH, db="nuccore", term=f"{accession}[accn]", retmode="json")
+    ids = (
+        cast(list[str], json.loads(body)["esearchresult"].get("idlist", []))
+        if status == 200
+        else []
+    )
+    if not ids:
+        return []
+    status, body = eutils(ELINK, dbfrom="nuccore", db="protein", id=ids[0], retmode="json")
+    if status != 200:
+        return []
+    links: list[str] = []
+    for linkset in cast(list[dict[str, Any]], json.loads(body).get("linksets", [])):
+        for found in cast(list[dict[str, Any]], linkset.get("linksetdbs", [])):
+            if found.get("linkname") == "nuccore_protein":
+                links += cast(list[str], found.get("links", []))
+    return links
+
+
 def search(eutils: Eutils, queries: list[str], page: Page = DEFAULT) -> str:
-    """The NCBI protein records of each query, in NCBI's order: a page of them, and how many."""
+    """The NCBI protein records of each query, in NCBI's order: a page of them, and how many. A
+    nucleotide accession, which the protein search does not find, gives the protein records it
+    codes for."""
     lines = ["#query\taccession\ttitle\tlength\ttaxon"]
     for query in queries:
         status, body = eutils(ESEARCH, db="protein", term=query, retmax=page.limit, retmode="json")
@@ -131,17 +172,10 @@ def search(eutils: Eutils, queries: list[str], page: Page = DEFAULT) -> str:
         result = cast(dict[str, Any], json.loads(body)["esearchresult"])
         ids = cast(list[str], result.get("idlist", []))
         total = int(result.get("count", 0))
-        rows: list[str] = []
-        if ids:
-            status, body = eutils(ESUMMARY, db="protein", id=",".join(ids), retmode="json")
-            summaries = cast(dict[str, Any], json.loads(body)["result"]) if status == 200 else {}
-            for uid in ids:
-                s = cast(dict[str, Any], summaries.get(uid, {}))
-                rows.append(
-                    f"{s.get('accessionversion', uid)}\t{_title(s.get('title', '?'))}\t"
-                    f"{s.get('slen', '?')}\t{s.get('taxid', '?')}"
-                )
-        lines += page.lines(query, rows, total)
+        if not total and ACCESSION.fullmatch(query):
+            ids = _coded(eutils, query)
+            total = len(ids)
+        lines += page.lines(query, _summaries(eutils, page.cut(ids)), total)
     return "\n".join(lines)
 
 

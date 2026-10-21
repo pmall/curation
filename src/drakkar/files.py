@@ -75,10 +75,12 @@ def read_rows(paths: Sequence[Path], columns: list[str]) -> list[tuple[str, dict
             where = f"{path}:{number}"
             if not line.strip():
                 continue
-            if line.startswith("#"):
-                fields = line[1:].split("\t")
-                if fields[0] in ("run_id", "stable_id") and fields != columns:
+            fields = line.removeprefix("#").split("\t")
+            if fields[0] in ("run_id", "stable_id"):  # the header, with or without its `#`
+                if fields != columns:
                     raise FileError(f"{where}: header is not {' '.join(columns)}")
+                continue
+            if line.startswith("#"):
                 continue
             values = line.split("\t")
             if len(values) != len(columns):

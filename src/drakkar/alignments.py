@@ -1,9 +1,9 @@
-"""Align sequences as the write does (`align.py`), on the sequences Drakkar holds.
+"""Align sequences on the sequences Drakkar holds.
 
 uv run drakkar-align mapping <accession>[:<start>-<stop>] <sequence>...
-    what the write computes for each mapping sequence on that interactor
+    what the write computes for each mapping sequence on that interactor (`align.py`)
 uv run drakkar-align closest <sequence>... --taxon <ID>
-    the current entries of a taxon ranked by identity with each sequence
+    the current entries of a taxon closest to each sequence, by a database search
 
 Read-only. `closest` prints the best lines per sequence, bounded by `--limit <n>` (20), as
 `drakkar-read`.
@@ -14,7 +14,9 @@ import json
 import sys
 from typing import Any, cast
 
-from drakkar.align import MIN_IDENTITY, best_identity, map_sequence, read_written
+import pyopal
+
+from drakkar.align import MIN_IDENTITY, UNSCORED, best_identity, map_sequence, read_written
 from drakkar.check import AMINO_ACIDS
 from drakkar.db import connect
 from drakkar.read import (
@@ -29,26 +31,16 @@ from drakkar.read import (
 )
 from drakkar.write import InvalidRow, snapshot_of
 
-
-def _region(aligned: dict[str, Any], canonical: str) -> str:
-    """The occurrences of a mapping: `1-15` on the canonical isoform, `P04439-2:1-15` on another,
-    each with its identity when below the best."""
-    best = best_identity(aligned)
-    return ", ".join(
-        ("" if i["accession"] == canonical else f"{i['accession']}:")
-        + f"{o['start']}-{o['stop']}"
-        + ("" if o["identity"] == best else f" ({o['identity']:g} %)")
-        for i in aligned["isoforms"]
-        for o in i["occurrences"]
-    )
+# The database search of `closest`: Smith-Waterman on every sequence, BLAST's protein scoring.
+# Its alphabet lacks U, O and J, aligned as X (`align.py`).
+SEARCH: Any = pyopal.Aligner("BLOSUM62", gap_open=11, gap_extend=1)  # pyopal is not typed
 
 
-def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) -> str:
-    """The current entries of the taxon ranked by identity with each sequence, as the write
-    computes it for a mapping on the whole entry, then Swiss-Prot first."""
+def _queries(cur: Any, texts: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """The sequences to search, by their label, and the inputs that are none, with why."""
     queries: dict[str, str] = {}
-    unread: dict[str, str] = {}  # an input that is no sequence, and why
-    for text in sequences:
+    unread: dict[str, str] = {}
+    for text in texts:
         if any(c.isdigit() for c in text):  # an accession, never a sequence
             try:
                 queries[text] = sequence_of(cur, text)
@@ -58,46 +50,104 @@ def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) ->
             queries[text if len(text) <= 20 else f"{text[:20]}…({len(text)} aa)"] = text.upper()
         else:
             unread[text[:20]] = "neither an accession nor an amino acid sequence"
+    return queries, unread
+
+
+def _hit(alignment: Any, accession: str, isoform: str) -> str:
+    """Identity, coverage of the query and region on the isoform of a full alignment: identity
+    is identical residues over the aligned columns, gaps included (`M` in pyopal's alignment)."""
+    columns: str = alignment.alignment or ""
+    if not columns:
+        return "0.0 %\t0.0 %\taligns nowhere"
+    identity = 100 * columns.count("M") / len(columns)
+    coverage = 100 * (alignment.query_end - alignment.query_start + 1) / alignment.query_length
+    region = f"{alignment.target_start + 1}-{alignment.target_end + 1}"
+    return (
+        f"{identity:.1f} %\t{coverage:.1f} %\t"
+        + ("" if isoform == accession else f"{isoform}:")
+        + region
+    )
+
+
+def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) -> str:
+    """The current entries of the taxon closest to each sequence: every isoform is aligned
+    (Smith-Waterman), each entry ranked by the score of its best isoform, then Swiss-Prot
+    first."""
+    queries, unread = _queries(cur, sequences)
     cur.execute(
         """
         SELECT p.accession, v.reviewed, p.description, p.ncbi_taxon_id, p.sequences::text
         FROM proteins_versions AS v
         JOIN proteins AS p ON p.accession = v.accession AND v.version = p.version
         WHERE p.ncbi_taxon_id = ANY(%s)
+        ORDER BY p.accession
         """,
         (subtree(cur, taxon),),
     )
-    entries = [
-        (accession, is_reviewed, description, taxon_id, cast(dict[str, str], json.loads(isoforms)))
-        for accession, is_reviewed, description, taxon_id, isoforms in cur.fetchall()
-    ]
+    entries: list[tuple[str, bool, str, int]] = []
+    isoforms: list[tuple[int, str, str]] = []  # entry index, isoform accession, sequence
+    for accession, is_reviewed, description, taxon_id, text in cur.fetchall():
+        for isoform, sequence in sorted(cast(dict[str, str], json.loads(text)).items()):
+            isoforms.append((len(entries), isoform, sequence.translate(UNSCORED)))
+        entries.append((accession, is_reviewed, description, taxon_id))
+    targets = pyopal.Database([s for _, _, s in isoforms], alphabet=SEARCH.alphabet)
     names = taxon_names(cur, {e[3] for e in entries})
-    lines = ["#sequence\taccession\tdb\tprotein\ttaxon\tidentity\tregion"]
+    lines = ["#sequence\taccession\tdb\tprotein\ttaxon\tidentity\tcoverage\tregion"]
     for label, query in queries.items():
-        ranked: list[tuple[float, bool, str, str]] = []
-        for accession, is_reviewed, description, taxon_id, isoforms in entries:
-            aligned = map_sequence(query, isoforms, accession, 1, len(isoforms[accession]))
-            identity = best_identity(aligned)
+        query = query.translate(UNSCORED)
+        best: dict[int, tuple[int, int]] = {}  # entry index → score, isoform index
+        scores = SEARCH.align(query, targets, mode="score", algorithm="sw")
+        for index, ((owner, isoform, _), result) in enumerate(zip(isoforms, scores, strict=True)):
+            canonical = isoform == entries[owner][0]
+            # the best score, the canonical isoform among equals (isoforms are in name order)
+            if (
+                owner not in best
+                or result.score > best[owner][0]
+                or (result.score == best[owner][0] and canonical)
+            ):
+                best[owner] = (result.score, index)
+        ranked = sorted(best, key=lambda e: (-best[e][0], not entries[e][1], entries[e][0]))
+        shown = page.cut(ranked)
+        aligned = SEARCH.align(
+            query,
+            pyopal.Database([isoforms[best[e][1]][2] for e in shown], alphabet=SEARCH.alphabet),
+            mode="full",
+            algorithm="sw",
+        )
+        rows: list[str] = []
+        for e, alignment in zip(shown, aligned, strict=True):
+            accession, is_reviewed, description, taxon_id = entries[e]
             taxon_name = names.get(taxon_id, "not in the NCBI taxonomy")
-            ranked.append(
-                (
-                    identity,
-                    is_reviewed,
-                    accession,
-                    f"{accession}\t{database(is_reviewed)}\t{description}\t{taxon_id} {taxon_name}"
-                    f"\t{identity:.1f} %\t{_region(aligned, accession) or 'aligns nowhere'}",
-                )
+            rows.append(
+                f"{accession}\t{database(is_reviewed)}\t{description}\t{taxon_id} {taxon_name}"
+                f"\t{_hit(alignment, accession, isoforms[best[e][1]][1])}"
             )
-        ranked.sort(key=lambda r: (-r[0], not r[1], r[2]))
-        lines += page.lines(label, [r[3] for r in ranked])
+        lines += page.lines(label, rows, len(ranked))
     lines += [f"{label}\t{why}" for label, why in unread.items()]
     return "\n".join(lines)
 
 
+def _occurrences(aligned: dict[str, Any], canonical: str, start: int) -> str:
+    """The occurrences of a mapping JSON on each isoform, in the entry's numbering: the write's
+    positions on the canonical isoform are relative to the interactor's start."""
+    return "; ".join(
+        f"{i['accession']} "
+        + ", ".join(
+            f"{o['start'] + shift}-{o['stop'] + shift} ({o['identity']:g} %)"
+            for o in i["occurrences"]
+        )
+        for i in aligned["isoforms"]
+        for shift in [start - 1 if i["accession"] == canonical else 0]
+    )
+
+
 def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
     """What the write computes for each mapping sequence on the interactor (its current
-    snapshot): extra end residues, occurrences on each isoform with their identity (on the
-    canonical isoform, relative to the interactor's start), and whether it is below 90 %."""
+    snapshot): extra end residues, occurrences on each isoform with their identity, in the
+    entry's numbering, and whether it is below 90 %."""
+    for text in sequences:
+        if any(c.isdigit() for c in text):  # an accession, never a sequence
+            sys.exit(f"{text}: an accession where a sequence is expected: one interactor per call")
     try:
         accession, isoform, start, stop = location(interactor)
         if isoform != accession:
@@ -128,22 +178,18 @@ def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
             if identity < MIN_IDENTITY
             else "ok"
         )
-        occurrences = "; ".join(
-            f"{i['accession']} "
-            + ", ".join(f"{o['start']}-{o['stop']} ({o['identity']:g} %)" for o in i["occurrences"])
-            for i in aligned["isoforms"]
-        )
+        occurrences = _occurrences(aligned, accession, start)
         lines.append(f"{text}\t{nter or '-'}\t{cter or '-'}\t{occurrences or '-'}\t{verdict}")
     return "\n".join(lines)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Align sequences as the write does.")
+    parser = argparse.ArgumentParser(description="Align sequences on Drakkar's sequences.")
     commands = parser.add_subparsers(dest="command", required=True)
     m = commands.add_parser("mapping", help="what the write computes for mappings")
     m.add_argument("interactor", help="<accession>[:<start>-<stop>]")
     m.add_argument("sequences", nargs="+", help="extra end residues in lowercase")
-    c = commands.add_parser("closest", help="the current entries of a taxon by identity")
+    c = commands.add_parser("closest", help="the current entries of a taxon closest to sequences")
     c.add_argument("sequences", nargs="+", help="a sequence, or <accession>[:<start>-<stop>]")
     c.add_argument("--taxon", type=int, required=True, help="NCBI taxon ID: its whole subtree")
     c.add_argument("--limit", type=int, default=LIMIT, help=f"lines per sequence ({LIMIT})")
