@@ -82,11 +82,26 @@ def read_rows(paths: Sequence[Path], columns: list[str]) -> list[tuple[str, dict
                 continue
             if line.startswith("#"):
                 continue
-            values = line.split("\t")
-            if len(values) != len(columns):
-                raise FileError(f"{where}: {len(values)} fields, expected {len(columns)}")
-            rows.append((where, dict(zip(columns, values, strict=True))))
+            if len(fields) != len(columns):
+                raise FileError(f"{where}: {_misfit(fields, columns)}")
+            rows.append((where, dict(zip(columns, fields, strict=True))))
     return rows
+
+
+def _misfit(values: list[str], columns: list[str]) -> str:
+    """Why a line's fields do not fit the columns: the columns left without a field, or the
+    fields beyond the last column, then each field under the column it was read as, where a
+    field missing or extra earlier in the line shows as the shift."""
+    if len(values) < len(columns):
+        what = f"no field for {', '.join(columns[len(values) :])}"
+    else:
+        what = f"{len(values) - len(columns)} more after {columns[-1]}"
+    named = [*columns, *["(extra)"] * (len(values) - len(columns))]
+    read = " | ".join(
+        f"{column}={value if len(value) <= 20 else value[:20] + '…'}"
+        for column, value in zip(named, values, strict=False)
+    )
+    return f"{len(values)} fields, expected {len(columns)}: {what}; read as {read}"
 
 
 def header(columns: list[str]) -> str:

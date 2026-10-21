@@ -71,7 +71,7 @@ def test_search_is_paged():
     eutils = Eutils(ncbi, pause=0)
     lines = search(eutils, ["JFH-1"], Page(limit=2)).splitlines()
     assert lines[1].startswith("JFH-1\tBAB32870.1\t" + "x" * 120 + "…\t3033\t1")
-    assert lines[-1] == "JFH-1\t… 2 of 3"
+    assert lines[-1] == "JFH-1\t… 2 of 3 shown, cut by --limit 2"
 
 
 def test_search_reads_a_genome_accession():

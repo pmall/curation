@@ -29,9 +29,9 @@ Detail lines, in this order:
 | `FIXED` | An error found in Drakkar | `name1 AES → TLE5, gene name of the snapshot` |
 | `REMOVED` | The end of a description, in place on its last version, with its reason; by a re-curation, its reason is in the publication note's `Not kept` line | `HLA protein`, `not found by the re-curation` |
 
-The detail lines of a curation's note are written for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. Each line names the tier of the value by its label (`curation-rules.md` §4), its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
+The detail lines of a curation's note are written for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. A viral entry without an `Entry` line has the sequence the publication used. Each line names the tier of the value by its label (`curation-rules.md` §4), its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
 
-- `Entry: <as published> (<where>) → <accession> (<strain of the entry>), <label>: <evidence>`; for a family or a complex, the member chosen and why.
+- `Entry: <as published> (<where>) → <accession> (<strain of the entry>, own sequence | not own sequence), <label>: <evidence>`, for a viral entry: whether the entry has the sequence the publication used; for a family or a complex, the member chosen and why.
 - `Coordinates: <start>–<stop>, <label>: <evidence>`, for a mature protein.
 - `Mapping: <as published> (<where>), <label>: <evidence>`, with the sequence it was taken from; below 90 % identity, why it is kept.
 - `Remark: <what else the decision needs>`: a tie broken by judgement, a disagreement between the publication's sources, a natural post-translational modification, what would change the decision.
@@ -56,6 +56,6 @@ Y2H, see table S2
 
 ```
 anti-tag co-IP (MI:0007), Fig. 2B and 3A
-- Entry: NS3, isolate HCV-N (Methods) → P26662 (H77), sequence: closest to GenBank AF139594 (HCV-N)
+- Entry: NS3, isolate HCV-N (Methods) → P26662 (H77, not own sequence), sequence: closest to GenBank AF139594 (HCV-N)
 - Mapping: NS3 1–180 (Fig. 4, deletion mutant), coordinates: residues 1–180 of GenBank AF139594 (HCV-N)
 ```

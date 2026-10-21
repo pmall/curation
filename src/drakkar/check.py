@@ -303,9 +303,11 @@ MAPPING_SIDES = """
     WHERE s.mapping::jsonb <> '[]'
     ORDER BY s.stable_id, s.side
 """
+# The first columns of D9 and D12: the description side of the mapping.
+SIDE_COLUMNS = ["run_type", "stable_id", "pmid", "side", "protein", "accession"]
 
 
-def _number(value: Any, strict: bool = True) -> float | None:
+def _number(value: Any, strict: bool) -> float | None:
     """A JSON number as a float; unless `strict`, a number stored as text too; None otherwise."""
     if isinstance(value, bool):
         return None
@@ -431,6 +433,7 @@ def check_d9(cur: Any) -> Rows:
         mappings: Any = json.loads(text or "null")
         if mapping_structure(mappings, strict=False):
             continue
+        where = (run_type, stable_id, pmid, side, _protein(type_), accession)
         isoforms: dict[str, str] = json.loads(sequences)
         seen: set[str] = set()
         for mapping in mappings:
@@ -449,29 +452,8 @@ def check_d9(cur: Any) -> Rows:
             if misfit := _misfit(mapping, isoforms, accession, start, stop):
                 problems.append(misfit)
             if problems:
-                rows.append(
-                    (
-                        run_type,
-                        stable_id,
-                        pmid,
-                        side,
-                        _protein(type_),
-                        accession,
-                        len(sequence),
-                        "; ".join(problems),
-                    )
-                )
-    header = [
-        "run_type",
-        "stable_id",
-        "pmid",
-        "side",
-        "protein",
-        "accession",
-        "mapping_length",
-        "problem",
-    ]
-    return header, rows
+                rows.append((*where, len(sequence), "; ".join(problems)))
+    return [*SIDE_COLUMNS, "mapping_length", "problem"], rows
 
 
 def check_d12(cur: Any) -> Rows:
@@ -487,6 +469,7 @@ def check_d12(cur: Any) -> Rows:
         mappings: Any = json.loads(text or "null")
         if mapping_structure(mappings, strict=False):
             continue
+        where = (run_type, stable_id, pmid, side, _protein(type_), accession)
         threshold = MIN_IDENTITY if stable_id.startswith("CW") else LEGACY_MIN_IDENTITY
         for mapping in mappings:
             identities = [
@@ -495,31 +478,8 @@ def check_d12(cur: Any) -> Rows:
                 for o in i["occurrences"]
             ]
             if identities and max(identities) < threshold:
-                rows.append(
-                    (
-                        run_type,
-                        stable_id,
-                        pmid,
-                        side,
-                        _protein(type_),
-                        accession,
-                        len(mapping["sequence"]),
-                        max(identities),
-                        threshold,
-                    )
-                )
-    header = [
-        "run_type",
-        "stable_id",
-        "pmid",
-        "side",
-        "protein",
-        "accession",
-        "mapping_length",
-        "best_identity",
-        "threshold",
-    ]
-    return header, rows
+                rows.append((*where, len(mapping["sequence"]), max(identities), threshold))
+    return [*SIDE_COLUMNS, "mapping_length", "best_identity", "threshold"], rows
 
 
 def check_d11(cur: Any) -> Rows:

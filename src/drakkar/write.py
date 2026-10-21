@@ -675,7 +675,7 @@ def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> list[Move]:
     )
 
 
-def _apply_moves(cur: Any, moves: Sequence[Move], new_run: bool, first: int = 1) -> Applied:
+def _apply_moves(cur: Any, moves: Sequence[Move], new_run: bool, first: int) -> Applied:
     target_id, target = _special_run(cur, new_run)
     return _apply_rows(cur, moves, lambda c, move: _move(c, move, target_id, target), first)
 
