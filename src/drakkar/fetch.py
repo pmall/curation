@@ -193,20 +193,14 @@ def _url_name(url: str) -> str:
     return name
 
 
-def _left_out(name: str, caption: str = "") -> str | None:
-    """Why a supplementary file is not fetched: a video (or an archive named as videos,
+def _left_out(name: str, caption: str = "") -> bool:
+    """Whether a supplementary file is never fetched: a video (or an archive named as videos,
     `movies_s1_to_s3.zip`), an image, or by its caption the Reporting Summary (a checklist) or
     the peer review file: none holds an interaction."""
-    suffix = Path(name).suffix.lower()
-    if suffix in VIDEOS or re.search(r"movie|video", name, re.I):
-        return "video"
-    if suffix in IMAGES:
-        return "image"
-    if re.search(r"reporting summary", caption, re.I):
-        return "reporting summary"
-    if re.search(r"peer review (file|report)|transparent peer review", caption, re.I):
-        return "peer review"
-    return None
+    if Path(name).suffix.lower() in VIDEOS | IMAGES or re.search(r"movie|video", name, re.I):
+        return True
+    useless = r"reporting summary|peer review (file|report)|transparent peer review"
+    return re.search(useless, caption, re.I) is not None
 
 
 def _typed(name: str, content_type: str) -> str:
@@ -216,9 +210,9 @@ def _typed(name: str, content_type: str) -> str:
     return name
 
 
-def unpacked(name: str, body: bytes, url: str) -> Iterator[tuple[str, str, bytes | str]]:
-    """A downloaded file, or each file of a zip archive: its name, its URL (`<url>#<path>` for
-    a file of an archive) and its body, or why it is left out (a video, an image)."""
+def unpacked(name: str, body: bytes, url: str) -> Iterator[tuple[str, str, bytes]]:
+    """A downloaded file, or each file of a zip archive but its videos and images: its name, its
+    URL (`<url>#<path>` for a file of an archive) and its body."""
     archive = _zip(body) if name.lower().endswith(".zip") else None
     if archive is None:
         yield name, url, body
@@ -227,11 +221,8 @@ def unpacked(name: str, body: bytes, url: str) -> Iterator[tuple[str, str, bytes
         member = Path(info.filename)
         if info.is_dir() or "__MACOSX" in member.parts or member.name[:1] == ".":
             continue
-        inner = f"{url}#{info.filename}"
-        if why := _left_out(member.name):
-            yield member.name, inner, why
-        else:
-            yield from unpacked(member.name, archive.read(info), inner)
+        if not _left_out(member.name):
+            yield from unpacked(member.name, archive.read(info), f"{url}#{info.filename}")
 
 
 def save(folder: Path, name: str, body: bytes) -> Path:
@@ -448,7 +439,7 @@ def supplement_links(page: bytes, base: str) -> list[Supplement]:
 class Fetch:
     def __init__(self, pmid: int, out: Path, get: Get) -> None:
         self.pmid, self.out, self.get = pmid, out, get
-        self.report: dict[str, Any] = {"pmid": pmid, "file": None}
+        self.report: dict[str, Any] = {"file": None}
         self.tried: list[dict[str, str]] = []  # the routes of the article
         self.record: dict[str, Any] = {}
         self.work: dict[str, Any] = {}
@@ -687,8 +678,7 @@ class Fetch:
         place tried."""
         missing: list[tuple[Supplement, list[dict[str, str]]]] = []
         for item in items:
-            if why := _left_out(item.name, item.caption):
-                self._skip(item, why)
+            if _left_out(item.name, item.caption):
                 continue
             tried: list[dict[str, str]] = []
             for url in dict.fromkeys(self.supplement_routes(item)):
@@ -734,7 +724,6 @@ class Fetch:
         if r.status != 200:
             return False
         if r.content_type.startswith(("image/", "video/")):  # a link that named no type
-            self._skip(item, r.content_type.split("/")[0])
             return True
         if _is_html(r):
             tried[-1]["outcome"] += ", an HTML page"
@@ -747,19 +736,10 @@ class Fetch:
         """A supplementary file saved; a zip archive is unpacked, its videos and images left
         out."""
         for file, where, content in unpacked(name, body, url):
-            if isinstance(content, str):
-                self._skip(Supplement(file, item.caption), content, where)
-                continue
             path = save(self.out / f"{self.pmid}.supp", file, content)
             self.report.setdefault("supplements", []).append(
                 {"name": item.name, "file": str(path.relative_to(self.out)), "url": where}
             )
-
-    def _skip(self, item: Supplement, why: str, url: str | None = None) -> None:
-        entry = {"name": item.name, "why": why}
-        if url or item.url:
-            entry["url"] = url or item.url or ""
-        self.report.setdefault("skipped_supplements", []).append(entry)
 
     # The report
 
@@ -847,7 +827,6 @@ class Fetch:
         (self.out / MANIFEST).unlink(missing_ok=True)
         self._identify()
         report = self.report
-        report.update(pmcid=self.pmcids[0] if self.pmcids else None, pmcids=self.pmcids)
         report.update(doi=self.doi, free=self.free())
         if not report["free"]:
             report["why"] = self.closed_why()
@@ -893,10 +872,7 @@ def download(url: str, out: Path, get: Get = http_get) -> list[str]:
         return [f"{url}: {_outcome(r)}"]
     name = _typed(_url_name(r.url or url) or "file", r.content_type)
     lines: list[str] = []
-    for file, where, content in unpacked(name, r.body, r.url or url):
-        if isinstance(content, str):
-            lines.append(f"{where}: skipped, {content}")
-            continue
+    for file, _, content in unpacked(name, r.body, r.url or url):
         path = save(out, file, content)
         text = path.with_name(path.name + ".md")
         why = convert(path, text)

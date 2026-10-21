@@ -123,7 +123,7 @@ def test_pmc_open_access_files(tmp_path: Path):
                 "PMC9.2/movie_s1.mp4",
                 "PMC9.2/fig_s1.tif",
                 "PMC9.2/s2.pdf",
-            ),  # fmt: skip
+            ),
             f"{PMC_AWS}/PMC9.2/PMC9.2.xml": ok(XML),
             f"{PMC_AWS}/PMC9.2/s1.xlsx": ok(b"cells"),
         },
@@ -148,11 +148,6 @@ def test_pmc_open_access_files(tmp_path: Path):
     assert report_lines(report) == [
         "Full text: PMC9 (cc by)",
         "  s1.xlsx: not converted, cannot be read: BadZipFile: File is not a zip file",
-    ]
-    assert [s["why"] for s in report["skipped_supplements"]] == [
-        "video",
-        "image",
-        "reporting summary",
     ]
     assert not any(u.endswith(("movie_s1.mp4", "fig_s1.tif", "s2.pdf")) for u in server.asked)
     assert not any(PUBLISHER in u for u in server.asked)  # nothing missing: no other route
@@ -180,7 +175,6 @@ def test_supplement_archive_is_unpacked(tmp_path: Path):
     )
     assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
     assert (tmp_path / f"{PMID}.supp" / "s1.xlsx").read_text() == "cells"
-    assert [s["why"] for s in report["skipped_supplements"]] == ["video"]
     assert report["missing_supplements"] == []
 
 
@@ -288,10 +282,6 @@ def test_publisher_page_declaring_free_access(tmp_path: Path):
         "41467_2020_19808_MOESM1_ESM.pdf",
         "41467_2020_19808_MOESM4_ESM.xlsx",
     ]
-    assert [s["why"] for s in report["skipped_supplements"]] == [
-        "peer review",
-        "reporting summary",
-    ]
     assert f"{media}MOESM2_ESM.pdf" not in server.asked
     assert f"{media}MOESM3_ESM.pdf" not in server.asked
     assert report["missing_supplements"] == []
@@ -319,7 +309,6 @@ def test_page_declaring_a_creative_commons_license(tmp_path: Path):
     assert [s["file"] for s in report["supplements"]] == [
         f"{PMID}.supp/journal.ppat.1009743.s005.xlsx"
     ]
-    assert [s["why"] for s in report["skipped_supplements"]] == ["image"]
     assert [x["name"] for x in report["missing_supplements"]] == [
         f"journal.ppat.1009743.s00{n}" for n in (2, 3, 4, 6, 7)
     ]
@@ -393,7 +382,7 @@ def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
     )
     assert report["file"] == f"{PMID}.html"
     assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.doc"]
-    assert [s["why"] for s in report["skipped_supplements"]] == ["image"]
+    assert report["missing_supplements"] == []
 
 
 # Step 1: access, and the outcome without an article
@@ -582,8 +571,9 @@ def test_download_unpacks_and_converts(tmp_path: Path):
         z.writestr("movie_s2.mp4", "frames")
     url = "https://zenodo.org/records/1/files/data.zip"
     lines = download(url, tmp_path, Server({url: ok(archive.getvalue(), "application/zip")}))
-    assert lines == [str(tmp_path / "s1.csv.md"), f"{url}#movie_s2.mp4: skipped, video"]
+    assert lines == [str(tmp_path / "s1.csv.md")]
     assert (tmp_path / "s1.csv.md").read_text() == "a,b\n1,2\n"
+    assert not (tmp_path / "movie_s2.mp4").exists()
 
 
 def test_download_names_the_type_from_the_response(tmp_path: Path):
