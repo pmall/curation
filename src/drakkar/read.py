@@ -428,10 +428,10 @@ def sql(cur: Any, query: str, page: Page = DEFAULT) -> str:
     try:
         cur.execute("SAVEPOINT lookup")
         try:
-            cur.execute(f"DECLARE lookup NO SCROLL CURSOR FOR {query}")  # type: ignore[arg-type]
+            cur.execute(f"DECLARE lookup NO SCROLL CURSOR FOR {query}")
         except psycopg.Error:
             cur.execute("ROLLBACK TO SAVEPOINT lookup")
-            cur.execute(query)  # type: ignore[arg-type]
+            cur.execute(query)
             if cur.description is None:
                 return ""
             columns = [c.name for c in cur.description]

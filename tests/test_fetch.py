@@ -1,4 +1,4 @@
-"""The routes of drakkar-fetch, its report and its report, the downloads simulated (no
+"""The routes of drakkar-fetch, its manifest and its report, the downloads simulated (no
 network). The pages in `samples/fetch/` are real responses cut to what the routes read."""
 
 import io

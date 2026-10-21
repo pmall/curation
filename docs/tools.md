@@ -17,7 +17,7 @@ Tab separated. Lines starting with `#` are ignored (the header is one), so files
 | `name2` | generic name |
 | `mappings1`, `mappings2` | mapping sequences, extra end residues in lowercase (`mSTNPK`: `nter` M); occurrences are computed at write time |
 | `below_threshold` | mapping sequences kept below 90 % identity, explained in the note |
-| `note` | the description note, `CREATED` |
+| `note` | the description note |
 
 **Revisions** (`*.revise.tsv`), one row per revised description:
 
@@ -28,7 +28,7 @@ Tab separated. Lines starting with `#` are ignored (the header is one), so files
 | `action` | `revise` (new version) or `remove` (no successor) |
 | `into` | on a `remove` that merges a duplicate: the stable ID of the survivor; the description columns may then give what the removed description was decided to become, checked against the survivor |
 | description columns | on a `revise`: the whole new description, as in `*.add.tsv`, from `method` to `below_threshold` |
-| `note` | `revise`: the note of the new version, `REVISED` (`UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
+| `note` | `revise`: the note of the new version (`UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
 **Publications** (`*.publications.tsv`), one row per publication whose state or note changes: `run_id`, `pmid`, `state`, `note` (the note of the pass, its header naming the state, `CURATED: …` or `SELECTED: …`, or the row is refused; the write dates the header and puts the note first in the publication's note, the previous notes after a line `---`).
 

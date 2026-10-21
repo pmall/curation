@@ -4,19 +4,17 @@ A curation gives the whole list of a publication's descriptions; the diff says w
 would change (`docs/tools.md`). Descriptions are matched on what makes them one description
 (`glossary.md`): method, human accession, viral accession and coordinates, empty
 coordinates being the full protein. A matched description whose generic name or mapping
-sequences differ is revised; `below_threshold` is not compared, it follows from the mappings.
+sequences differ is revised, with the curation's note as it is; `below_threshold` is not
+compared, it follows from the mappings.
 A curated description without a match is added, a live one without a match is deleted. The
 publication is given, so an empty list deletes every live description.
 """
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
 from drakkar.write import Description, NewDescription, Revision, live_revisions
-
-CREATED = re.compile(r"(?:\[\S+ Claude\] )?CREATED: (.+)")
 
 Key = tuple[str, str, str, int | None, int | None]
 
@@ -55,28 +53,13 @@ def _key(cur: Any, d: Description) -> Key:
     return d.method, d.accession1, d.accession2, start2, stop2
 
 
-def _changes(live: Description, curated: Description) -> list[str]:
-    changes: list[str] = []
-    if live.name2 != curated.name2:
-        changes.append(f"name2 {live.name2} → {curated.name2}")
-    for side, old, new in (
-        (1, live.mappings1, curated.mappings1),
-        (2, live.mappings2, curated.mappings2),
-    ):
-        added, removed = len(set(new) - set(old)), len(set(old) - set(new))
-        if added or removed:
-            changes.append(f"mappings{side} {added} added, {removed} removed")
-    return changes
-
-
-def _revised_note(changes: list[str], note: str) -> str:
-    """The `REVISED` note of a matched description: what changed, then the curation's evidence."""
-    lines = note.strip().split("\n") if note.strip() else []
-    evidence = ""
-    if lines and (created := CREATED.fullmatch(lines[0])):
-        evidence, lines = f"; {created[1]}", lines[1:]
-    details = [line for line in lines if line.startswith("- ")]
-    return "\n".join([f"REVISED: re-curation, {', '.join(changes)}{evidence}", *details])
+def _changed(live: Description, curated: Description) -> bool:
+    """Another generic name or other mapping sequences."""
+    return (
+        live.name2 != curated.name2
+        or set(live.mappings1) != set(curated.mappings1)
+        or set(live.mappings2) != set(curated.mappings2)
+    )
 
 
 def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDescription]) -> Diff:
@@ -103,9 +86,8 @@ def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDes
         if item is None:
             note = "REMOVED: not found by the re-curation"
             diff.deleted.append(replace(live, action="remove", description=None, note=note))
-        elif changes := _changes(live.description, item.description):
-            note = _revised_note(changes, item.note)
-            diff.revised.append(replace(live, description=item.description, note=note))
+        elif _changed(live.description, item.description):
+            diff.revised.append(replace(live, description=item.description, note=item.note))
         else:
             diff.same.append(live.stable_id)
     diff.added.extend(by_key.values())

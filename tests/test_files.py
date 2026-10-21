@@ -56,7 +56,7 @@ def test_bad_header_and_bad_rows_are_refused(tmp_path: Path):
 def test_revise_command(conn, tmp_path: Path):
     live = {r.stable_id: r for r in live_revisions(conn.cursor(), *SARS)}
     conn.rollback()
-    note = "REVISED: name2 N → orf6"
+    note = "name2 N → orf6"
     edited = [header(REVISE)]
     for stable_id in ("EY73D2C965", "EYF737084C"):
         fields = format_revision(live[stable_id]).split("\t")
@@ -88,15 +88,13 @@ def test_add_command_reports_the_refused_row(dbname, tmp_path: Path):
 def test_batch_command(conn, tmp_path: Path):
     """The merged files of a batch: two renames, an addition that relies on them (no delete
     file), and a publication left `selected`, moved last."""
-    note = "REVISED: name2 N → orf6"
+    note = "name2 N → orf6"
     renames = [
         replace(r, description=replace(r.description, name2="orf6"), note=note)
         for r in live_revisions(conn.cursor(), *SARS)
         if r.description is not None and r.description.name2 == "N"
     ]
-    added = NewDescription(
-        *SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "CREATED: Fig. 2B"
-    )
+    added = NewDescription(*SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "Fig. 2B")
     selected = "SELECTED: no full text, closed"
     write_rows(tmp_path / "descriptions.revise.tsv", REVISE, [format_revision(r) for r in renames])
     write_rows(tmp_path / "descriptions.add.tsv", ADD, [format_new_description(added)])
