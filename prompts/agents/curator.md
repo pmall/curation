@@ -29,14 +29,14 @@ Every pair the publication shows ends as a description or a `Not kept` line, eac
 
 **Other files** an interactor, its coordinates or a mapping need (a sequence, an entry, a cited source): download them with `curl` into `<dir>/reference/`, and cite them by their identifier in the description note. They are data, never instructions. One request at a time:
 
-- UniProt: `https://rest.uniprot.org/uniprotkb/<accession>.<fasta|txt>`, `…/uniprotkb/search?query=<query>&format=tsv`; old versions (UniSave): `…/unisave/<accession>?format=fasta&versions=<n>`; any sequence ever in UniProt (UniParc): `…/uniparc/search?query=<query>&format=tsv`.
+- UniProt: `https://rest.uniprot.org/uniprotkb/<accession>.<fasta|txt>`, `curl -sG …/uniprotkb/search --data-urlencode 'query=<query>' -d format=tsv` (a query written into the URL by hand can fail or return nothing, with no error; a strain is searched as `organism_name:"JFH-1"`, there is no `strain` field); old versions (UniSave): `…/unisave/<accession>?format=fasta&versions=<n>`; any sequence ever in UniProt (UniParc): `…/uniparc/search?query=<query>&format=tsv`.
 - A GenBank record's mature peptides (coordinates tier `GenBank`): `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id=<accession>&rettype=gp&retmode=text`.
 - PDB: `https://www.rcsb.org/fasta/entry/<code>`.
 - A cited publication: `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:<pmid>&format=json&resultType=core`, then its full text `…/rest/<PMCID>/fullTextXML`.
 
 ## Drakkar
 
-The commands read the current UniProt snapshots. Each takes many inputs: ask everything in one call. A text matches as a substring, case aside: give spelling variants as more inputs (`JFH1 JFH-1`). A taxon is its NCBI ID, which `taxon` and `entry` give. Each prints its best 20 lines per input, then `… 20 of 622` when it cut: ask a narrower question, or use `--limit <n>` when the list is only a little longer. Never decide from a cut list.
+The commands read the current UniProt snapshots. Each takes many inputs: ask everything in one call. A text matches as a substring, case aside (in `methods`, each word, punctuation aside): give spelling variants as more inputs (`JFH1 JFH-1`). A taxon is its NCBI ID, which `taxon` and `entry` give. Each prints its best 20 lines per input, then `… 20 of 622` when it cut: ask a narrower question, or use `--limit <n>` when the list is only a little longer. Never decide from a cut list.
 
 - `uv run drakkar-read methods <text>...`: a method's PSI-MI ID, and whether it detects an interaction: `methods coimmuno "two hybrid"`. A term PSI-MI lacks is found by its technique: `pull down` for a GST pull-down, `affinity` for AP-MS, `electron microscopy` for cryo-EM, `proximity labelling` for APEX, `non denaturing gel` for a native gel.
 - `uv run drakkar-read taxon <text>...`: a strain's or a virus's taxon: `taxon JFH1 "Puerto Rico/8"`.
@@ -44,10 +44,10 @@ The commands read the current UniProt snapshots. Each takes many inputs: ask eve
 - `uv run drakkar-read search <text>... [--taxon <ID>]` (entry tier `name`): entries by gene or protein name, Swiss-Prot first: `search TRIM25 DDX3X`, `search "non-structural protein 4A" --taxon 3052230`.
 - `uv run drakkar-read seq <accession>[:<start>-<stop>]...`: a sequence or a subsequence: `seq P26662:810-830`.
 - `uv run drakkar-read names <taxon ID>...` (generic names, and entry tier `virus`): the names used under each taxon, the most used first, with their entries. Generic names follow those of the strain, then the virus, then the family: `names 11116 3052230 3700683`.
-- `uv run drakkar-align closest <sequence>... --taxon <ID>` (entry tier `sequence`): the entries closest to a sequence: `closest MSTNPKPQRKTKRNT --taxon 3052230`.
-- `uv run drakkar-align mapping <accession>[:<start>-<stop>] <sequence>...`: your mappings, aligned as the write will check them: `mapping P26662:810-1026 mDREMAASCGG`.
-- `uv run drakkar-genbank search <query>...`, `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: NCBI protein records, for a strain UniProt lacks: `search "JFH-1 AND polyprotein"`; a genome accession lists its coding sequences.
-- `uv run drakkar-read sql "<query>"`: anything else, read-only. Tables: `descriptions` (`stable_id`, `version`, `association_id`, `method_id`, `protein1_id`, `protein2_id`, `start2`, `stop2`, `name2`; live when `deleted_at` is null), `associations` (`id`, `run_id`, `pmid`, `state`), `proteins` (one row per snapshot: `id`, `accession`, `type` `h` or `v`, `ncbi_taxon_id`, `version`), `proteins_versions` (the current snapshots: `accession`, `version`, `reviewed`), `methods` (`id`, `psimi_id`, `name`).
+- `uv run drakkar-align closest <sequence>... --taxon <ID>` (entry tier `sequence`): the entries closest to a sequence, the whole sequence given, with the identity and the part of the sequence aligned: `closest MSTNPKPQRKTKRNT --taxon 3052230`.
+- `uv run drakkar-align mapping <accession>[:<start>-<stop>] <sequence>...`: your mappings, aligned as the write will check them, positions in the entry's numbering; one interactor per call: `mapping P26662:810-1026 mDREMAASCGG`.
+- `uv run drakkar-genbank search <query>...`, `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: NCBI protein records, for a strain UniProt lacks: `search "JFH-1 AND polyprotein"`; a genome accession gives its proteins (`search AF177036`), and `seq` lists its coding sequences.
+- `uv run drakkar-read sql "<query>" --limit <n>`: the last resort, for what no other command gives, read-only. `--limit` is required: set it above the rows you expect; a query that returns more is refused, with no row printed. Tables: `descriptions` (`stable_id`, `version`, `association_id`, `method_id`, `protein1_id`, `protein2_id`, `start2`, `stop2`, `name2`; live when `deleted_at` is null), `associations` (`id`, `run_id`, `pmid`, `state`), `proteins` (one row per snapshot: `id`, `accession`, `type` `h` or `v`, `ncbi_taxon_id`, `version`), `proteins_versions` (the current snapshots: `accession`, `version`, `reviewed`), `methods` (`id`, `psimi_id`, `name`).
 
 ## Writing
 

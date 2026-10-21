@@ -4,7 +4,7 @@ import json
 from urllib.parse import parse_qs, urlparse
 
 from drakkar.fetch import EFETCH, Response
-from drakkar.genbank import ESEARCH, ESUMMARY, Eutils, search, seq
+from drakkar.genbank import ELINK, ESEARCH, ESUMMARY, Eutils, search, seq
 from drakkar.read import Page
 
 POLYPROTEIN = "MSTNPKPQRKTKRNTNRRPEDVKFPGGGQIVGGVYLLPRRGPRLGVRTTRKTSERSQPRGRRQPIPKDRR"
@@ -24,7 +24,8 @@ def ok(text: str) -> Response:
 
 
 def ncbi(url: str) -> Response:
-    """NCBI as recorded: BAB32872 a protein, AB047639 a genome, anything else unknown."""
+    """NCBI as recorded: BAB32872 a protein, AB047639 a genome coding for two, any other search
+    three records, anything else unknown."""
     base = url.split("?")[0]
     query = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
     assert query["tool"] == "drakkar"
@@ -32,6 +33,13 @@ def ncbi(url: str) -> Response:
         return ok(FASTA)
     if base == EFETCH and query["db"] == "nuccore" and query["id"] == "AB047639":
         return ok(CDS)
+    if base == ESEARCH and query["term"] == "AB047639":  # a genome: no protein record
+        return ok(json.dumps({"esearchresult": {"count": "0", "idlist": []}}))
+    if base == ESEARCH and query["db"] == "nuccore" and query["term"] == "AB047639[accn]":
+        return ok(json.dumps({"esearchresult": {"count": "1", "idlist": ["13122260"]}}))
+    if base == ELINK and query["id"] == "13122260":
+        links = [{"linkname": "nuccore_protein", "links": ["13122262", "13122263"]}]
+        return ok(json.dumps({"linksets": [{"linksetdbs": links}]}))
     if base == ESEARCH:
         ids = ["13122262", "13122263", "13122264"][: int(query["retmax"])]
         return ok(json.dumps({"esearchresult": {"count": "3", "idlist": ids}}))
@@ -64,3 +72,12 @@ def test_search_is_paged():
     lines = search(eutils, ["JFH-1"], Page(limit=2)).splitlines()
     assert lines[1].startswith("JFH-1\tBAB32870.1\t" + "x" * 120 + "…\t3033\t1")
     assert lines[-1] == "JFH-1\t… 2 of 3"
+
+
+def test_search_reads_a_genome_accession():
+    """A nucleotide accession, which the protein search does not find: the proteins it codes."""
+    lines = search(Eutils(ncbi, pause=0), ["AB047639"]).splitlines()
+    assert [line.split("\t")[:2] for line in lines[1:]] == [
+        ["AB047639", "BAB32870.1"],
+        ["AB047639", "BAB32871.1"],
+    ]

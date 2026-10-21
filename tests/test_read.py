@@ -11,7 +11,8 @@ def _command(*args: str) -> subprocess.CompletedProcess[str]:
 
 def test_methods(conn):
     """By name or synonym, case aside, many texts at once, with the detection flag; the closest
-    names first, a list cut at its limit ending with how many there are."""
+    names first, a list cut at its limit ending with how many there are; each word of the text
+    in one name, punctuation aside."""
     lines = methods(conn.cursor(), ["coimmuno", "Co-IP", "western blot"]).splitlines()
     assert lines[0] == "#text\tpsimi_id\tname (synonym matched)\tis_detection\tlive_descriptions"
     assert "coimmuno\tMI:0019\tcoimmunoprecipitation\tyes\t3" in lines
@@ -19,7 +20,12 @@ def test_methods(conn):
     assert "western blot\tMI:0113\twestern blot\tno\t0" in lines
     first = methods(conn.cursor(), ["two hybrid"], Page(3)).splitlines()
     assert first[1] == "two hybrid\tMI:0018\ttwo hybrid\tyes\t90"  # the exact name first
-    assert len(first) == 1 + 3 + 1 and first[-1] == "two hybrid\t… 3 of 15"
+    assert len(first) == 1 + 3 + 1 and first[-1] == "two hybrid\t… 3 of 17"
+    words = methods(conn.cursor(), ["biolayer interferometry", "pulldown"]).splitlines()
+    assert words[1:] == [
+        "biolayer interferometry\tMI:0969\tbio-layer interferometry\tyes\t0",
+        "pulldown\tMI:0096\tpull down\tyes\t10",
+    ]
 
 
 def test_taxon(conn):
@@ -105,14 +111,19 @@ def test_a_taxon_is_given_by_its_id(dbname):
 
 
 def test_sql_is_guarded(dbname):
-    """A page of rows with their total, long cells cut, a write refused."""
-    result = _command(
-        "sql", "SELECT accession, sequences FROM proteins ORDER BY id", "--limit", "2"
-    )
+    """Every row, long cells cut; a limit required, and more rows than it refused; a write
+    refused."""
+    query = "SELECT accession, sequences FROM proteins ORDER BY id LIMIT 2"
+    result = _command("sql", query, "--limit", "2")
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
-    assert lines[0] == "#accession\tsequences"
-    assert len(lines) == 1 + 2 + 1 and lines[-1] == "… 2 of 231"
+    assert lines[0] == "#accession\tsequences" and len(lines) == 1 + 2
     assert all(len(line) < 300 for line in lines) and "chars)" in result.stdout
-    result = _command("sql", "UPDATE methods SET name = 'x' WHERE psimi_id = 'MI:0018'")
+    assert _command("sql", query).returncode == 2  # no --limit
+    result = _command("sql", "SELECT accession FROM proteins", "--limit", "2")
+    assert result.returncode == 1 and result.stdout == ""
+    assert "more than 2 rows, none printed" in result.stderr
+    result = _command(
+        "sql", "UPDATE methods SET name = 'x' WHERE psimi_id = 'MI:0018'", "--limit", "1"
+    )
     assert result.returncode == 1 and "read-only transaction" in result.stderr

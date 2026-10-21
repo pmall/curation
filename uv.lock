@@ -3,6 +3,15 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "archspec"
+version = "0.2.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/26/7bb7a53f4e246908fdc1810f4cbd6c8d70ce6a924e6c50f0269c5e792c1c/archspec-0.2.6.tar.gz", hash = "sha256:2ea980955530499865225eff917b649b39fd014b53f8c6461b6348c1d8b866f1", size = 59191, upload-time = "2026-05-14T19:10:25.114Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/15/12/7f9edf5a5a547ce0421e8f120c157b3602eabb12147ffea95eefbd55a94e/archspec-0.2.6-py3-none-any.whl", hash = "sha256:22463371fe8e9fa92fa144bf320cb445373a99f2ca6a5914c890e0c0b7816f8f", size = 81818, upload-time = "2026-05-14T19:10:23.538Z" },
+]
+
+[[package]]
 name = "babel"
 version = "2.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -226,6 +235,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pymupdf" },
+    { name = "pyopal" },
     { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "trafilatura" },
@@ -253,6 +263,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pymupdf", specifier = ">=1.28.2" },
+    { name = "pyopal", specifier = ">=0.7.3" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "trafilatura", specifier = ">=2.3.1" },
@@ -761,6 +772,28 @@ wheels = [
 ]
 
 [[package]]
+name = "pyopal"
+version = "0.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "archspec" },
+    { name = "scoring-matrices" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/af/a2/748ef3fc8e532b665a0a1135f6dc0d8e4a600e60ecb3a2fd6d471bd77514/pyopal-0.7.3.tar.gz", hash = "sha256:11a5fffc970c9ff963aeb2c3dfc57bff7c09f0ab44ef245ad2e7752a2c0715bf", size = 2125567, upload-time = "2025-08-07T21:48:24.795Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a1/05/5176631a86dc6eb2afb79fede984afad7fc73d99d2f67f7e679fdedf5835/pyopal-0.7.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:b7de4e70fc93ed8d7481686c04bcdc74d913b5defd61ba29aecf85d732e97a7c", size = 504789, upload-time = "2025-08-07T21:47:53.808Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/3c/baa94dcd1aacf8361eeed785f79b642ff590bb4f7e47c2717a316de3539c/pyopal-0.7.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:aa44773c23996615664f5db922a1ddf7cadcdcf8716580361fd8d659d6b99628", size = 282523, upload-time = "2025-08-07T21:47:55.612Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/1a/0b45975b411c2d82df6d0d38a9dfe221486df20aac139c45c7a49ce612ec/pyopal-0.7.3-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:14f4969eec81a22b721235beba4955bcfa2819f6b4e6fe13e14f5d82df075e4f", size = 483007, upload-time = "2025-08-07T21:47:56.93Z" },
+    { url = "https://files.pythonhosted.org/packages/74/6b/f7bf6eece7d5567166948d7805ca3ef44e80b93542a4662b66415c99bb80/pyopal-0.7.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b329499b8ac0b36754a9345edfbb1d6cfc32b78cce33480a3757686fb35be609", size = 857647, upload-time = "2025-08-07T21:47:58.459Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/d7/6b8241be8f682823f08a52aa4eaa733fb4ce4c3343f7b5f792a938b21652/pyopal-0.7.3-cp312-cp312-win_amd64.whl", hash = "sha256:f0c7ffb33cdd1951e18ac00d6fcf66b30117d717c939b66f2ca327462994943b", size = 496262, upload-time = "2025-08-07T21:48:00.078Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/e9/e8b8ee25b67590f5514f426d9e1f0507dbccf5ca6889704631b19e7cb41b/pyopal-0.7.3-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:29c624a951a017768732d40113e4025d675391a276e761c5f5609a9247d6eacf", size = 508859, upload-time = "2025-08-07T21:48:01.97Z" },
+    { url = "https://files.pythonhosted.org/packages/41/a9/876061a7ac9a500ad287ebbee4b44f7d0013bfeff82846a632b89673004b/pyopal-0.7.3-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:82f3532aa63d021358011baff70bac2f3f1e17ab2ae1c0bfdcbc57a41387ee6f", size = 287358, upload-time = "2025-08-07T21:48:03.254Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/9f/9a586b0e934e1c0ae64e53056c029c5c28d5dd5c2b0f9433f3ee0dabc56c/pyopal-0.7.3-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d5ebe6cf9596368e3ab8f0c8dca922cf02366416006259ad0e408d5b01d3c4e4", size = 483719, upload-time = "2025-08-07T21:48:04.61Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/f4/bbc66ee9ff661d3048cdccc01234677dac357be69a678785b9f623c7b392/pyopal-0.7.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b3c064afb53dbb5dc0264f73aa6795004ff0201c7397737ebd8e9c29abc52a68", size = 853543, upload-time = "2025-08-07T21:48:06.281Z" },
+    { url = "https://files.pythonhosted.org/packages/34/1a/2e4c52d3f8858d57c6683944e8d413ff5cb00f690df5197f9a5e2be0d0fc/pyopal-0.7.3-cp313-cp313-win_amd64.whl", hash = "sha256:285d2cd30dc71b1d256db010a64f68062f211ec7a031d9c6a2ccefdef42469c4", size = 505784, upload-time = "2025-08-07T21:48:07.699Z" },
+]
+
+[[package]]
 name = "pyright"
 version = "1.1.414"
 source = { registry = "https://pypi.org/simple" }
@@ -968,6 +1001,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/78/fa/0f9c2020dc316c53d983be011720b8157cc052b97e3f4dfa7db6d0f880a6/ruff-0.16.10-py3-none-win32.whl", hash = "sha256:2a12e01cb9156c10c466f63b46eaae5ecea28dfbd21b5836353ae498e7d1349a", size = 10139176, upload-time = "2026-10-01T18:03:13.267Z" },
     { url = "https://files.pythonhosted.org/packages/99/29/cfb0df9448d4d4ad48c2de029ada9ebd71baa6da983a6c77ee6c6cd0fe82/ruff-0.16.10-py3-none-win_amd64.whl", hash = "sha256:97f2015c92aa97105b0eab19eb5d224884399281cfc5da86a92db4ab5e7fb2ca", size = 10584734, upload-time = "2026-10-01T18:03:16.006Z" },
     { url = "https://files.pythonhosted.org/packages/fc/05/c16957eb287c3fc062e032619a25868d93d408a844b725bcf514f7a378ff/ruff-0.16.10-py3-none-win_arm64.whl", hash = "sha256:25a65fe998c4e6861ec079ada5826a2fc605e6cbccbe9dcd7fac1f54e791621b", size = 10366440, upload-time = "2026-10-01T18:03:19.04Z" },
+]
+
+[[package]]
+name = "scoring-matrices"
+version = "0.3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/a9/4e04b84e03ee98684fd46f5dc74ead212b0b9d47e70df9affa8bb451de77/scoring_matrices-0.3.5.tar.gz", hash = "sha256:a6a7b05a4c2d716c816b85a1caf31838c8a3e795bb8cc433ec51599307d24a3d", size = 70461, upload-time = "2026-10-01T12:09:18.221Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/19/dd/6e6e99b91e7ed8ffa66718ebe27f067a01e98555a341a481b89b6d65c77b/scoring_matrices-0.3.5-cp311-abi3-macosx_10_9_x86_64.whl", hash = "sha256:83aef979b58563422e26638d231e67142c8f4485d7fbd29424e31ce63973cf2e", size = 114727, upload-time = "2026-10-01T12:08:58.933Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/dd/385df5ac7683e847ab13cd04897fb4d33f5172ac72e54f17d215a73cf6e5/scoring_matrices-0.3.5-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:3c981dd8d141b81274a5e9cffc3c51e8aa3da0a35e0122e05ffa720a1b04b45f", size = 115159, upload-time = "2026-10-01T12:09:00.272Z" },
+    { url = "https://files.pythonhosted.org/packages/80/91/cb493497352ffd6652e9f91137f885966937d44459023e20b608c5d43ede/scoring_matrices-0.3.5-cp311-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:32d723895fda58e61539e67a4028ee04896cacdda12bcb493389af60b073ed85", size = 124061, upload-time = "2026-10-01T12:09:01.543Z" },
+    { url = "https://files.pythonhosted.org/packages/20/66/30921758ae8a64aa342a171593923d32905bfc9dad1e475c6ff7c3b35f10/scoring_matrices-0.3.5-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c1244c215b3e1efc2a00e6036552da3f18b2e42979d5ccce56918bffd055d323", size = 120158, upload-time = "2026-10-01T12:09:02.893Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/2a/525c47d8ffc591c42388d84e4e0fd4fa04c9d0aa9fa96be76ae6cecd17b6/scoring_matrices-0.3.5-cp311-abi3-pyemscripten_2025_0_wasm32.whl", hash = "sha256:b379a7403a2a46d5a2cb1323f33e2675f457fde7d28084c0aaff63eb3b8f9692", size = 94815, upload-time = "2026-10-01T12:09:04.073Z" },
+    { url = "https://files.pythonhosted.org/packages/00/fd/67ef6740622f43aad87426f9967926a6a13a94e24fe2b67ea19fb8dbc049/scoring_matrices-0.3.5-cp311-abi3-win_amd64.whl", hash = "sha256:c81faced9dcffd23ff83da3a5403244ef2856da9dafa9b2570c58a32dffbcce6", size = 116068, upload-time = "2026-10-01T12:09:05.179Z" },
 ]
 
 [[package]]

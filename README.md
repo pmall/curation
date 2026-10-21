@@ -32,7 +32,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | Purpose | Commands | What they do |
 | -- | -- | -- |
 | Full texts | `drakkar-fetch`, `drakkar-download`, `drakkar-parse` | Download a full text with its supplementary files, convert them, and list them in a manifest; download and convert one file at a URL; convert a file (XML, HTML, PDF, Word, spreadsheets). |
-| Reading | `drakkar-read`, `drakkar-align`, `drakkar-genbank` | Lookups of methods, taxa, entries and sequences, and of the generic names in use; alignments as the write computes them; free read-only SQL; NCBI protein sequences. |
+| Reading | `drakkar-read`, `drakkar-align`, `drakkar-genbank` | Lookups of methods, taxa, entries and sequences, and of the generic names in use; mappings aligned as the write computes them, the entries closest to a sequence; free read-only SQL; NCBI protein sequences. |
 | Re-curation | `drakkar-diff` | A re-curated publication's descriptions against its live ones, as files to add, revise and remove. |
 | Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; a whole batch in one transaction. |
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
