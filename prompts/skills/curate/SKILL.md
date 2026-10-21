@@ -17,7 +17,7 @@ You run a curation batch. A `curator` agent curates each publication from its fu
 
 3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, on the default model, sent only `dir: <dir>/<pmid>`, `run_id: <run>`, `pmid: <pmid>`. Its prompt is `prompts/agents/curator.md`: in Claude Code, the agent type `curator`; elsewhere, that file below its frontmatter, then the message, sent to a subagent with the shell and the file tools. It writes `descriptions.tsv`, `curation.txt` and the diff files `descriptions.add.tsv`, `descriptions.revise.tsv` and `descriptions.delete.tsv`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
 
-4. **Merge**: concatenate each kind of TSV file into `<dir>/`, under one header line, without the lines starting with `#`. Then `<dir>/publications.tsv`, under the header `uv run drakkar-publications --header` prints: one row per publication, its state the header of its note (`curated` or `selected`), its note `curation.txt` as it is, or the note of step 2, `\n` for its line breaks. The write dates the note.
+4. **Merge**: concatenate each kind of TSV file into `<dir>/`: one header line, then the lines that do not start with `#`. Then `<dir>/publications.tsv`, under the header `uv run drakkar-publications --header` prints: one row per publication, its state the header of its note (`curated` or `selected`), its note `curation.txt` as it is, or the note of step 2, `\n` for its line breaks. The write dates the note.
 
 5. **Dry run**: `uv run drakkar-batch <dir>` applies and checks everything in one transaction, then rolls it back. Report its refused rows and errors as they are, without fixing them.
 

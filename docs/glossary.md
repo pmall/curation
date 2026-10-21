@@ -14,7 +14,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | State | The curation state of an association: `pending` (not pre-curated), `selected` (kept at pre-curation, curation in progress), `discarded` (rejected at pre-curation), `curated` (all its relevant files explored and all its descriptions extracted; with or without descriptions). |
 | Pre-curation | The decision `selected` or `discarded`, from the title and abstract. |
 | Curation pass | Reading the relevant files of a selected publication (its full text and supplementary files) and recording its descriptions. Ends with the state `curated` when Claude could explore all of them and extracted all the descriptions; with a relevant file missing, `selected` with a date (`database.md` §1, states). Claude's last pass is dated by `associations.ai_pass_at`. |
-| Re-curation | A curation of a curated publication: curated from its full text, whatever Drakkar holds for it; `drakkar-diff` turns the result into additions, revisions and deletions. |
+| Re-curation | A curation of a curated publication: curated from its full text, whatever Drakkar holds for it; `drakkar-diff` turns the result into additions, revisions and removals. |
 | Manual pass | The curation of a publication Claude could not curate fully (`selected` with a pass date), in a special run: by hand, or by Claude from a curator file, an Excel file describing its interactions. |
 | Batch | An orchestrated curation of at most 20 publications, new or already curated, by the `curate` skill: one subagent each, merged into one set of files and committed together after the user's go. Never "run". |
 | Note | The free text of an association (`associations.annotation`), the publication note: decisions about the publication (`notes.md`). It never holds maintenance information. |
@@ -35,7 +35,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Taxon | A node of the NCBI taxonomy (`taxon`). A snapshot has one (`proteins.ncbi_taxon_id`), which can be missing from the taxonomy when UniProt is ahead of NCBI. |
 | Species | The NCBI taxon of rank species at or above a protein's taxon. For a viral protein: the virus. |
 | Polyprotein | A viral protein cleaved into several mature proteins. |
-| Mature protein | A part of a polyprotein, identified by the polyprotein accession and coordinates (e.g. DENV1 NS5 = `B5AGU1[2494-3392]`). Its right coordinates are those of the polyprotein's chain features in UniProt, the source of truth. |
+| Mature protein | A part of a viral protein cleaved into several proteins (a polyprotein, or a protein cleaved into subunits), identified by the cleaved protein's accession and coordinates (e.g. DENV1 NS5 = `B5AGU1[2494-3392]`), as `curation-rules.md` §4 identifies them. |
 
 ## Descriptions
 
@@ -47,7 +47,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Viral interactor | A full viral protein or a mature protein (`protein2_id`, `start2`, `stop2` in vh). Named by its generic name (`name2`). |
 | Generic name | The standard name of a viral interactor (e.g. `NS1`), independent of how UniProt or the publication names it. One viral interactor has one generic name, and in one protein a generic name names one viral interactor: (accession, start, stop) ↔ (accession, generic name). |
 | Method | A PSI-MI interaction detection method (`methods`, e.g. `MI:0007`). |
-| Description | One row of evidence: a publication × a method × a human interactor × a viral interactor (hh: two human interactors), with its mappings. This combination, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. Two mature proteins of the same polyprotein are two interactors, so two descriptions. |
+| Description | One row of evidence: a publication × a method × a human interactor × a viral interactor (hh: two human interactors), with its mappings. This combination, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. Two mature proteins of the same cleaved protein are two interactors, so two descriptions. |
 | Interaction | A human interactor × a viral interactor, whatever the publication and the method. One interaction can have many descriptions: that is the point of curation. |
 | Mapping | A fragment of an interactor that the publication shows bound, on one side of a description (`mapping1` human, `mapping2` viral), recorded as the exact sequence tested: from the publication's own sequence, possibly from another database than UniProt, even when the interactor is the closest UniProt entry. It is never adapted to UniProt; its extra end residues, not on the interactor (an initiator methionine, a tag), are named in `nter` and `cter` (`curation-rules.md` §3). |
 | Malformed mapping | A mapping whose JSON structure or types are wrong (e.g. numbers stored as text), whatever its content. Fixed in place, not by a revision. |

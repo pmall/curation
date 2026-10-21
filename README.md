@@ -1,6 +1,6 @@
 # Drakkar curation
 
-Drakkar is the curation database of virus–human protein–protein interactions. This repository is the harness in which an AI agent curates it: the instructions it follows, the tools it works through, and the orchestration that turns a list of publications into checked writes, under the supervision of a curator.
+Drakkar is the curation database of virus–human protein–protein interactions. This repository is made for agents: the harness in which an AI agent curates Drakkar, with the instructions it follows, the tools it works through, and the orchestration that turns a list of publications into checked writes, under the supervision of the user.
 
 What a right description is, what the database holds and how it is versioned are not explained here:
 
@@ -13,7 +13,7 @@ What a right description is, what the database holds and how it is versioned are
 
 ## The idea
 
-The agent curates; the curator supervises. The agent reads each publication, decides its descriptions and writes them into files. The tools check those files against the whole database, and nothing reaches Drakkar before the curator's go on a report. Every version of every description is kept, so no write is irreversible and a publication can always be curated again.
+The agent curates; the user supervises. The agent reads each publication, decides its descriptions and writes them into files. The tools check those files against the whole database, and nothing reaches Drakkar before the user's go on a report. Every version of every description is kept, so no write is irreversible and a publication can always be curated again.
 
 Three layers make the harness:
 
@@ -53,26 +53,26 @@ orchestrator (curate skill)
                       writes its descriptions and curation notes
   4. merge          batch files: descriptions to add, revise and delete, publications.tsv
   5. dry run        drakkar-batch: the whole batch checked in one transaction, rolled back
-  6. report         to the curator, with the errors of the dry run    ── nothing written yet
+  6. report         to the user, with the errors of the dry run       ── nothing written yet
      ── go ──
   7. commit         drakkar-batch --commit: descriptions, publications, then the move
                       of the publications left selected to the special run
 ```
 
-- **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC (its open access files, Europe PMC, NCBI, the PMC article page), the publisher's page, then the free copies' PDFs (OpenAlex, Unpaywall), and converts them to text. A publication without the article is fetched once more, and still without it gets no subagent. A subagent downloads a missing supplementary file it needs from the URL the text gives (`drakkar-download`), and any file it needs to identify an interactor, its coordinates or a mapping (a sequence, an entry, a taxon) from a public database, never the article. When no route works, the user can provide the files: they are set up as the fetch does, with their manifest.
+- **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC (its open access files, Europe PMC, NCBI, the PMC article page), the publisher's page, then the free copies' PDFs (OpenAlex, Unpaywall), and converts them to text. A free article that could not be downloaded is fetched once more; a publication still without the article gets no subagent. A subagent downloads a missing supplementary file it needs from the URL the text gives (`drakkar-download`), and any file it needs to identify an interactor, its coordinates or a mapping (a sequence, an entry, a taxon) from a public database, never the article. When no route works, the user can provide the files: they are set up as the fetch does, with their manifest.
 - **One subagent per publication**, the `curator` agent, with its own context and only the shell and the file tools: it reads the publication, decides each description by the rules and writes files. It never writes to the database.
 - **Every description is written.** Each value comes from the first tier that gives it, from the most direct to the most inferred, and the description note names the tier (by its label) and the evidence of each value that is not obvious ([`docs/curation-rules.md` §4](docs/curation-rules.md#4-how-each-value-is-identified)); a publication stays `selected` only for a relevant file the subagent could not get.
 - **A dry run before the report.** `drakkar-batch` applies the merged files in one transaction, checks every invariant on the result and rolls back. Its refused rows and errors, inconsistencies between publications among them, go to the report as they are, not fixed.
 - **The report leaves no open question**: what each file holds, the publications without a full text or not curated, with why.
 - **The go.** After it, the orchestrator commits the batch files, the last write moving the publications the agent could not curate fully (a relevant file missing: the full text or a supplementary file) to the open special run, so the run they came from can be complete. Their manual pass happens there.
 
-**Re-curation.** A publication already curated goes through the same batch. The subagent curates it again from its full text, without looking at its current curation, then `drakkar-diff` compares the result with its live descriptions: the descriptions to add, to revise and to remove. They are committed as a new publication's are, by the agent after the curator's go.
+**Re-curation.** A publication already curated goes through the same batch. The subagent curates it again from its full text, without looking at its current curation, then `drakkar-diff` compares the result with its live descriptions: the descriptions to add, to revise and to remove. They are committed as a new publication's are, by the agent after the user's go.
 
 Batches are independent: each takes its own publications, works in its own directory and writes only them. Many could run in parallel, given distinct publications; the default pick, the next publications of the oldest run, serves one batch at a time.
 
 ## What is tracked
 
-A publication in a run carries its state, its note and the date of the agent's last pass ([`docs/database.md`](docs/database.md#states) and [`docs/notes.md`](docs/notes.md)): `selected` without a date waits for the agent, `curated` is done, `selected` with a date waits for a manual pass in a special run. The note, rewritten at each pass, says what was decided and keeps the history of passes and moves; each description version has its own note. Together they make every decision traceable without the conversation that took it.
+A publication in a run carries its state, its note and the date of the agent's last pass ([`docs/database.md`](docs/database.md#states) and [`docs/notes.md`](docs/notes.md)): `selected` without a date waits for the agent, `curated` is done, `selected` with a date waits for a manual pass in a special run. Each pass and each move puts its note first in the publication's note, which keeps their whole history; each description version has its own note. Together they make every decision traceable without the conversation that took it.
 
 ## Running it
 
