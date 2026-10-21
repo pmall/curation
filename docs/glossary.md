@@ -7,7 +7,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Term | Meaning |
 | -- | -- |
 | Publication | A PubMed record, identified by its PMID (`publications`). Never "paper". |
-| Run | The PMIDs returned by one PubMed query (`runs`), of type vh or hh. Named by a number. |
+| Run | The PMIDs returned by one PubMed query (`runs`), of type vh or hh. Named by a number: "run 74" is its `name`, never its `id`. |
 | Special run | A vh run holding the publications Claude could not curate fully (`selected` with a pass date), moved there from their runs (`database.md` §1, states). Named `special-1`, `special-2`…; the highest is the open one. |
 | vh, hh | Virus–human and human–human. A vh run looks for virus–human interactions, an hh run for human–human ones. hh gets no new curation, but its descriptions follow the invariants and the UniProt upgrades like vh ones. |
 | Association | A publication in a run (`associations`). It carries the state and the note. A publication can be in a vh run and an hh run: two associations. |
