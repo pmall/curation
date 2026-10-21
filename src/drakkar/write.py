@@ -579,16 +579,28 @@ def _publication(cur: Any, update: PublicationUpdate) -> str:
     cur.execute(
         f"UPDATE associations SET state = %s, annotation = {NEW_NOTE}, ai_pass_at = now(), "
         "updated_at = now() WHERE id = %s",
-        (update.state, update.note.strip(), association.id),
+        (update.state, _dated(cur, update), association.id),
     )
     return f"{update.run_id}/{update.pmid}"
+
+
+def _dated(cur: Any, update: PublicationUpdate) -> str:
+    """The note of a pass, its header `STATE: summary` naming the state the pass sets, dated by
+    the write: `CURATED 2026-10-06: summary`."""
+    label = f"{update.state.upper()}: "
+    head, _, rest = update.note.strip().partition("\n")
+    if not head.startswith(label):
+        raise InvalidRow(f"the note must start with its state, {label.strip()}")
+    cur.execute("SELECT current_date::text")
+    head = f"{update.state.upper()} {cur.fetchone()[0]}: {head.removeprefix(label)}"
+    return f"{head}\n{rest}" if rest else head
 
 
 def update_publications(
     conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
 ) -> Outcome:
     """Set the state of publications of vh runs at the end of a pass (`ai_pass_at`), the note of
-    the pass first in their notes."""
+    the pass, its header dated, first in their notes."""
     return _write(conn, commit, lambda cur: _apply_rows(cur, updates, _publication))
 
 

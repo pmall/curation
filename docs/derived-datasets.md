@@ -27,9 +27,5 @@ Each description is exact on its UniProt entries, whatever their version: the sn
 
 ## What it means for curation
 
-- Every UniProt upgrade works on all the obsolete interactors: each one is moved to the latest snapshot it can be on, a human one whenever it can be (the versioning pass of the `upgrade` skill).
+- Every UniProt upgrade works on all the obsolete interactors: each one is moved to the latest snapshot it can be on, a human one whenever it can be (the versioning pass).
 - A description with an obsolete interactor is live and counts: it was right on its snapshots when it was curated; when a viral protein is gone from UniProt (e.g. a patient isolate), it stays live on its old snapshot, and its mappings stay good data.
-
-## Open questions
-
-1. Licenses: Drakkar is curated from any full text, whatever its license (the license of a copy does not restrict curation), and the license of each is in its publication note (`Full text` line). Many are under non-commercial licenses (CC BY-NC, BY-NC-ND). What do they allow for the published datasets?

@@ -196,7 +196,7 @@ def test_removal_needs_its_note(conn):
 
 
 def test_publication_curated(conn):
-    note = "CURATED: from PMC1234567, no description\n- Pass 2026-10-18: curated from PMC1234567"
+    note = "CURATED: no description, a review of earlier screens\n- Full text: PMC1234567 (cc by)"
     update = PublicationUpdate(*SELECTED, "curated", note)
     assert update_publications(conn, [update], commit=True).committed
     state, ai_pass_at = conn.execute(
@@ -207,13 +207,24 @@ def test_publication_curated(conn):
 
 
 def test_publication_note_goes_first(conn):
-    """SELECTED has no note yet; then each note goes first, the previous ones after `---`."""
-    first = PublicationUpdate(*SELECTED, "selected", "SELECTED: no full text\n- Pass 2026-10-18: x")
+    """SELECTED has no note yet; then each note goes first, the previous ones after `---`, its
+    header dated by the write."""
+    first = PublicationUpdate(*SELECTED, "selected", "SELECTED: no full text, closed")
     assert update_publications(conn, [first], commit=True).committed
-    assert note_of(conn, SELECTED[1]) == first.note
-    second = replace(first, state="curated", note="CURATED: from a PDF\n- Pass 2026-10-20: y")
-    assert update_publications(conn, [second], commit=True).committed
-    assert note_of(conn, SELECTED[1]) == f"{second.note}\n---\n{first.note}"
+    dated = f"SELECTED {today(conn)}: no full text, closed"
+    assert note_of(conn, SELECTED[1]) == dated
+    note = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
+    assert update_publications(conn, [replace(first, state="curated", note=note)], commit=True).ok
+    assert note_of(conn, SELECTED[1]) == (
+        f"CURATED {today(conn)}: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
+        f"\n---\n{dated}"
+    )
+
+
+def test_publication_note_starts_with_its_state(conn):
+    for note in ("SELECTED: a relevant file missing", "co-IP of NS1 with TRIM25"):
+        outcome = update_publications(conn, [PublicationUpdate(*SELECTED, "curated", note)])
+        assert "the note must start with its state, CURATED:" in outcome.problems[0][1]
 
 
 def today(conn) -> str:
@@ -232,10 +243,7 @@ def note_of(conn, pmid) -> str:
 # --- Moving to a special run --------------------------------------------------------------------
 
 
-NOT_ACCESSIBLE = (
-    "SELECTED: may hold a PPI, no full text\n- Full text: closed — not open access anywhere\n"
-    "- Pass 2026-10-18: not accessible (not open access)"
-)
+NOT_ACCESSIBLE = "SELECTED: no full text, closed — not open access anywhere"
 
 
 def left_selected(run_id: int = SELECTED[0]) -> PublicationUpdate:
@@ -257,14 +265,15 @@ def test_move_takes_the_descriptions(conn, new):
     [stable_id] = add_descriptions(conn, [new], commit=True).written
     assert write_batch(conn, [], [], [left_selected()], commit=True)[1].committed
     run_id, name, moved = run_of(conn, SELECTED[1])
-    assert (
-        name == "special-1" and moved == f"Moved {today(conn)}: from run 32\n---\n{NOT_ACCESSIBLE}"
-    )
+    day = today(conn)
+    selected = NOT_ACCESSIBLE.replace("SELECTED:", f"SELECTED {day}:")
+    assert name == "special-1" and moved == f"Moved {day}: from run 32\n---\n{selected}"
     assert stable_id in live(conn, run_id, SELECTED[1])
-    curated = "CURATED: from a PDF provided by the user\n- Pass 2026-10-20: curated from a PDF"
+    curated = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
     update = PublicationUpdate(run_id, SELECTED[1], "curated", curated)
     assert update_publications(conn, [update], commit=True).committed
-    assert note_of(conn, SELECTED[1]) == f"{curated}\n---\n{moved}"
+    dated = curated.replace("CURATED:", f"CURATED {day}:")
+    assert note_of(conn, SELECTED[1]) == f"{dated}\n---\n{moved}"
 
 
 def test_move_to_a_new_special_run(conn):
@@ -323,8 +332,7 @@ def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationU
         Description("MI:0007", "P46934", "Q6VA95", "orf6"),
         "CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
     )
-    note = "SELECTED: no full text\n- Pass 2026-10-18: not accessible"
-    return revisions, [added], [PublicationUpdate(*SELECTED, "selected", note)]
+    return revisions, [added], [left_selected()]
 
 
 def test_batch_writes_everything_in_one_transaction(conn):

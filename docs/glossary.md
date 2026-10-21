@@ -71,6 +71,6 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Violation | A row that breaks an invariant, as reported by `drakkar-check`. |
 | Fix | The correction of an error found in the data, outside the regular process: a revision decided with the user (`database.md` §2). A malformed mapping is corrected in place, without a revision. |
 | Upgrade job | Loading a new UniProt release and moving the obsolete interactors to current snapshots. |
-| Versioning pass | The part of the upgrade job that moves the obsolete interactors of live descriptions to current snapshots, protein by protein (the `upgrade` skill). |
+| Versioning pass | The part of the upgrade job that moves the obsolete interactors of live descriptions to current snapshots, protein by protein. |
 | Put aside | An obsolete interactor left on its old snapshot by a versioning pass because it needs a curation decision, with its reason: waiting for re-curation. |
 | Derived dataset | A dataset exported from Drakkar for other applications, built from live descriptions only (`derived-datasets.md`). |
