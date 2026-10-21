@@ -52,7 +52,7 @@ def new(conn) -> NewDescription:
     return NewDescription(
         *SELECTED,
         Description("MI:0007", "P46934", "P25223", "P", mappings2=(sequence[:20],)),
-        "CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
+        "anti-tag co-IP (MI:0007), Fig. 2B",
     )
 
 
@@ -77,7 +77,7 @@ def test_add_commits(conn, new):
     assert (version, name1, start1, name2, start2) == (1, "NEDD4", 1, "P", 1)
     assert stop1 > 1 and stop2 > 1
     assert mapping2[0]["isoforms"][0]["occurrences"][0] == {"start": 1, "stop": 20, "identity": 100}
-    assert note == "CREATED: anti-tag co-IP (MI:0007), Fig. 2B"
+    assert note == "anti-tag co-IP (MI:0007), Fig. 2B"
 
 
 def test_add_refuses_a_bad_row_and_writes_none(conn, new):
@@ -115,7 +115,7 @@ def test_mapping_below_threshold_needs_to_be_listed(conn, new):
 
 def test_rename_an_interactor_carried_by_two_descriptions(conn):
     rows = live(conn, *SARS)
-    note = "REVISED: name2 N → orf6, Drakkar name of the protein"
+    note = "name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
     outcome = revise_descriptions(conn, revisions, commit=True)
     assert outcome.ok and outcome.committed
@@ -325,12 +325,12 @@ def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationU
     """SARS's `N` renamed `orf6` with a new `orf6` description, which holds only after the
     renames; SELECTED left `selected`, which the batch then moves."""
     rows = live(conn, *SARS)
-    note = "REVISED: name2 N → orf6, Drakkar name of the protein"
+    note = "name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
     added = NewDescription(
         *SARS,
         Description("MI:0007", "P46934", "Q6VA95", "orf6"),
-        "CREATED: anti-tag co-IP (MI:0007), Fig. 2B",
+        "anti-tag co-IP (MI:0007), Fig. 2B",
     )
     return revisions, [added], [left_selected()]
 

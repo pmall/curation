@@ -65,7 +65,7 @@ class Description:
 
 @dataclass(frozen=True)
 class NewDescription:
-    """A description to add to a publication of a vh run, with its `CREATED` note."""
+    """A description to add to a publication of a vh run, with its note."""
 
     run_id: int
     pmid: int
@@ -77,8 +77,8 @@ class NewDescription:
 class Revision:
     """A decision on the live `version` of a description.
 
-    `revise`: a new version holding `description`, with its note (`REVISED`, `FIXED` or
-    `UPDATED`). `remove`: no successor, the `REMOVED` line added to the note of the live version.
+    `revise`: a new version holding `description`, with its note. `remove`: no successor, the
+    `REMOVED` line added to the note of the live version.
     With `into`, the removed description is a duplicate merged into that survivor: as it is, or
     as `description` when it was decided to become the survivor, it has the same publication,
     method and interactors, and the survivor holds all its mapping sequences.
@@ -175,7 +175,7 @@ class _Snapshot:
         return len(self.sequences[self.accession])
 
 
-def _snapshot(cur: Any, accession: str, snapshot_id: int | None = None) -> _Snapshot:
+def snapshot_of(cur: Any, accession: str, snapshot_id: int | None = None) -> _Snapshot:
     """The current snapshot of an accession, or the given one (a revision keeps its own)."""
     if snapshot_id is None:
         cur.execute(
@@ -250,7 +250,7 @@ def _build(
     for side, accession in enumerate((item.accession1, item.accession2)):
         pinned = kept[side][1] if kept and kept[side][0] == accession else None
         try:
-            snapshot = _snapshot(cur, accession, pinned)
+            snapshot = snapshot_of(cur, accession, pinned)
         except InvalidRow as e:
             problems += [f"protein {side + 1}: {p}" for p in e.problems]
             continue
@@ -454,9 +454,9 @@ def _revise(cur: Any, revision: Revision) -> str:
     _, method_id, a1, id1, a2, id2, start2, stop2, mappings1, mappings2 = cur.fetchone()
     kept = ((a1, id1), (a2, id2))
     item = revision.description
+    note = revision.note.strip()
 
     if revision.action == "remove":
-        note = revision.note.strip()
         if not note:
             raise InvalidRow("the note must hold the REMOVED decision")
         if revision.into:
@@ -482,7 +482,6 @@ def _revise(cur: Any, revision: Revision) -> str:
 
     if item is None:
         raise InvalidRow(f"{revision.stable_id}: a revision needs its description")
-    note = revision.note.strip()
     row = _build(cur, association, item, kept)
     cur.execute(COLUMNS, (live_id,))
     old = dict(zip(row, cur.fetchone(), strict=True))  # same order; JSON columns come parsed
@@ -654,24 +653,19 @@ def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
     return f"{move.run}/{move.pmid} → {target}"
 
 
-def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> tuple[list[Move], list[str]]:
-    """The publications given as (run_id, pmid) that a move takes, and those not in their run."""
+def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> list[Move]:
+    """The publications given as (run_id, pmid) that a move takes."""
     cur.execute(
-        "SELECT given.run_id, given.pmid, a.id, r.name, r.type, a.state, a.ai_pass_at "
+        "SELECT a.id, given.pmid, r.name, r.type, a.state, a.ai_pass_at "
         "FROM unnest(%s::int[], %s::bigint[]) AS given (run_id, pmid) "
-        "LEFT JOIN associations AS a ON a.run_id = given.run_id AND a.pmid = given.pmid "
-        "LEFT JOIN runs AS r ON r.id = a.run_id "
-        "ORDER BY given.run_id, given.pmid",
+        "JOIN associations AS a ON a.run_id = given.run_id AND a.pmid = given.pmid "
+        "JOIN runs AS r ON r.id = a.run_id",
         ([run_id for run_id, _ in publications], [pmid for _, pmid in publications]),
     )
-    rows = cur.fetchall()
-    missing = [
-        f"{run_id}/{pmid}" for run_id, pmid, association_id, *_ in rows if association_id is None
-    ]
-    moves = sorted(
+    return sorted(
         {
             Move(association_id, pmid, run)
-            for _, pmid, association_id, run, run_type, state, ai_pass_at in rows
+            for association_id, pmid, run, run_type, state, ai_pass_at in cur.fetchall()
             if run_type == "vh"
             and not SPECIAL_RUN.fullmatch(run)
             and state == "selected"
@@ -679,7 +673,6 @@ def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> tuple[list[Mo
         },
         key=lambda move: (move.run, move.pmid),
     )
-    return moves, missing
 
 
 def _apply_moves(cur: Any, moves: Sequence[Move], new_run: bool, first: int = 1) -> Applied:
@@ -717,7 +710,7 @@ def write_batch(
             _apply_rows(cur, updates, _publication, len(revisions) + len(additions) + 1),
         ]
         # A publication not in its run is already refused by its update.
-        moves.extend(_movable(cur, [(u.run_id, u.pmid) for u in updates])[0])
+        moves.extend(_movable(cur, [(u.run_id, u.pmid) for u in updates]))
         if moves:
             first = len(revisions) + len(additions) + len(updates) + 1
             stages.append(_apply_moves(cur, moves, new_run, first))

@@ -27,10 +27,7 @@ from drakkar.read import (
     subtree,
     taxon_names,
 )
-from drakkar.write import (
-    InvalidRow,
-    _snapshot,  # pyright: ignore[reportPrivateUsage]
-)
+from drakkar.write import InvalidRow, snapshot_of
 
 
 def _region(aligned: dict[str, Any], canonical: str) -> str:
@@ -44,12 +41,6 @@ def _region(aligned: dict[str, Any], canonical: str) -> str:
         for i in aligned["isoforms"]
         for o in i["occurrences"]
     )
-
-
-def _map_entry(query: str, accession: str, sequences: str) -> dict[str, Any]:
-    """A sequence mapped on a whole entry, its isoforms given as JSON."""
-    isoforms = cast(dict[str, str], json.loads(sequences))
-    return map_sequence(query, isoforms, accession, 1, len(isoforms[accession]))
 
 
 def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) -> str:
@@ -76,13 +67,16 @@ def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) ->
         """,
         (subtree(cur, taxon),),
     )
-    entries = cur.fetchall()
+    entries = [
+        (accession, is_reviewed, description, taxon_id, cast(dict[str, str], json.loads(isoforms)))
+        for accession, is_reviewed, description, taxon_id, isoforms in cur.fetchall()
+    ]
     names = taxon_names(cur, {e[3] for e in entries})
     lines = ["#sequence\taccession\tdb\tprotein\ttaxon\tidentity\tregion"]
     for label, query in queries.items():
         ranked: list[tuple[float, bool, str, str]] = []
         for accession, is_reviewed, description, taxon_id, isoforms in entries:
-            aligned = _map_entry(query, accession, isoforms)
+            aligned = map_sequence(query, isoforms, accession, 1, len(isoforms[accession]))
             identity = best_identity(aligned)
             taxon_name = names.get(taxon_id, "not in the NCBI taxonomy")
             ranked.append(
@@ -108,7 +102,7 @@ def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
         accession, isoform, start, stop = location(interactor)
         if isoform != accession:
             raise ValueError("an interactor is an entry, not an isoform")
-        snapshot = _snapshot(cur, accession)
+        snapshot = snapshot_of(cur, accession)
     except (ValueError, InvalidRow) as e:
         sys.exit(f"{interactor}: {e}")
     length = len(snapshot.sequences[accession])

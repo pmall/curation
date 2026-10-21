@@ -62,7 +62,7 @@ The commands read the current UniProt snapshots. Each takes many inputs: ask eve
 
 The notes are the memory of your curation: the next pass and the report know only what they say. Short lines, these labels.
 
-The description note: `CREATED: <method name> (<PSI-MI ID>), <where the publication shows it>` (`CREATED: anti-tag co-IP (MI:0007), Fig. 2B and 5C`), then a `- ` line for each value that is not obvious, and only for those. Obvious: an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, a mapping the publication writes or the subsequence at coordinates it gives. Each line names the value's tier, its evidence, and any source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
+The description note: `<method name> (<PSI-MI ID>), <where the publication shows it>` (`anti-tag co-IP (MI:0007), Fig. 2B and 5C`), then a `- ` line for each value that is not obvious, and only for those. Obvious: an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, a mapping the publication writes or the subsequence at coordinates it gives. Each line names the value's tier, its evidence, and any source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
 
 - `Entry: <as published> (<where>) → <accession> (<strain of the entry>), <tier>: <evidence>`; for a family or a complex, the member chosen and why;
 - `Coordinates: <start>–<stop>, <tier>: <evidence>`, for a mature protein;

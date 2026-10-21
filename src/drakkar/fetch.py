@@ -49,7 +49,7 @@ from dotenv import load_dotenv
 from lxml import etree
 from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
 
-from drakkar.parse import ParseError, class_names, one_line, parse, tag_name
+from drakkar.parse import XLINK, ParseError, class_names, one_line, parse, tag_name
 
 EUROPE_PMC = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
@@ -57,7 +57,6 @@ OPENALEX = "https://api.openalex.org/works"
 UNPAYWALL = "https://api.unpaywall.org/v2"
 PMC_AWS = "https://pmc-oa-opendata.s3.amazonaws.com"
 PMC_PAGE = "https://pmc.ncbi.nlm.nih.gov/articles"
-XLINK = "{http://www.w3.org/1999/xlink}href"
 # Publishers refuse requests without a browser user agent.
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0 drakkar-fetch"
 TIMEOUT = 30
@@ -808,21 +807,18 @@ class Fetch:
 
     # The manifest
 
-    def _convert(self, file: str, text: str) -> str | None:
-        return convert(self.out / file, self.out / text)
-
     def write_manifest(self) -> None:
         """Every file converted, then the manifest of those the curation can use, written last
         and only when the article could be converted: a manifest means the curation can start."""
         report = self.report
         article = {"file": report["file"], "text": f"{self.pmid}.md"}
-        if why := self._convert(article["file"], article["text"]):
+        if why := convert(self.out / article["file"], self.out / article["text"]):
             report["not_converted"] = why
             return
         supplements: list[dict[str, str]] = []
         for x in report["supplements"]:
             text = f"{x['file']}.md"
-            if why := self._convert(x["file"], text):
+            if why := convert(self.out / x["file"], self.out / text):
                 x["not_converted"] = why
             else:
                 supplements.append({"name": x["name"], "file": x["file"], "text": text})
