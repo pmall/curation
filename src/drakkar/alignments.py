@@ -5,8 +5,8 @@ uv run drakkar-align mapping <accession>[:<start>-<stop>] <sequence>...
 uv run drakkar-align closest <sequence>... --taxon <ID>
     the current entries of a taxon ranked by identity with each sequence
 
-Read-only. `closest` prints the best lines per sequence, bounded by `--limit <n>` (20), as the
-lookups of `drakkar-read`.
+Read-only. `closest` prints the best lines per sequence, bounded by `--limit <n>` (20), as
+`drakkar-read`.
 """
 
 import argparse

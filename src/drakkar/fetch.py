@@ -20,8 +20,8 @@ Three steps, each a list of routes; a route answers yes or no by one test.
    file are skipped.
 Each file is converted as `drakkar-parse` does: the article to `<pmid>.md`, a supplementary file
 to `<file>.md` beside it. Last, the manifest `manifest.json` lists the files the curation can
-use, written only when the article could be converted. Prints the report: the `Full text` line
-of the publication note, then what could not be had.
+use, written only when the article could be converted. Prints the report: a line saying where the
+article comes from, or why there is none, then what could not be had.
 
 `drakkar-download` saves the file at a URL, unpacks an archive (its videos and images left
 out), converts each file, and prints one line per file: its text, or why it could not be had.
@@ -774,7 +774,7 @@ class Fetch:
         return entry
 
     def conclude(self) -> None:
-        """The `Full text` line of the publication note."""
+        """The first line of the report: where the article comes from, or why there is none."""
         report = self.report
         if report["file"] is None:
             if report["free"]:
@@ -874,7 +874,7 @@ def fetch(pmid: int, out: Path, get: Get = http_get) -> dict[str, Any]:
 
 
 def report_lines(report: dict[str, Any]) -> list[str]:
-    """The report printed: the `Full text` line, then what could not be had."""
+    """The report printed: its first line, then what could not be had."""
     lines = [report["line"]]
     if report["file"] is None:
         lines += [f"  tried {t['url']} ({t['outcome']})" for t in report["tried"]]
