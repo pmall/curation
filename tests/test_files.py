@@ -21,6 +21,7 @@ from drakkar.files import (
 from drakkar.write import Description, NewDescription, live_revisions
 
 SARS = (1, 22046132)
+SELECTED = (12, 25031347)
 
 
 def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -117,23 +118,37 @@ def test_add_command_reports_the_refused_row(dbname, tmp_path: Path):
     assert f"refused {path}:2: protein 2: NOTANACC" in result.stdout
 
 
-def test_batch_command(conn, tmp_path: Path):
-    """The merged files of a batch: two renames, an addition that relies on them (no delete
-    file), and a publication left `selected`, moved last."""
+def test_batch_command_writes_a_curation_batch(dbname, tmp_path: Path):
+    """A curation batch: a new description, and its publication left `selected`, moved last with
+    it."""
+    added = NewDescription(*SELECTED, Description("MI:0007", "P46934", "P25223", "P"), "Fig. 2B")
+    selected = "SELECTED: co-IP of P with NEDD4, a relevant table missing"
+    write_rows(tmp_path / "descriptions.tsv", ADD, [format_new_description(added)])
+    write_rows(tmp_path / "publications.tsv", PUBLICATIONS, [f"12\t25031347\tselected\t{selected}"])
+
+    dry = run("drakkar-batch", str(tmp_path))
+    assert dry.returncode == 0 and "dry run passed" in dry.stdout, dry.stdout + dry.stderr
+    done = run("drakkar-batch", str(tmp_path), "--commit")
+    assert done.returncode == 0 and "3 rows, 3 applied: committed" in done.stdout, done.stdout
+    assert "move 32/25031347 to the special run" in done.stdout
+
+
+def test_batch_command_writes_the_files_of_a_diff(conn, tmp_path: Path):
+    """The files of a diff: two renames and an addition that relies on them (no delete file),
+    read in place of the descriptions.tsv beside them, which would add it a second time."""
     note = "name2 N → orf6"
     renames = [
         replace(r, description=replace(r.description, name2="orf6"), note=note)
         for r in live_revisions(conn.cursor(), *SARS)
         if r.description is not None and r.description.name2 == "N"
     ]
-    added = NewDescription(*SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "Fig. 2B")
-    selected = "SELECTED: no full text, closed"
+    conn.rollback()
+    orf6 = NewDescription(*SARS, Description("MI:0007", "P46934", "Q6VA95", "orf6"), "Fig. 2B")
+    curated = "CURATED: co-IP of SARS-CoV orf6 with NEDD4"
     write_rows(tmp_path / "descriptions.revise.tsv", REVISE, [format_revision(r) for r in renames])
-    write_rows(tmp_path / "descriptions.add.tsv", ADD, [format_new_description(added)])
-    write_rows(tmp_path / "publications.tsv", PUBLICATIONS, [f"12\t25031347\tselected\t{selected}"])
+    write_rows(tmp_path / "descriptions.add.tsv", ADD, [format_new_description(orf6)])
+    write_rows(tmp_path / "descriptions.tsv", ADD, [format_new_description(orf6)])
+    write_rows(tmp_path / "publications.tsv", PUBLICATIONS, [f"1\t22046132\tcurated\t{curated}"])
 
-    dry = run("drakkar-batch", str(tmp_path))
-    assert dry.returncode == 0 and "dry run passed" in dry.stdout, dry.stdout + dry.stderr
     done = run("drakkar-batch", str(tmp_path), "--commit")
-    assert done.returncode == 0 and "committed" in done.stdout, done.stdout
-    assert "move 32/25031347 to the special run" in done.stdout
+    assert done.returncode == 0 and "4 rows, 4 applied: committed" in done.stdout, done.stdout

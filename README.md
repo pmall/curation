@@ -51,7 +51,7 @@ orchestrator (curate skill)
   3. curate         one curator agent per publication (curator.md)
                       reads the converted full text and the UniProt entries
                       writes its descriptions and curation notes
-  4. merge          batch files: descriptions to add, revise and delete, publications.tsv
+  4. merge          batch files: descriptions.tsv, publications.tsv
   5. dry run        drakkar-batch: the whole batch checked in one transaction, rolled back
   6. report         to the user, with the errors of the dry run       ── nothing written yet
      ── go ──
