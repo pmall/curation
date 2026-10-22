@@ -34,7 +34,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | Full texts | `drakkar-fetch`, `drakkar-download`, `drakkar-parse` | Download a full text with its supplementary files, convert them, and list them in a manifest; download and convert one file at a URL; convert a file (XML, HTML, PDF, Word, spreadsheets). |
 | Reading | `drakkar-read`, `drakkar-align`, `drakkar-genbank` | Lookups of methods, taxa, entries and sequences, and of the generic names in use; mappings aligned as the write computes them, the entries closest to a sequence; free read-only SQL; NCBI protein sequences. |
 | Diffing | `drakkar-diff` | A publication's curated descriptions against its live ones, as files to add, revise and remove. |
-| Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; a whole batch in one transaction. |
+| Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-notes`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; the publications file of a batch, from its notes; a whole batch in one transaction. |
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
 | Releases | `drakkar-taxonomy`, `drakkar-uniprot` | Load the NCBI taxonomy and a UniProt release. |
 
@@ -51,7 +51,7 @@ orchestrator (curate skill)
   3. curate         one curator agent per publication (curator.md)
                       reads the converted full text and the UniProt entries
                       writes its descriptions and curation notes
-  4. merge          batch files: descriptions.tsv, publications.tsv
+  4. merge          batch files: descriptions.jsonl (cat), publications.jsonl (drakkar-notes)
   5. dry run        drakkar-batch: the whole batch checked in one transaction, rolled back
   6. report         to the user, with the errors of the dry run       ── nothing written yet
      ── go ──

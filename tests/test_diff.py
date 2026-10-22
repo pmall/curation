@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from drakkar.diff import diff_descriptions
-from drakkar.files import ADD, REVISE, format_new_description, read_rows, revision, write_rows
+from drakkar.files import read_revisions, write_descriptions
 from drakkar.write import Description, NewDescription, live_revisions
 
 SARS = (1, 22046132)  # Q6VA95 `N` carried by EY73D2C965 and EYF737084C
@@ -132,32 +132,32 @@ def test_diff_command_writes_files_the_write_tools_take(conn, tmp_path: Path):
         Description("MI:0007", "P46934", "Q6VA95", "N"),
         "anti-tag co-IP (MI:0007), Fig. 2B",
     )
-    path = tmp_path / "descriptions.tsv"
-    write_rows(path, ADD, [format_new_description(d) for d in [*curated.values(), added]])
+    path = tmp_path / "descriptions.jsonl"
+    write_descriptions(path, [*curated.values(), added])
 
     result = run("drakkar-diff", *map(str, SARS), str(path))
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.splitlines() == [
         f"PMID 22046132, run 1: {len(curated)} same",
-        f"1 to add: {tmp_path / 'descriptions.add.tsv'}",
-        f"0 to revise: {tmp_path / 'descriptions.revise.tsv'}",
-        f"2 to delete: {tmp_path / 'descriptions.delete.tsv'}",
+        f"1 to add: {tmp_path / 'descriptions.add.jsonl'}",
+        f"0 to revise: {tmp_path / 'descriptions.revise.jsonl'}",
+        f"2 to delete: {tmp_path / 'descriptions.delete.jsonl'}",
     ]
-    deleted = [revision(*row) for row in read_rows([tmp_path / "descriptions.delete.tsv"], REVISE)]
+    deleted = [item for _, item in read_revisions([tmp_path / "descriptions.delete.jsonl"])]
     assert sorted(r.stable_id for r in deleted) == ["EY73D2C965", "EYF737084C"]
-    assert read_rows([tmp_path / "descriptions.revise.tsv"], REVISE) == []
+    assert read_revisions([tmp_path / "descriptions.revise.jsonl"]) == []
 
     # The files are those of the write tools: deleting the two `N` frees Q6VA95[1-63] for the
     # addition, which passes once they are gone.
-    removed = run("drakkar-revise", str(tmp_path / "descriptions.delete.tsv"), "--commit")
+    removed = run("drakkar-revise", str(tmp_path / "descriptions.delete.jsonl"), "--commit")
     assert removed.returncode == 0 and "committed" in removed.stdout, removed.stdout
-    add = run("drakkar-add", str(tmp_path / "descriptions.add.tsv"))
+    add = run("drakkar-add", str(tmp_path / "descriptions.add.jsonl"))
     assert add.returncode == 0 and "dry run passed" in add.stdout, add.stdout
 
 
 def test_diff_command_refuses_another_publication(dbname, tmp_path: Path):
-    path = tmp_path / "descriptions.tsv"
-    write_rows(path, ADD, [format_new_description(NEW)])
+    path = tmp_path / "descriptions.jsonl"
+    write_descriptions(path, [NEW])
     result = run("drakkar-diff", *map(str, SARS), str(path))
     assert result.returncode == 1 and "not 22046132 of run 1" in result.stderr
-    assert not (tmp_path / "descriptions.add.tsv").exists()
+    assert not (tmp_path / "descriptions.add.jsonl").exists()
