@@ -15,7 +15,7 @@ SELECTED = (12, 25031347)
 NEW = NewDescription(*SELECTED, Description("MI:0007", "P46934", "P25223", "P"))  # NEDD4
 
 
-def curated_again(conn, run_id: int, pmid: int) -> dict[str, NewDescription]:
+def live_as_curated(conn, run_id: int, pmid: int) -> dict[str, NewDescription]:
     """The live descriptions of a publication, as a curation that finds them all would give them."""
     rows = {
         r.stable_id: NewDescription(run_id, pmid, r.description, "Fig. 1")
@@ -33,22 +33,22 @@ def diff(conn, publication, items):
 
 
 def test_the_same_curation_changes_nothing(conn):
-    again = curated_again(conn, *SARS)
-    result = diff(conn, SARS, again.values())
-    assert sorted(result.same) == sorted(again)
+    curated = live_as_curated(conn, *SARS)
+    result = diff(conn, SARS, curated.values())
+    assert sorted(result.same) == sorted(curated)
     assert not result.added and not result.revised and not result.deleted
 
 
 def test_empty_coordinates_are_the_full_protein(conn):
-    again = curated_again(conn, *SARS)
-    n = again["EY73D2C965"]
+    curated = live_as_curated(conn, *SARS)
+    n = curated["EY73D2C965"]
     assert (n.description.accession2, n.description.start2, n.description.stop2) == (
         "Q6VA95",
         1,
         63,
     )
-    again["EY73D2C965"] = replace(n, description=replace(n.description, start2=None, stop2=None))
-    assert "EY73D2C965" in diff(conn, SARS, again.values()).same
+    curated["EY73D2C965"] = replace(n, description=replace(n.description, start2=None, stop2=None))
+    assert "EY73D2C965" in diff(conn, SARS, curated.values()).same
 
 
 def test_a_new_publication_gives_only_additions(conn):
@@ -63,28 +63,28 @@ def test_a_new_publication_gives_only_additions(conn):
 
 
 def test_another_name_or_other_mappings_are_a_revision(conn):
-    again = curated_again(conn, *SARS)
-    n = again["EY73D2C965"]
-    again["EY73D2C965"] = replace(
+    curated = live_as_curated(conn, *SARS)
+    n = curated["EY73D2C965"]
+    curated["EY73D2C965"] = replace(
         n,
         description=replace(
             n.description, name2="orf9b", mappings2=("MDPNQTNVVPPALHLVDPQIQLTITR",)
         ),
         note="Y2H (MI:0018), Table S1\n- Mapping: 1–26 (Fig. 3)",
     )
-    result = diff(conn, SARS, again.values())
+    result = diff(conn, SARS, curated.values())
     [revised] = result.revised
     assert (revised.stable_id, revised.version, revised.action) == ("EY73D2C965", 1, "revise")
-    assert revised.description == again["EY73D2C965"].description
+    assert revised.description == curated["EY73D2C965"].description
     assert revised.note == "Y2H (MI:0018), Table S1\n- Mapping: 1–26 (Fig. 3)"  # as curated
     assert "EY73D2C965" not in result.same and not result.added and not result.deleted
 
 
 def test_another_method_or_interactor_is_a_deletion_and_an_addition(conn):
-    again = curated_again(conn, *SARS)
-    n = again.pop("EY73D2C965")
+    curated = live_as_curated(conn, *SARS)
+    n = curated.pop("EY73D2C965")
     other = replace(n, description=replace(n.description, method="MI:0007"))
-    result = diff(conn, SARS, [*again.values(), other])
+    result = diff(conn, SARS, [*curated.values(), other])
     assert result.added == [other]
     [deleted] = result.deleted
     assert (deleted.stable_id, deleted.action, deleted.description) == (
@@ -92,11 +92,11 @@ def test_another_method_or_interactor_is_a_deletion_and_an_addition(conn):
         "remove",
         None,
     )
-    assert deleted.note == "REMOVED: not found by the re-curation"
+    assert deleted.note == "REMOVED: not found by the curation"
 
 
 def test_an_empty_curation_deletes_every_live_description(conn):
-    live = curated_again(conn, *SARS)
+    live = live_as_curated(conn, *SARS)
     result = diff(conn, SARS, [])
     assert sorted(r.stable_id for r in result.deleted) == sorted(live)
     assert not result.same and not result.added and not result.revised
@@ -125,20 +125,20 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_diff_command_writes_files_the_write_tools_take(conn, tmp_path: Path):
-    again = curated_again(conn, *SARS)
-    del again["EY73D2C965"], again["EYF737084C"]  # the two `N`: deleted
+    curated = live_as_curated(conn, *SARS)
+    del curated["EY73D2C965"], curated["EYF737084C"]  # the two `N`: deleted
     added = NewDescription(
         *SARS,
         Description("MI:0007", "P46934", "Q6VA95", "N"),
         "anti-tag co-IP (MI:0007), Fig. 2B",
     )
     path = tmp_path / "descriptions.tsv"
-    write_rows(path, ADD, [format_new_description(d) for d in [*again.values(), added]])
+    write_rows(path, ADD, [format_new_description(d) for d in [*curated.values(), added]])
 
     result = run("drakkar-diff", *map(str, SARS), str(path))
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.splitlines() == [
-        f"PMID 22046132, run 1: {len(again)} same",
+        f"PMID 22046132, run 1: {len(curated)} same",
         f"1 to add: {tmp_path / 'descriptions.add.tsv'}",
         f"0 to revise: {tmp_path / 'descriptions.revise.tsv'}",
         f"2 to delete: {tmp_path / 'descriptions.delete.tsv'}",

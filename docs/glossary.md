@@ -14,9 +14,8 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | State | The curation state of an association: `pending` (not pre-curated), `selected` (kept at pre-curation, curation in progress), `discarded` (rejected at pre-curation), `curated` (all its relevant files explored and all its descriptions extracted; with or without descriptions). |
 | Pre-curation | The decision `selected` or `discarded`, from the title and abstract. |
 | Curation pass | Reading the relevant files of a selected publication (its full text and supplementary files) and recording its descriptions. Ends with the state `curated` when Claude could explore all of them and extracted all the descriptions; with a relevant file missing, `selected` with a date (`database.md` §1, states). Claude's last pass is dated by `associations.ai_pass_at`. |
-| Re-curation | A curation of a curated publication: curated from its full text, whatever Drakkar holds for it; `drakkar-diff` turns the result into additions, revisions and removals. |
 | Manual pass | The curation of a publication Claude could not curate fully (`selected` with a pass date), in a special run: by hand, or by Claude from a curator file, an Excel file describing its interactions. |
-| Batch | An orchestrated curation of at most 20 publications, new or already curated, by the `curate` skill: one subagent each, merged into one set of files and committed together after the user's go. Never "run". |
+| Batch | An orchestrated curation of at most 20 publications, by the `curate` skill: one subagent each, merged into one set of files and committed together after the user's go. Never "run". |
 | Note | The free text of an association (`associations.annotation`), the publication note: decisions about the publication (`notes.md`). It never holds maintenance information. |
 
 ## Proteins
@@ -72,5 +71,5 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Fix | The correction of an error found in the data, outside the regular process: a revision decided with the user (`database.md` §2). A malformed mapping is corrected in place, without a revision. |
 | Upgrade job | Loading a new UniProt release and moving the obsolete interactors to current snapshots. |
 | Versioning pass | The part of the upgrade job that moves the obsolete interactors of live descriptions to current snapshots, protein by protein. |
-| Put aside | An obsolete interactor left on its old snapshot by a versioning pass because it needs a curation decision, with its reason: waiting for re-curation. |
+| Put aside | An obsolete interactor left on its old snapshot by a versioning pass because it needs a curation decision, with its reason. |
 | Derived dataset | A dataset exported from Drakkar for other applications, built from live descriptions only (`derived-datasets.md`). |

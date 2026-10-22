@@ -5,7 +5,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 ## Where things are
 
 - `docs/`, the source of truth, read before acting: `glossary.md` (one meaning per term, used everywhere), `curation-rules.md` (the biological rules: what a right description is, and the evidence for it), `notes.md` (the publication and description notes), `database.md` (structure, states, versioning, invariants, writes), `tools.md` (the files and the tools that write and read the database, the dry run, the tools that fetch and convert full texts, the release tools), `derived-datasets.md` (what is exported, and what it means for curation).
-- `prompts/`: what the agents run. `prompts/skills/` (linked from `.claude/skills/` and `.agents/skills/`): `curate`, a batch of publications curated, new or already curated. `prompts/agents/` (linked from `.claude/agents/` and `.agents/agents/`): `curator.md`, the subagent that curates one publication.
+- `prompts/`: what the agents run. `prompts/skills/` (linked from `.claude/skills/` and `.agents/skills/`): `curate`, a batch of publications curated. `prompts/agents/` (linked from `.claude/agents/` and `.agents/agents/`): `curator.md`, the subagent that curates one publication.
 - `src/drakkar/`: the tools (`tools.md`). `tests/`: their tests.
 - `docs/history/`: the record of the move from manual curation to Claude's curation, with its dates, counts and measurements, one file each. Closed: nothing is added to it. The reference docs never point to it.
 - `data/`, reports and scratch files are disposable: docs never point to them, what a reader needs is written in the doc itself.
@@ -30,7 +30,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 
 ## Database writes
 
-- Every job that writes (curation and re-curation batches, versioning passes, a fix) writes nothing to the database before the user's go on its report. The user supervises every commit: the report shows what the commit would write, the user judges it, and the commit writes what the user approved. So no skill or tool holds back part of a job on its own: the report shows it, the user decides. A dry run writes nothing and needs no go.
+- Every job that writes (curation batches, versioning passes, a fix) writes nothing to the database before the user's go on its report. The user supervises every commit: the report shows what the commit would write, the user judges it, and the commit writes what the user approved. So no skill or tool holds back part of a job on its own: the report shows it, the user decides. A dry run writes nothing and needs no go.
 - The report leaves no open question to the user. After the go, the orchestrator commits in its own context, without asking again.
 - Subagents decide and write files, never to the database. A skill writes only where its prompt says; placing and aggregating its output is the orchestrator's job.
 - Writes go through the tools of `tools.md`; plain SQL only when the user allows it for that write.
