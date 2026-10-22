@@ -49,9 +49,11 @@ DESCRIPTION = [
 ADD = ["run_id", "pmid", *DESCRIPTION, "note"]
 REVISE = ["stable_id", "version", "run_id", "pmid", "action", "into", *DESCRIPTION, "note"]
 PUBLICATIONS = ["run_id", "pmid", "state", "note"]
-# The merged files of a curation batch (`skills/curate`); a descriptions file may be missing.
+# The files of a batch: those of a curation batch (`skills/curate`) and those of `drakkar-diff`;
+# a descriptions file may be missing. Of the additions, only the first present is read: the
+# descriptions.add.tsv of a diff is written beside the descriptions.tsv it comes from.
 BATCH_REVISIONS = ["descriptions.revise.tsv", "descriptions.delete.tsv"]
-BATCH_ADDITIONS = ["descriptions.add.tsv"]
+BATCH_ADDITIONS = ["descriptions.add.tsv", "descriptions.tsv"]
 BATCH_PUBLICATIONS = "publications.tsv"
 
 
@@ -295,7 +297,7 @@ def batch_main() -> None:
 
     try:
         revision_rows = read_rows(present(BATCH_REVISIONS), REVISE)
-        addition_rows = read_rows(present(BATCH_ADDITIONS), ADD)
+        addition_rows = read_rows(present(BATCH_ADDITIONS)[:1], ADD)
         publication_rows = read_rows([directory / BATCH_PUBLICATIONS], PUBLICATIONS)
         with connect() as conn:
             moves, outcome = write_batch(

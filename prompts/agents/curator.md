@@ -1,6 +1,6 @@
 ---
 name: curator
-description: Curates one publication of a curation batch from its full text into its descriptions, its publication note and its diff files. Run by the curate skill, one per publication.
+description: Curates one publication of a curation batch from its full text into its descriptions and its publication note. Run by the curate skill, one per publication.
 tools: Bash, Read, Write, Edit
 omitClaudeMd: true
 ---
@@ -76,8 +76,6 @@ The description note: `<method name> (<PSI-MI ID>), <where the publication shows
 - `- Not read: <file> (<where cited>) — <why>`, one per supplementary file not read: `not relevant, <what it holds>`, or `relevant, <why it could not be read>` (`relevant, no URL given`), which makes the publication `selected`;
 - `- Not kept: <pair or claim> (<where>) — <reason>`, one per pair shown that is not a description (`only cited from ref. 12`, `mutant only`, `colocalization only`);
 - `- Remark: <what a next pass needs that no other line holds>`.
-
-Last, run `uv run drakkar-diff <run_id> <pmid> <dir>/descriptions.tsv`: it writes `descriptions.add.tsv`, `descriptions.revise.tsv` and `descriptions.delete.tsv`. What it finds is not yours to act on.
 
 Write each file under a temporary name and rename it once complete: a file that exists is whole. You never write to the database.
 
