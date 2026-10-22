@@ -33,7 +33,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | -- | -- | -- |
 | Full texts | `drakkar-fetch`, `drakkar-download`, `drakkar-parse` | Download a full text with its supplementary files, convert them, and list them in a manifest; download and convert one file at a URL; convert a file (XML, HTML, PDF, Word, spreadsheets). |
 | Reading | `drakkar-read`, `drakkar-align`, `drakkar-genbank` | Lookups of methods, taxa, entries and sequences, and of the generic names in use; mappings aligned as the write computes them, the entries closest to a sequence; free read-only SQL; NCBI protein sequences. |
-| Re-curation | `drakkar-diff` | A re-curated publication's descriptions against its live ones, as files to add, revise and remove. |
+| Diffing | `drakkar-diff` | A publication's curated descriptions against its live ones, as files to add, revise and remove. |
 | Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; a whole batch in one transaction. |
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
 | Releases | `drakkar-taxonomy`, `drakkar-uniprot` | Load the NCBI taxonomy and a UniProt release. |
@@ -65,8 +65,6 @@ orchestrator (curate skill)
 - **A dry run before the report.** `drakkar-batch` applies the merged files in one transaction, checks every invariant on the result and rolls back. Its refused rows and errors, inconsistencies between publications among them, go to the report as they are, not fixed.
 - **The report leaves no open question**: what each file holds, the publications without a full text or not curated, with why.
 - **The go.** After it, the orchestrator commits the batch files, the last write moving the publications the agent could not curate fully (a relevant file missing: the full text or a supplementary file) to the open special run, so the run they came from can be complete. Their manual pass happens there.
-
-**Re-curation.** A publication already curated goes through the same batch. The subagent curates it again from its full text, without looking at its current curation, then `drakkar-diff` compares the result with its live descriptions: the descriptions to add, to revise and to remove. They are committed as a new publication's are, by the agent after the user's go.
 
 Batches are independent: each takes its own publications, works in its own directory and writes only them. Many could run in parallel, given distinct publications; the default pick, the next publications of the oldest run, serves one batch at a time.
 

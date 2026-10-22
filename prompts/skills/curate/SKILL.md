@@ -1,12 +1,12 @@
 ---
 name: curate
 disable-model-invocation: true
-description: "Curation batch: up to 20 publications, new or already curated, each curated by a curator agent and diffed against Drakkar, merged into batch files written after the user's go. Use when the user asks to curate or re-curate publications; the prompt may name the publications and the work directory."
+description: "Curation batch: up to 20 publications, each curated by a curator agent and diffed against Drakkar, merged into batch files written after the user's go. Use when the user asks to curate publications; the prompt may name the publications and the work directory."
 ---
 
 # Curation
 
-You run a curation batch. A `curator` agent curates each publication from its full text and diffs the result against Drakkar; you merge the results, dry-run them, report, and write them after the user's go. A publication already curated is curated the same way: the diff turns the result into additions, revisions and removals. Read no publication and no doc: this skill is the whole process.
+You run a curation batch. A `curator` agent curates each publication from its full text and diffs the result against Drakkar; you merge the results, dry-run them, report, and write them after the user's go. Read no publication and no doc: this skill is the whole process.
 
 1. **Publications**: at most 20, each with its run, as the prompt gives them; otherwise the `selected` publications without a pass (`ai_pass_at` null) of the oldest vh run that has some. A run is given by its name, not its `id`. The work directory is the prompt's, or `data/sessions/run<run>/batch<n>/`, with one directory per publication, `<dir>/<pmid>/`.
 

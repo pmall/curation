@@ -84,7 +84,7 @@ def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDes
         assert live.description is not None
         item = by_key.pop(_key(cur, live.description), None)
         if item is None:
-            note = "REMOVED: not found by the re-curation"
+            note = "REMOVED: not found by the curation"
             diff.deleted.append(replace(live, action="remove", description=None, note=note))
         elif _changed(live.description, item.description):
             diff.revised.append(replace(live, description=item.description, note=item.note))

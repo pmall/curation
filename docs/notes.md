@@ -21,13 +21,13 @@ Detail lines, in this order:
 
 ## Description note
 
-`descriptions.annotation`, one note per version. A version made by a curation holds the curation's note: the method and where the publication shows it (`anti-tag co-IP (MI:0007), Fig. 2B and 5C`), with the assay as published when the term is only the closest one, then `- ` detail lines; whether it is a first curation or a re-curation, its version and `created_at` say. A version made otherwise, and what was decided on a version later without a new version (an interactor not moved, an in-place correction, a removal), are each a line `ACTION: summary` followed by `- ` detail lines. The history of a description is its notes read version by version.
+`descriptions.annotation`, one note per version. A version made by a curation holds the curation's note: the method and where the publication shows it (`anti-tag co-IP (MI:0007), Fig. 2B and 5C`), with the assay as published when the term is only the closest one, then `- ` detail lines. A version made otherwise, and what was decided on a version later without a new version (an interactor not moved, an in-place correction, a removal), are each a line `ACTION: summary` followed by `- ` detail lines. The history of a description is its notes read version by version.
 
 | Action | Why | Example summary |
 | -- | -- | -- |
 | `UPDATED` | A UniProt release: an interactor moved to its new snapshot (a new version), or kept on its old one, or an isoform renamed (in place) | `UniProt 2026_03, Q77YF9 → P12520 (deleted; NL4-3 Vpr), 1–78 → 1–96`, `UniProt 2026_03, side 2 B0FAN5 not moved: deleted, patient isolate, no strain in the publication` |
 | `FIXED` | An error found in Drakkar | `name1 AES → TLE5, gene name of the snapshot` |
-| `REMOVED` | The end of a description, in place on its last version, with its reason; by a re-curation, its reason is in the publication note's `Not kept` line | `HLA protein`, `not found by the re-curation` |
+| `REMOVED` | The end of a description, in place on its last version, with its reason | `HLA protein`, `not found by the curation` |
 
 The detail lines of a curation's note are written for each value that is not obvious, and only for those. Obvious are an accession the publication gives, a human protein by its gene name, a viral protein of the publication's strain by its name, a chain of the entry, and a mapping the publication writes or the subsequence of the interactor at coordinates the publication gives. A viral entry without an `Entry` line has the sequence the publication used. Each line names the tier of the value by its label (`curation-rules.md` §4), its evidence, and every source outside Drakkar by its identifier (`GenBank BAB32872.1`, `UniSave P26662 v45`, `Addgene 12345`):
 
