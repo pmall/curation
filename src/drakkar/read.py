@@ -35,7 +35,8 @@ from drakkar.db import connect
 LIMIT = 20  # lines per input by default
 CELL = 200  # characters shown of an `sql` cell
 # The features `entry` prints, by their UniProt type: the parts of the protein a mature
-# protein's coordinates can come from (`curation-rules.md` §4, tier `annotation`).
+# protein's coordinates can come from (`curation-rules.md` §4, tier `annotation`), and the
+# regions of interest.
 FEATURES = {
     "chain": "chain",
     "peptide": "peptide",
@@ -438,8 +439,7 @@ def seq(cur: Any, locations: list[str]) -> str:
 def names(cur: Any, taxa: list[int], page: Page = DEFAULT) -> str:
     """The generic names of the viral interactors of live descriptions under each taxon: the most
     used first, each with its live descriptions and its three most used interactors, on any
-    snapshot (an obsolete one marked: its generic name stays reusable, its entry does not,
-    `curation-rules.md` §3)."""
+    snapshot (an obsolete one marked: its generic name stays reusable, its entry does not)."""
     lines = ["#taxon\tgeneric_name\tlive_descriptions\tinteractors (live descriptions)"]
     for taxon in taxa:
         cur.execute(

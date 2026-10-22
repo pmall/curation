@@ -174,7 +174,7 @@ def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
         snapshot = snapshot_of(cur, accession)
     except (ValueError, InvalidRow) as e:
         sys.exit(f"{interactor}: {e}")
-    length = len(snapshot.sequences[accession])
+    length = snapshot.length
     start, stop = start or 1, stop or length
     if not 1 <= start <= stop <= length:
         sys.exit(f"{interactor}: {start}-{stop} is outside 1-{length}")

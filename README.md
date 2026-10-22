@@ -5,7 +5,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 What a right description is, what the database holds and how it is versioned are not explained here:
 
 - [`docs/glossary.md`](docs/glossary.md): the terms, one meaning each, used everywhere;
-- [`docs/curation-rules.md`](docs/curation-rules.md): the biological rules, the acceptance criteria, how each value of a description is identified, the mappings;
+- [`docs/curation-rules.md`](docs/curation-rules.md): the biological rules, the acceptance criteria, how each value of a description is identified, the mappings, explained (the curator's prompt holds them, condensed);
 - [`docs/notes.md`](docs/notes.md): the publication and description notes;
 - [`docs/database.md`](docs/database.md): the tables, the states of a publication, versioning, UniProt releases, invariants;
 - [`docs/derived-datasets.md`](docs/derived-datasets.md): what is exported from Drakkar;
@@ -23,7 +23,7 @@ Three layers make the harness:
 | Tools | [`src/drakkar/`](src/drakkar/), [`tests/`](tests/) | Python commands that fetch, convert, read, diff, check and write; the only way to write to Drakkar. |
 | Processes | [`prompts/`](prompts/) | The `curate` skill, the orchestration of a batch ([`SKILL.md`](prompts/skills/curate/SKILL.md)) and the `curator` agent, which curates each publication ([`curator.md`](prompts/agents/curator.md)). |
 
-The rules are written once, in `docs/`. A skill or an agent holds a whole process, start to end, self-contained: it reads no doc but the biological rules, so its context goes to the publication.
+The rules are written once, in `docs/`, but the curation rules: the curator's prompt holds them, `docs/curation-rules.md` explains them. A skill or an agent holds a whole process, start to end, self-contained: it reads no doc, so its context goes to the publication.
 
 ## The tools
 
@@ -38,7 +38,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
 | Releases | `drakkar-taxonomy`, `drakkar-uniprot` | Load the NCBI taxonomy and a UniProt release. |
 
-Every write follows the same path ([`docs/database.md` §2](docs/database.md#2-descriptions-and-versioning)). Each row is checked on what it builds on (the publication, the snapshots, the method, the coordinates, the mappings, the note), then every invariant is checked on the whole database inside the same transaction. Without `--commit` the transaction is rolled back: a dry run is the same code as a commit, writes nothing and needs no go. With `--commit`, it commits only when no row is refused and no error is found. What is derived (human names, full-length coordinates, mapping occurrences) is computed by the tools, never given by the agent.
+Every write follows the same path ([`docs/database.md` §2](docs/database.md#2-descriptions-and-versioning)). Each row is checked on what it builds on (the publication, the snapshots, the method, the coordinates, the mappings), never on its note, then every invariant is checked on the whole database inside the same transaction. Without `--commit` the transaction is rolled back: a dry run is the same code as a commit, writes nothing and needs no go. With `--commit`, it commits only when no row is refused and no error is found. What is derived (human names, full-length coordinates, mapping occurrences) is computed by the tools, never given by the agent.
 
 ## A batch
 
