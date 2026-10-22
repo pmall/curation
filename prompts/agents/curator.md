@@ -51,14 +51,20 @@ The commands read the current UniProt snapshots. Each takes many inputs: ask eve
 
 ## Writing
 
-`descriptions.tsv`, one row per description, tab-separated, under the header `uv run drakkar-add --header` prints; only the header when there is none:
+`descriptions.jsonl`, one JSON object per line, one line per description, with all these keys; an empty file when there is none:
 
-- `run_id`, `pmid`; `method`, the PSI-MI ID;
+- `run_id`, `pmid`, numbers; `method`, the PSI-MI ID;
 - `accession1`, the human interactor;
-- `accession2`, `start2`, `stop2`, the viral interactor (`start2` and `stop2` empty for a whole protein), and `name2`, its generic name;
-- `mappings1`, `mappings2`: each side's mapping sequences, separated by `,`, extra end residues in lowercase (`mSTNPK`: `nter` M);
-- `below_threshold`: the mapping sequences kept below 90 % identity;
-- `note`: the description note, `\n` for its line breaks.
+- `accession2`, `start2`, `stop2`, the viral interactor (`start2` and `stop2` null for a whole protein), and `name2`, its generic name;
+- `mappings1`, `mappings2`: each side's mapping sequences, a list, extra end residues in lowercase (`mSTNPK`: `nter` M);
+- `below_threshold`: the list of the mapping sequences kept below 90 % identity;
+- `note`: the description note.
+
+```json
+{"run_id": 61, "pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
+```
+
+In a value, a line break is written `\n`, a `"` `\"` and a `\` `\\`; nothing else is escaped.
 
 The notes are the memory of your curation: the next pass and the report know only what they say. Short lines, these labels.
 
@@ -77,6 +83,6 @@ The description note: `<method name> (<PSI-MI ID>), <where the publication shows
 - `- Not kept: <pair or claim> (<where>) — <reason>`, one per pair shown that is not a description (`only cited from ref. 12`, `mutant only`, `colocalization only`);
 - `- Remark: <what a next pass needs that no other line holds>`.
 
-Write each file under a temporary name and rename it once complete: a file that exists is whole. You never write to the database.
+Write each file under a temporary name with a quoted heredoc, which writes the text exactly as typed (`cat > <dir>/descriptions.tmp <<'EOF'`, the lines, then `EOF`), and rename it once complete: a file that exists is whole. You never write to the database.
 
 Reply in a few lines: the descriptions, with the values you took at the `best-effort` tier; each supplementary file you downloaded or could not get; each error of a Drakkar tool (a crash, a timeout, a result that contradicts the database), with the command and its output. Only errors: no missing command, no wish, no outside source that could not be read.

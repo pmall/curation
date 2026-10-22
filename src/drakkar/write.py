@@ -12,7 +12,7 @@ Each writes its lists in one transaction:
    it is rolled back: a dry run is the same code as a commit.
 
 Rows are checked only for what they build on: the publication, the snapshots, the method, the
-coordinates, the mappings, the note. What involves other descriptions (duplicates, generic
+coordinates, the mappings; never the note. What involves other descriptions (duplicates, generic
 names) is left to the full check, on the result of the whole list: a rename carried by several
 descriptions passes through inconsistent states and is valid at the end.
 
@@ -457,8 +457,6 @@ def _revise(cur: Any, revision: Revision) -> str:
     note = revision.note.strip()
 
     if revision.action == "remove":
-        if not note:
-            raise InvalidRow("the note must hold the REMOVED decision")
         if revision.into:
             # The removed description, as it is or as it was decided to be, is its survivor.
             if item is None:
@@ -475,7 +473,8 @@ def _revise(cur: Any, revision: Revision) -> str:
         # The live version is deleted, its note gets the REMOVED line.
         cur.execute(
             "UPDATE descriptions SET deleted_at = now(), "
-            "annotation = concat_ws(E'\\n', nullif(annotation, ''), %s::text) WHERE id = %s",
+            "annotation = concat_ws(E'\\n', nullif(annotation, ''), nullif(%s::text, '')) "
+            "WHERE id = %s",
             (note, live_id),
         )
         return revision.stable_id
@@ -578,28 +577,22 @@ def _publication(cur: Any, update: PublicationUpdate) -> str:
     cur.execute(
         f"UPDATE associations SET state = %s, annotation = {NEW_NOTE}, ai_pass_at = now(), "
         "updated_at = now() WHERE id = %s",
-        (update.state, _dated(cur, update), association.id),
+        (update.state, _dated(cur, update.note), association.id),
     )
     return f"{update.run_id}/{update.pmid}"
 
 
-def _dated(cur: Any, update: PublicationUpdate) -> str:
-    """The note of a pass, its header `STATE: summary` naming the state the pass sets, dated by
-    the write: `CURATED 2026-10-06: summary`."""
-    label = f"{update.state.upper()}: "
-    head, _, rest = update.note.strip().partition("\n")
-    if not head.startswith(label):
-        raise InvalidRow(f"the note must start with its state, {label.strip()}")
+def _dated(cur: Any, note: str) -> str:
+    """A publication note as written, after the date of the write: `[2026-10-22] CURATED: …`."""
     cur.execute("SELECT current_date::text")
-    head = f"{update.state.upper()} {cur.fetchone()[0]}: {head.removeprefix(label)}"
-    return f"{head}\n{rest}" if rest else head
+    return f"[{cur.fetchone()[0]}] {note.strip()}"
 
 
 def update_publications(
     conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
 ) -> Outcome:
     """Set the state of publications of vh runs at the end of a pass (`ai_pass_at`), the note of
-    the pass, its header dated, first in their notes."""
+    the pass, after its date, first in their notes."""
     return _write(conn, commit, lambda cur: _apply_rows(cur, updates, _publication))
 
 
@@ -643,8 +636,7 @@ def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
     )
     if cur.fetchone() is not None:
         raise InvalidRow(f"publication {move.pmid} is already in run {target}")
-    cur.execute("SELECT current_date::text")
-    note = f"Moved {cur.fetchone()[0]}: from run {move.run}"
+    note = _dated(cur, f"Moved from run {move.run}")
     cur.execute(
         f"UPDATE associations SET run_id = %s, annotation = {NEW_NOTE}, updated_at = now() "
         "WHERE id = %s",

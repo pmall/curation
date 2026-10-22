@@ -4,7 +4,7 @@ The notes are Claude's memory of its curation: from them alone, Claude can tell 
 
 ## Publication note
 
-`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, a header line `STATE: summary`, which the write dates (`CURATED 2026-10-06: …`), and its detail lines; a move to a special run writes the note `Moved YYYY-MM-DD: from run <name>`.
+`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, a header line `STATE: summary` and its detail lines, which the write puts after the date (`[2026-10-06] CURATED: …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
 
 | State | Summary |
 | -- | -- |
@@ -39,16 +39,16 @@ The detail lines of a curation's note are written for each value that is not obv
 ## Examples
 
 ```
-CURATED 2026-10-06: co-IP and pull-down of HCV NS5A with human kinases
+[2026-10-06] CURATED: co-IP and pull-down of HCV NS5A with human kinases
 - Strain: genotype 1b, Con1 (Methods, "Plasmids")
 - Not read: Video S1 (Fig. 5) — not relevant, live imaging
 - Not kept: NS5A × TRIM25 (Discussion) — only cited from ref. 12
 ```
 
 ```
-Moved 2026-10-21: from run 88
+[2026-10-21] Moved from run 88
 ---
-SELECTED 2026-10-20: Y2H screen of ZIKV proteins against a human library
+[2026-10-20] SELECTED: Y2H screen of ZIKV proteins against a human library
 - Not read: Table S2 (Results, "Screen") — relevant, no URL given
 ---
 Y2H, see table S2

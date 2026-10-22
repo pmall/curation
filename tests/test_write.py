@@ -187,9 +187,16 @@ def test_merge_of_different_descriptions_is_refused(conn):
     assert "not duplicates" in revise_descriptions(conn, [merge]).problems[0][1]
 
 
-def test_removal_needs_its_note(conn):
+def test_removal_needs_no_note(conn):
+    """The live version is deleted, its note left as it was."""
+    query = "SELECT annotation, deleted_at IS NOT NULL FROM descriptions WHERE stable_id = %s"
+    before = conn.execute(f"{query} AND deleted_at IS NULL", ("EYC9AE3284",)).fetchone()[0]
+    conn.rollback()
     removed = replace(live(conn, *RABIES)["EYC9AE3284"], action="remove", description=None)
-    assert "REMOVED" in revise_descriptions(conn, [removed]).problems[0][1]
+    assert removed.note == "" and revise_descriptions(conn, [removed], commit=True).committed
+    after = conn.execute(f"{query} ORDER BY version DESC LIMIT 1", ("EYC9AE3284",)).fetchone()
+    conn.rollback()
+    assert after == (before, True)
 
 
 # --- Publications -------------------------------------------------------------------------------
@@ -207,24 +214,22 @@ def test_publication_curated(conn):
 
 
 def test_publication_note_goes_first(conn):
-    """SELECTED has no note yet; then each note goes first, the previous ones after `---`, its
-    header dated by the write."""
+    """SELECTED has no note yet; then each note goes first, the previous ones after `---`, after
+    the date of the write."""
     first = PublicationUpdate(*SELECTED, "selected", "SELECTED: no full text, closed")
     assert update_publications(conn, [first], commit=True).committed
-    dated = f"SELECTED {today(conn)}: no full text, closed"
+    dated = f"[{today(conn)}] SELECTED: no full text, closed"
     assert note_of(conn, SELECTED[1]) == dated
     note = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
     assert update_publications(conn, [replace(first, state="curated", note=note)], commit=True).ok
-    assert note_of(conn, SELECTED[1]) == (
-        f"CURATED {today(conn)}: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
-        f"\n---\n{dated}"
-    )
+    assert note_of(conn, SELECTED[1]) == f"[{today(conn)}] {note}\n---\n{dated}"
 
 
-def test_publication_note_starts_with_its_state(conn):
-    for note in ("SELECTED: a relevant file missing", "co-IP of NS1 with TRIM25"):
-        outcome = update_publications(conn, [PublicationUpdate(*SELECTED, "curated", note)])
-        assert "the note must start with its state, CURATED:" in outcome.problems[0][1]
+def test_publication_note_is_taken_as_written(conn):
+    """The state is the update's; the note, whatever its first line, is stored after the date."""
+    update = PublicationUpdate(*SELECTED, "curated", "co-IP of NS1 with TRIM25")
+    assert update_publications(conn, [update], commit=True).committed
+    assert note_of(conn, SELECTED[1]) == f"[{today(conn)}] co-IP of NS1 with TRIM25"
 
 
 def today(conn) -> str:
@@ -266,13 +271,13 @@ def test_move_takes_the_descriptions(conn, new):
     assert write_batch(conn, [], [], [left_selected()], commit=True)[1].committed
     run_id, name, moved = run_of(conn, SELECTED[1])
     day = today(conn)
-    selected = NOT_ACCESSIBLE.replace("SELECTED:", f"SELECTED {day}:")
-    assert name == "special-1" and moved == f"Moved {day}: from run 32\n---\n{selected}"
+    selected = f"[{day}] {NOT_ACCESSIBLE}"
+    assert name == "special-1" and moved == f"[{day}] Moved from run 32\n---\n{selected}"
     assert stable_id in live(conn, run_id, SELECTED[1])
     curated = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
     update = PublicationUpdate(run_id, SELECTED[1], "curated", curated)
     assert update_publications(conn, [update], commit=True).committed
-    dated = curated.replace("CURATED:", f"CURATED {day}:")
+    dated = f"[{day}] {curated}"
     assert note_of(conn, SELECTED[1]) == f"{dated}\n---\n{moved}"
 
 
@@ -347,7 +352,7 @@ def test_batch_writes_everything_in_one_transaction(conn):
     names = {r.description.name2 for r in live(conn, *SARS).values() if r.description}
     assert "orf6" in names and "N" not in names
     _, name, note = run_of(conn, SELECTED[1])
-    assert name == "special-1" and note.startswith(f"Moved {today(conn)}: from run 32\n---\n")
+    assert name == "special-1" and note.startswith(f"[{today(conn)}] Moved from run 32\n---\n")
 
 
 def test_batch_numbers_rows_across_its_lists(conn):

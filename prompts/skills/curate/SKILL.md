@@ -13,11 +13,11 @@ You run a curation batch. A `curator` agent curates each publication from its fu
 2. **Full texts**: a publication directory with its `manifest.json` is ready (files the user provided). Fetch the others: `mkdir -p <dir>/<pmid> && uv run drakkar-fetch <pmid> <dir>/<pmid> > <dir>/<pmid>/fetch.txt`. The report's first line says where the article comes from, or why there is none; the manifest is written only when the article could be had and converted. Read the reports, never the full texts.
 
    - `Full text: not downloaded` (free, but no copy could be downloaded): fetch once more, as the failure may pass. Still none: leave the publication out of the batch; a later batch fetches it again.
-   - `Full text: closed`, or the article not converted: no curator; its note is `SELECTED: no full text, <why, from the report>`.
+   - `Full text: closed`, or the article not converted: no curator; write its note, `SELECTED: no full text, <why, from the report>`, in `<dir>/<pmid>/curation.txt`.
 
-3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, on the default model, sent only `dir: <dir>/<pmid>`, `run_id: <run id>`, `pmid: <pmid>`. Its prompt is `prompts/agents/curator.md`: in Claude Code, the agent type `curator`; elsewhere, that file below its frontmatter, then the message, sent to a subagent with the shell and the file tools. It writes `descriptions.tsv` and `curation.txt`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
+3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, on the default model, sent only `dir: <dir>/<pmid>`, `run_id: <run id>`, `pmid: <pmid>`. Its prompt is `prompts/agents/curator.md`: in Claude Code, the agent type `curator`; elsewhere, that file below its frontmatter, then the message, sent to a subagent with the shell and the file tools. It writes `descriptions.jsonl` and `curation.txt`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
 
-4. **Merge**: `cat <dir>/*/descriptions.tsv > <dir>/descriptions.tsv` (the header lines start with `#` and are skipped). Then `<dir>/publications.tsv`, under the header `uv run drakkar-publications --header` prints: one row per publication, its state the header of its note (`curated` or `selected`), its note `curation.txt` as it is, or the note of step 2, `\n` for its line breaks. The write dates the note.
+4. **Merge**: `cat <dir>/*/descriptions.jsonl > <dir>/descriptions.jsonl`, then `uv run drakkar-notes <run_id> <dir>`, which writes `<dir>/publications.jsonl` from the notes, each `<dir>/<pmid>/curation.txt`, the state from its header. The write dates the note.
 
 5. **Dry run**: `uv run drakkar-batch <dir>` applies and checks everything in one transaction, then rolls it back. Report its refused rows and errors as they are, without fixing them.
 
