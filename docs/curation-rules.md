@@ -1,6 +1,6 @@
 # Curation rules
 
-The biological rules of curation: what is curated, and how each value of a description is identified. The method is the one published in the PNAS 2024 SI appendix (doi:10.1073/pnas.2308776121, supporting text pp. 3–10).
+The biological rules of curation, explained: what is curated, and how each value of a description is identified. The curator applies them as its prompt states them (`prompts/agents/curator.md`), their source of truth: a rule changes there and here. The method is the one published in the PNAS 2024 SI appendix (doi:10.1073/pnas.2308776121, supporting text pp. 3–10).
 
 ## 1. Principles
 
@@ -72,7 +72,7 @@ Each value is identified by the first tier that gives it, in the three lists bel
 ### The coordinates of a mature protein (viral interactors only)
 
 1. `publication`: the boundaries the publication gives, only when the entry has the sequence the publication used (same strain or clone; a shift in numbering is corrected).
-2. `annotation`: when the entry has a chain or a region feature for the mature protein, that feature.
+2. `annotation`: when the entry has a chain, peptide or propeptide feature for the mature protein, that feature.
 3. `drakkar`: when Drakkar already records a span for that entry and that generic name, that span.
 4. `GenBank`: when the entry's GenBank or RefSeq record has a mature peptide feature for it, that feature.
 5. `best-effort`: in any other case, any way possible, for instance the chain of another strain's entry, carried over by alignment.

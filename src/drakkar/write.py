@@ -667,11 +667,6 @@ def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> list[Move]:
     )
 
 
-def _apply_moves(cur: Any, moves: Sequence[Move], new_run: bool, first: int) -> Applied:
-    target_id, target = _special_run(cur, new_run)
-    return _apply_rows(cur, moves, lambda c, move: _move(c, move, target_id, target), first)
-
-
 # --- A curation batch ---------------------------------------------------------------------------
 
 
@@ -704,8 +699,11 @@ def write_batch(
         # A publication not in its run is already refused by its update.
         moves.extend(_movable(cur, [(u.run_id, u.pmid) for u in updates]))
         if moves:
+            target_id, target = _special_run(cur, new_run)
             first = len(revisions) + len(additions) + len(updates) + 1
-            stages.append(_apply_moves(cur, moves, new_run, first))
+            stages.append(
+                _apply_rows(cur, moves, lambda c, move: _move(c, move, target_id, target), first)
+            )
         return [w for s in stages for w in s[0]], [p for s in stages for p in s[1]]
 
     return moves, _write(conn, commit, apply)

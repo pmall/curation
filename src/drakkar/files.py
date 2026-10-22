@@ -200,8 +200,7 @@ def publication(where: str, row: dict[str, Any]) -> PublicationUpdate:
 def read_notes(run_id: int, directory: Path) -> list[PublicationUpdate]:
     """The update of each publication of a curation batch in run `run_id`, from its note
     `<pmid>/curation.txt` as written: `selected` when it starts with `SELECTED`, `curated`
-    otherwise. The write checks that the header names the state. An empty note, or a directory
-    not named by a PMID, gives no update."""
+    otherwise. An empty note, or a directory not named by a PMID, gives no update."""
     updates: list[PublicationUpdate] = []
     for path in sorted(directory.glob(f"*/{NOTE}")):
         note = path.read_text(errors="replace").strip()
