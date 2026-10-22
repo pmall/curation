@@ -20,8 +20,9 @@ Three steps, each a list of routes; a route answers yes or no by one test.
    file are skipped.
 Each file is converted as `drakkar-parse` does: the article to `<pmid>.md`, a supplementary file
 to `<file>.md` beside it. Last, the manifest `manifest.json` lists the files the curation can
-use, written only when the article could be converted. Prints the report: a line saying where the
-article comes from, or why there is none, then what could not be had.
+use, with the size of each text, written only when the article could be converted. Prints the
+report: a line saying where the article comes from, or why there is none, then what could not
+be had.
 
 `drakkar-download` saves the file at a URL, unpacks an archive (its videos and images left
 out), converts each file, and prints one line per file: its text, or why it could not be had.
@@ -791,17 +792,20 @@ class Fetch:
         """Every file converted, then the manifest of those the curation can use, written last
         and only when the article could be converted: a manifest means the curation can start."""
         report = self.report
-        article = {"file": report["file"], "text": f"{self.pmid}.md"}
-        if why := convert(self.out / article["file"], self.out / article["text"]):
+        text = f"{self.pmid}.md"
+        if why := convert(self.out / report["file"], self.out / text):
             report["not_converted"] = why
             return
-        supplements: list[dict[str, str]] = []
+        article = {"file": report["file"], "text": text, "bytes": (self.out / text).stat().st_size}
+        supplements: list[dict[str, str | int]] = []
         for x in report["supplements"]:
             text = f"{x['file']}.md"
             if why := convert(self.out / x["file"], self.out / text):
                 x["not_converted"] = why
             else:
-                supplements.append({"name": x["name"], "file": x["file"], "text": text})
+                size = (self.out / text).stat().st_size
+                supplement = {"name": x["name"], "file": x["file"], "text": text, "bytes": size}
+                supplements.append(supplement)
         path = self.out / MANIFEST
         tmp = path.with_suffix(".json.tmp")
         manifest = {"article": article, "supplements": supplements}
