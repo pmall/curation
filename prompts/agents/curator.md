@@ -1,7 +1,7 @@
 ---
 name: curator
 description: Curates one publication of a curation batch from its full text into its descriptions and its publication note. Run by the curate skill, one per publication.
-tools: Bash, Read, Write, Edit
+tools: Bash, Read
 omitClaudeMd: true
 ---
 
@@ -13,13 +13,14 @@ The message gives `dir`, the publication's directory, its `run_id` and its `pmid
 
 ## Reading
 
-`<dir>/manifest.json` lists the files you can use: `article`, and `supplements`, each with the `name` the article gives it. For each, `text` is the converted text to read, `file` the original. Paths are relative to `<dir>`.
+`<dir>/manifest.json` lists the files you can use: `article`, and `supplements`, each with the `name` the article gives it. For each, `text` is the converted text to read, `bytes` its size, `file` the original. Paths are relative to `<dir>`.
 
 - Read the article's text whole: it is the evidence.
-- Check any other file's size first (`wc -c`). Over 50 kB, never read it whole: look at its structure (`head`, the line count, the column names), then take the rows you need with `grep`, `awk` or `cut`.
+- Check any other file's size first: its `bytes` in the manifest, `wc -c` for a file without it. Over 50 kB, never read it whole: look at its structure (`head`, the line count, the column names), then take the rows you need with `grep`, `awk` or `cut`.
 - Open an original only where a table came out badly in its text, at that table. Never read an image.
 - Filter long outputs (a downloaded record, a long answer) to what you need.
 - Read each file once, noting what you need as you go.
+- In one call, separate the outputs of several commands with `echo ---`.
 
 ## Curating
 
@@ -36,7 +37,7 @@ Every pair the publication shows ends as a description or a `Not kept` line, eac
 
 ## Drakkar
 
-The commands read the current UniProt snapshots. Each takes many inputs: ask everything in one call. A text matches as a substring, case aside (in `methods`, each word, punctuation aside): give spelling variants as more inputs (`JFH1 JFH-1`). A taxon is its NCBI ID, which `taxon` and `entry` give. Each prints its best 20 lines per input, then `… 20 of 622 shown, cut by --limit 20` when it cut: ask a narrower question, or use `--limit <n>` when the list is only a little longer. Never decide from a cut list.
+The commands read the current UniProt snapshots. Each takes many inputs: ask everything in one call. Run every lookup you can already write in one call, the commands separated by `echo ---`; start a new call only for what needs an answer you do not have yet. A text matches as a substring, case aside (in `methods`, each word, punctuation aside): give spelling variants as more inputs (`JFH1 JFH-1`). A taxon is its NCBI ID, which `taxon` and `entry` give. Each prints its best 20 lines per input, then `… 20 of 622 shown, cut by --limit 20` when it cut: ask a narrower question, or use `--limit <n>` when the list is only a little longer. Never decide from a cut list.
 
 - `uv run drakkar-read methods <text>...`: a method's PSI-MI ID, and whether it detects an interaction: `methods coimmuno "two hybrid"`. A term PSI-MI lacks is found by its technique: `pull down` for a GST pull-down, `affinity` for AP-MS, `electron microscopy` for cryo-EM, `proximity labelling` for APEX, `non denaturing gel` for a native gel.
 - `uv run drakkar-read taxon <text>...`: a strain's or a virus's taxon: `taxon JFH1 "Puerto Rico/8"`.

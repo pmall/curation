@@ -141,8 +141,9 @@ def test_pmc_open_access_files(tmp_path: Path):
             "not_converted": "cannot be read: BadZipFile: File is not a zip file",
         }
     ]
+    size = (tmp_path / f"{PMID}.md").stat().st_size
     assert json.loads((tmp_path / "manifest.json").read_text()) == {
-        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md"},
+        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md", "bytes": size},
         "supplements": [],
     }
     assert report_lines(report) == [
@@ -416,11 +417,11 @@ def test_manifest_lists_the_converted_files(tmp_path: Path):
         f"{PMC_AWS}/PMC9.1/s1.csv": ok(b"a,b\n1,2\n", "text/csv"),
     }
     report, _ = run(tmp_path, responses)
+    size = (tmp_path / f"{PMID}.md").stat().st_size
+    s1 = {"name": "s1.csv", "file": f"{PMID}.supp/s1.csv", "text": f"{PMID}.supp/s1.csv.md"}
     assert json.loads((tmp_path / "manifest.json").read_text()) == {
-        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md"},
-        "supplements": [
-            {"name": "s1.csv", "file": f"{PMID}.supp/s1.csv", "text": f"{PMID}.supp/s1.csv.md"}
-        ],
+        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md", "bytes": size},
+        "supplements": [s1 | {"bytes": 8}],  # a,b\n1,2\n
     }
     assert (tmp_path / f"{PMID}.supp" / "s1.csv.md").read_text() == "a,b\n1,2\n"
     assert report_lines(report) == ["Full text: PMC9 (no license given)"]
