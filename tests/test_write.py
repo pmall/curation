@@ -257,56 +257,6 @@ def note_of(conn, pmid) -> str:
     return note
 
 
-# --- Moving to a special run --------------------------------------------------------------------
-
-
-NOT_ACCESSIBLE = "SELECTED: no full text, closed — not open access anywhere"
-
-
-def left_selected() -> PublicationUpdate:
-    """SELECTED left `selected` by a pass: what the batch moves."""
-    return PublicationUpdate(SELECTED, "selected", NOT_ACCESSIBLE)
-
-
-def run_of(conn, pmid) -> tuple[int, str, str]:
-    result = conn.execute(
-        "SELECT r.id, r.name, a.annotation FROM associations AS a "
-        "JOIN runs AS r ON r.id = a.run_id WHERE a.pmid = %s",
-        (pmid,),
-    ).fetchone()
-    conn.rollback()
-    return result
-
-
-def test_move_takes_the_descriptions(conn, new):
-    [stable_id] = add_descriptions(conn, [new], commit=True).written
-    assert write_batch(conn, [], [], [left_selected()], commit=True)[1].committed
-    _, name, moved = run_of(conn, SELECTED)
-    day = today(conn)
-    selected = f"[{day}] {NOT_ACCESSIBLE}"
-    assert name == "special-1" and moved == f"[{day}] Moved from run 32\n---\n{selected}"
-    assert stable_id in live(conn, SELECTED)
-    curated = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
-    update = PublicationUpdate(SELECTED, "curated", curated)
-    assert update_publications(conn, [update], commit=True).committed
-    dated = f"[{day}] {curated}"
-    assert note_of(conn, SELECTED) == f"{dated}\n---\n{moved}"
-
-
-def test_move_to_a_new_special_run(conn):
-    conn.execute("INSERT INTO runs (type, name) VALUES ('vh', 'special-1')")
-    conn.commit()
-    assert write_batch(conn, [], [], [left_selected()], new_run=True, commit=True)[1].committed
-    assert run_of(conn, SELECTED)[1] == "special-2"
-
-
-def test_move_leaves_the_others(conn):
-    curated = PublicationUpdate(SARS, "curated", "CURATED: co-IP of SARS-CoV N")
-    assert write_batch(conn, [], [], [curated])[0] == []
-    assert write_batch(conn, [], [], [left_selected()], commit=True)[1].committed
-    assert write_batch(conn, [], [], [left_selected()])[0] == []  # already in a special run
-
-
 def test_open_transaction_is_refused(conn, new):
     conn.execute("SELECT 1")
     with pytest.raises(RuntimeError):
@@ -337,9 +287,22 @@ def test_the_same_sequence_with_other_extra_residues_is_a_duplicate(conn, new):
 # --- A curation batch ---------------------------------------------------------------------------
 
 
+NOT_ACCESSIBLE = "SELECTED: no full text, closed — not open access anywhere"
+
+
+def run_of(conn, pmid) -> tuple[str, str]:
+    result = conn.execute(
+        "SELECT r.name, a.annotation FROM associations AS a "
+        "JOIN runs AS r ON r.id = a.run_id WHERE a.pmid = %s",
+        (pmid,),
+    ).fetchone()
+    conn.rollback()
+    return result
+
+
 def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationUpdate]]:
     """SARS's `N` renamed `orf6` with a new `orf6` description, which holds only after the
-    renames; SELECTED left `selected`, which the batch then moves."""
+    renames; SELECTED left `selected`."""
     rows = live(conn, SARS)
     note = "name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
@@ -348,26 +311,24 @@ def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationU
         Description("MI:0007", "P46934", "Q6VA95", "orf6"),
         "anti-tag co-IP (MI:0007), Fig. 2B",
     )
-    return revisions, [added], [left_selected()]
+    return revisions, [added], [PublicationUpdate(SELECTED, "selected", NOT_ACCESSIBLE)]
 
 
 def test_batch_writes_everything_in_one_transaction(conn):
     revisions, additions, updates = batch(conn)
     assert [r.invariant.id for r in add_descriptions(conn, additions).errors] == ["D6"]  # alone
     before = count(conn)
-    moves, outcome = write_batch(conn, revisions, additions, updates)  # a dry run
-    assert outcome.ok and not outcome.committed and [m.pmid for m in moves] == [SELECTED]
-    assert count(conn) == before and run_of(conn, SELECTED)[1] == "32"
-    moves, outcome = write_batch(conn, revisions, additions, updates, commit=True)
+    outcome = write_batch(conn, revisions, additions, updates)  # a dry run
+    assert outcome.ok and not outcome.committed and count(conn) == before
+    outcome = write_batch(conn, revisions, additions, updates, commit=True)
     assert outcome.committed and count(conn) == before + 3
     names = {r.description.name2 for r in live(conn, SARS).values() if r.description}
     assert "orf6" in names and "N" not in names
-    _, name, note = run_of(conn, SELECTED)
-    assert name == "special-1" and note.startswith(f"[{today(conn)}] Moved from run 32\n---\n")
+    assert run_of(conn, SELECTED) == ("32", f"[{today(conn)}] {NOT_ACCESSIBLE}")  # not moved
 
 
 def test_batch_numbers_rows_across_its_lists(conn):
     revisions, additions, updates = batch(conn)
     bad = replace(additions[0], description=replace(additions[0].description, accession2="X"))
-    _, outcome = write_batch(conn, revisions, [bad], updates, commit=True)
+    outcome = write_batch(conn, revisions, [bad], updates, commit=True)
     assert [number for number, _ in outcome.problems] == [3] and not outcome.committed

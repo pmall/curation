@@ -1,8 +1,7 @@
 """Write descriptions and publication states (`docs/tools.md`).
 
 Three functions, one per kind of write: `add_descriptions`, `revise_descriptions`,
-`update_publications`; `write_batch` runs the three on a curation batch, then moves the
-publications it leaves `selected` to the special run.
+`update_publications`; `write_batch` runs the three on a curation batch.
 Each writes its lists in one transaction:
 
 1. every row is applied in its own savepoint; a row with a problem is not written, and its
@@ -17,11 +16,10 @@ names) is left to the full check, on the result of the whole list: a rename carr
 descriptions passes through inconsistent states and is valid at the end.
 
 A description note carries no date (its version has `created_at`); a publication note keeps the
-notes of its passes and moves, the newest first.
+notes of its passes, the newest first.
 """
 
 import json
-import re
 import secrets
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -103,7 +101,7 @@ class PublicationUpdate:
 
 @dataclass
 class Outcome:
-    written: list[str]  # stable IDs, PMIDs for publications, `run/pmid → run` for moves
+    written: list[str]  # stable IDs, PMIDs for publications
     problems: list[tuple[int, str]]  # (row number, why) for each problem of a row not written
     results: list[check.Result]  # the full check on the result
     committed: bool
@@ -603,73 +601,6 @@ def update_publications(
     return _write(conn, commit, lambda cur: _apply_rows(cur, updates, _publication))
 
 
-# --- Moving to a special run --------------------------------------------------------------------
-
-SPECIAL_RUN = re.compile(r"special-(\d+)")
-SPECIAL_INFO = (
-    "Publications Claude could not curate fully, moved from their runs of the PubMed query."
-)
-
-
-@dataclass(frozen=True)
-class Move:
-    """A publication Claude could not curate fully, in the run it leaves."""
-
-    association_id: int
-    pmid: int
-    run: str
-
-
-def _special_run(cur: Any, new: bool) -> tuple[int, str]:
-    """The open special run, the one with the highest number; a new one when asked or when none."""
-    cur.execute("SELECT id, name FROM runs WHERE type = 'vh' AND name ~ '^special-[0-9]+$'")
-    runs = sorted(
-        (int(cast(re.Match[str], SPECIAL_RUN.fullmatch(name))[1]), run_id, name)
-        for run_id, name in cur.fetchall()
-    )
-    if runs and not new:
-        return runs[-1][1], runs[-1][2]
-    name = f"special-{runs[-1][0] + 1 if runs else 1}"
-    cur.execute(
-        "INSERT INTO runs (type, name, populated, info) VALUES ('vh', %s, true, %s) RETURNING id",
-        (name, SPECIAL_INFO),
-    )
-    return cur.fetchone()[0], name
-
-
-def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
-    cur.execute(
-        "SELECT 1 FROM associations WHERE run_id = %s AND pmid = %s", (target_id, move.pmid)
-    )
-    if cur.fetchone() is not None:
-        raise InvalidRow(f"publication {move.pmid} is already in run {target}")
-    note = _dated(cur, f"Moved from run {move.run}")
-    cur.execute(
-        f"UPDATE associations SET run_id = %s, annotation = {NEW_NOTE}, updated_at = now() "
-        "WHERE id = %s",
-        (target_id, note, move.association_id),
-    )
-    return f"{move.run}/{move.pmid} → {target}"
-
-
-def _movable(cur: Any, pmids: Sequence[int]) -> list[Move]:
-    """The publications of these PMIDs, in their vh runs, that a move takes."""
-    cur.execute(
-        "SELECT a.id, a.pmid, r.name, a.state, a.ai_pass_at "
-        "FROM associations AS a JOIN runs AS r ON r.id = a.run_id "
-        "WHERE a.pmid = ANY(%s) AND r.type = 'vh'",
-        (list(pmids),),
-    )
-    return sorted(
-        {
-            Move(association_id, pmid, run)
-            for association_id, pmid, run, state, ai_pass_at in cur.fetchall()
-            if not SPECIAL_RUN.fullmatch(run) and state == "selected" and ai_pass_at is not None
-        },
-        key=lambda move: (move.run, move.pmid),
-    )
-
-
 # --- A curation batch ---------------------------------------------------------------------------
 
 
@@ -679,19 +610,15 @@ def write_batch(
     additions: Sequence[NewDescription],
     updates: Sequence[PublicationUpdate],
     *,
-    new_run: bool = False,
     commit: bool = False,
-) -> tuple[list[Move], Outcome]:
+) -> Outcome:
     """Write a curation batch in one transaction, in this order: the revisions and removals, the
-    new descriptions, the publication updates, then the move of the updated publications left
-    `selected` with a pass date in a vh run of the PubMed query to the open special run (a new
-    one with `new_run`), each with a `Moved` note first in its note. Every invariant is checked
-    once, on the result, so a row can rely on an earlier one (an addition on a rename).
+    new descriptions, the publication updates. Every invariant is checked once, on the result, so
+    a row can rely on an earlier one (an addition on a rename).
 
-    Rows are numbered across the three lists, in that order, then the moves.
+    Rows are numbered across the three lists, in that order.
     """
     _once(revisions)
-    moves: list[Move] = []
 
     def apply(cur: Any) -> Applied:
         stages = [
@@ -699,14 +626,6 @@ def write_batch(
             _apply_rows(cur, additions, _add, len(revisions) + 1),
             _apply_rows(cur, updates, _publication, len(revisions) + len(additions) + 1),
         ]
-        # A publication in no vh run is already refused by its update.
-        moves.extend(_movable(cur, [u.pmid for u in updates]))
-        if moves:
-            target_id, target = _special_run(cur, new_run)
-            first = len(revisions) + len(additions) + len(updates) + 1
-            stages.append(
-                _apply_rows(cur, moves, lambda c, move: _move(c, move, target_id, target), first)
-            )
         return [w for s in stages for w in s[0]], [p for s in stages for p in s[1]]
 
-    return moves, _write(conn, commit, apply)
+    return _write(conn, commit, apply)
