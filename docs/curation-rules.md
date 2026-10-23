@@ -38,7 +38,7 @@ A description records, for each interactor, its UniProt entry and, for a mature 
 
 ### The UniProt entry
 
-Each interactor is an entry of the current UniProt release in Drakkar: for a human protein, an entry of the Swiss-Prot human reference proteome (03); for a viral protein, the entry of the publication's strain, or the closest entry of the same virus when UniProt does not have it. The interactor is the protein the experiment tested, never its construct: a tag (10) or a truncation (11) leaves it the same protein. When the publication names only a protein family or a complex (e.g. "Sec61", "14-3-3") where an experiment tested one protein, the interactor is the member the evidence points to (the construct, the primers, the antibody, the cited source).
+Each interactor is an entry of the current UniProt release in Drakkar: for a human protein, an entry of the Swiss-Prot human reference proteome (03); for a viral protein, the entry of the publication's strain, or the closest entry of the same virus when UniProt does not have it. The interactor is the protein the experiment tested, never its construct: a tag (10) or a truncation (11) leaves it the same protein. Strains UniProt does not have can take the same closest entry: with the same coordinates, they are one interactor, so one description per method, holding the mappings of all of them (07). When the publication names only a protein family or a complex (e.g. "Sec61", "14-3-3") where an experiment tested one protein, the interactor is the member the evidence points to (the construct, the primers, the antibody, the cited source).
 
 ### The coordinates of a mature protein
 
