@@ -4,13 +4,13 @@ Descriptions and publication states are written only through these tools, from f
 
 ## Files
 
-JSON Lines: one JSON object per line, with every key of its format and no other, its values in JSON types. No header: an empty file has no row. Every row names its publication: a file holds one publication or many, and files concatenate with `cat`. In a value, JSON escapes only `"` (`\"`), `\` (`\\`) and line breaks (`\n`). A line with a missing or unknown key, or a value of the wrong type, is refused with its file and line. Notes follow `notes.md`.
+JSON Lines: one JSON object per line, with every key of its format and no other, its values in JSON types. No header: an empty file has no row. Every row names its publication by its PMID: a file holds one publication or many, and files concatenate with `cat`. In a value, JSON escapes only `"` (`\"`), `\` (`\\`) and line breaks (`\n`). A line with a missing or unknown key, or a value of the wrong type, is refused with its file and line. Notes follow `notes.md`.
 
 **Descriptions to add** (`*.jsonl`), one line per new description:
 
 | Key | Content |
 | -- | -- |
-| `run_id`, `pmid` | the publication, numbers |
+| `pmid` | the publication, a number, in its vh run |
 | `method` | PSI-MI ID |
 | `accession1` | human interactor; gene name and full-length coordinates come from its snapshot |
 | `accession2`, `start2`, `stop2` | viral interactor; `start2` and `stop2` numbers, or null for the full protein |
@@ -20,7 +20,7 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 | `note` | the description note |
 
 ```json
-{"run_id": 61, "pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
+{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
 ```
 
 **Revisions** (`*.revise.jsonl`, `*.delete.jsonl`), one line per revised or removed description:
@@ -28,16 +28,16 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 | Key | Content |
 | -- | -- |
 | `stable_id`, `version` | the description and the live version the decision was made on, a number; refused if it is no longer live |
-| `run_id`, `pmid` | its publication, numbers |
+| `pmid` | its publication, a number |
 | `action` | `revise` (new version) or `remove` (no successor) |
 | `into` | on a `remove` that merges a duplicate: the stable ID of the survivor, otherwise null; the description keys may then give what the removed description was decided to become, checked against the survivor |
 | description keys | on a `revise`: the whole new description, the keys of the descriptions to add from `method` to `below_threshold`; on a `remove`, null |
 | `note` | `revise`: the note of the new version (the curation's note from `drakkar-diff`, `UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
-**Publications** (`*.jsonl`), one line per publication whose state or note changes: `run_id`, `pmid`, numbers; `state`, `selected` or `curated`; `note`, the note of the pass. The write puts it first in the publication's note, after the date (`[2026-10-22] CURATED: …`), the previous notes after a line `---`.
+**Publications** (`*.jsonl`), one line per publication whose state or note changes: `pmid`, a number, the publication in its vh run; `state`, `selected` or `curated`; `note`, the note of the pass. The write puts it first in the publication's note, after the date (`[2026-10-22] CURATED: …`), the previous notes after a line `---`.
 
 ```json
-{"run_id": 61, "pmid": 35939498, "state": "curated", "note": "CURATED: co-IP of HSV-1 gE with ANXA1\n- Not kept: ..."}
+{"pmid": 35939498, "state": "curated", "note": "CURATED: co-IP of HSV-1 gE with ANXA1\n- Not kept: ..."}
 ```
 
 ## Tools
@@ -50,9 +50,9 @@ Writes go through these commands. Without `--commit`, a command is a dry run: it
 
 They take several files at once.
 
-- `uv run drakkar-notes <run_id> <dir>`: writes `<dir>/publications.jsonl` from the publication notes of a curation batch, each `<dir>/<pmid>/curation.txt`, plain text, as written: one row per note, in the run of that `id`, the PMID its directory's name, the state `selected` when the note starts with `SELECTED`, `curated` otherwise; an empty note gives no row. It never refuses a note.
+- `uv run drakkar-notes <dir>`: writes `<dir>/publications.jsonl` from the publication notes of a curation batch, each `<dir>/<pmid>/curation.txt`, plain text, as written: one row per note, the PMID its directory's name, the state `selected` when the note starts with `SELECTED`, `curated` otherwise; an empty note gives no row. It never refuses a note.
 - `uv run drakkar-batch <dir> [--new-run] [--commit]`: writes a batch from the files of its directory: `descriptions.jsonl`, the descriptions to add of a curation batch; `descriptions.add.jsonl`, `descriptions.revise.jsonl` and `descriptions.delete.jsonl`, the files `drakkar-diff` writes beside a `descriptions.jsonl`, the first read in place of `descriptions.jsonl` when it is there; and `publications.jsonl`. A missing descriptions file has no rows. One transaction, in this order: the revisions and removals, the new descriptions, the publication states and notes, then the move of the publications left `selected` with a pass date in a vh run of the PubMed query to the open special run, the one with the highest number (`database.md` §1, states), with a `Moved` note first in each note and their descriptions with them; `--new-run` opens the next special run first, and the first move opens `special-1`. Every invariant is checked once, on the result, so a row can rely on an earlier one (an addition on a rename). Refused rows are reported with their file and line.
-- `uv run drakkar-diff <run_id> <pmid> <file>`: read-only. Diffs the descriptions of the file (descriptions to add, all of one publication) against the live descriptions of that publication, and writes beside the file `<name>.add.jsonl`, the descriptions that are not live; `<name>.revise.jsonl`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.jsonl`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein; `below_threshold` follows from the mappings and is not compared. An empty file puts every live description of the publication in `<name>.delete.jsonl`.
+- `uv run drakkar-diff <pmid> <file>`: read-only. Diffs the descriptions of the file (descriptions to add, all of one publication) against the live descriptions of that publication in its vh run, and writes beside the file `<name>.add.jsonl`, the descriptions that are not live; `<name>.revise.jsonl`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.jsonl`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein; `below_threshold` follows from the mappings and is not compared. An empty file puts every live description of the publication in `<name>.delete.jsonl`.
 - `uv run drakkar-check <dir>`: checks every invariant, read-only.
 
 Reading, `drakkar-read`, read-only, on the current snapshots. Each command takes many inputs; `entry` prints a block per entry, the others tab-separated lines under one `#` header line naming the columns, each line starting with the input it answers (`(none)` when nothing is found), the best first. `--limit <n>` bounds the lines per input (20); a list that is cut ends with a line `… 20 of 622 shown, cut by --limit 20`. A text matches as a substring, case aside, except in `methods`. A taxon is given by its NCBI ID and covers its whole subtree; it is written `<ID> <name>`, a lineage `<ID> <name> < …` up to the family. A stretch of a protein is written `<accession>:<start>-<stop>`, then `obsolete` when its snapshot is (its generic name stays reusable, its entry does not). An input that cannot be read gets its own line, with why.

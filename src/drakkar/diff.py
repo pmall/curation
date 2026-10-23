@@ -62,17 +62,14 @@ def _changed(live: Description, curated: Description) -> bool:
     )
 
 
-def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDescription]) -> Diff:
+def diff_descriptions(cur: Any, pmid: int, curated: Sequence[NewDescription]) -> Diff:
     """What writing `curated`, the whole curation of a publication, would change."""
-    cur.execute("SELECT 1 FROM associations WHERE run_id = %s AND pmid = %s", (run_id, pmid))
-    if cur.fetchone() is None:
-        raise ValueError(f"publication {pmid} is not in run {run_id}")
+    live = live_revisions(cur, pmid)  # refused for a publication in no vh run
     by_key: dict[Key, NewDescription] = {}
     for item in curated:
-        if (item.run_id, item.pmid) != (run_id, pmid):
+        if item.pmid != pmid:
             raise ValueError(
-                f"{_label(item.description)} is in publication {item.pmid} of run {item.run_id}, "
-                f"not {pmid} of run {run_id}"
+                f"{_label(item.description)} is in publication {item.pmid}, not {pmid}"
             )
         key = _key(cur, item.description)
         if key in by_key:
@@ -80,15 +77,15 @@ def diff_descriptions(cur: Any, run_id: int, pmid: int, curated: Sequence[NewDes
         by_key[key] = item
 
     diff = Diff([], [], [], [])
-    for live in live_revisions(cur, run_id, pmid):
-        assert live.description is not None
-        item = by_key.pop(_key(cur, live.description), None)
+    for row in live:
+        assert row.description is not None
+        item = by_key.pop(_key(cur, row.description), None)
         if item is None:
             note = "REMOVED: not found by the curation"
-            diff.deleted.append(replace(live, action="remove", description=None, note=note))
-        elif _changed(live.description, item.description):
-            diff.revised.append(replace(live, description=item.description, note=item.note))
+            diff.deleted.append(replace(row, action="remove", description=None, note=note))
+        elif _changed(row.description, item.description):
+            diff.revised.append(replace(row, description=item.description, note=item.note))
         else:
-            diff.same.append(live.stable_id)
+            diff.same.append(row.stable_id)
     diff.added.extend(by_key.values())
     return diff

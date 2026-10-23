@@ -7,8 +7,8 @@ concatenate.
     uv run drakkar-add <file>... [--commit]
     uv run drakkar-revise <file>... [--commit]
     uv run drakkar-publications <file>... [--commit]
-    uv run drakkar-diff <run_id> <pmid> <file>
-    uv run drakkar-notes <run_id> <dir>
+    uv run drakkar-diff <pmid> <file>
+    uv run drakkar-notes <dir>
     uv run drakkar-batch <dir> [--new-run] [--commit]
 
 Without `--commit`, a dry run: everything is applied and checked, then rolled back. The diff is
@@ -50,9 +50,9 @@ DESCRIPTION = [
     "mappings2",
     "below_threshold",
 ]
-ADD = ["run_id", "pmid", *DESCRIPTION, "note"]
-REVISE = ["stable_id", "version", "run_id", "pmid", "action", "into", *DESCRIPTION, "note"]
-PUBLICATIONS = ["run_id", "pmid", "state", "note"]
+ADD = ["pmid", *DESCRIPTION, "note"]
+REVISE = ["stable_id", "version", "pmid", "action", "into", *DESCRIPTION, "note"]
+PUBLICATIONS = ["pmid", "state", "note"]
 # The files of a batch: those of a curation batch (`skills/curate`) and those of `drakkar-diff`;
 # a descriptions file may be missing. Of the additions, only the first present is read: the
 # descriptions.add.jsonl of a diff is written beside the descriptions.jsonl it comes from.
@@ -158,7 +158,6 @@ def _description(where: str, row: dict[str, Any]) -> Description:
 def new_description(where: str, row: dict[str, Any]) -> NewDescription:
     """A description to add, from its JSON object."""
     return NewDescription(
-        _number(where, row, "run_id"),
         _number(where, row, "pmid"),
         _description(where, row),
         _text(where, row, "note"),
@@ -178,7 +177,6 @@ def revision(where: str, row: dict[str, Any]) -> Revision:
     return Revision(
         stable_id=_text(where, row, "stable_id").strip(),
         version=_number(where, row, "version"),
-        run_id=_number(where, row, "run_id"),
         pmid=_number(where, row, "pmid"),
         action=action,
         description=_description(where, row) if described else None,
@@ -192,13 +190,11 @@ def publication(where: str, row: dict[str, Any]) -> PublicationUpdate:
     state = _text(where, row, "state").strip()
     if state not in ("selected", "curated"):
         raise FileError(f"{where}: state is {state!r}, not selected or curated")
-    return PublicationUpdate(
-        _number(where, row, "run_id"), _number(where, row, "pmid"), state, _text(where, row, "note")
-    )
+    return PublicationUpdate(_number(where, row, "pmid"), state, _text(where, row, "note"))
 
 
-def read_notes(run_id: int, directory: Path) -> list[PublicationUpdate]:
-    """The update of each publication of a curation batch in run `run_id`, from its note
+def read_notes(directory: Path) -> list[PublicationUpdate]:
+    """The update of each publication of a curation batch, from its note
     `<pmid>/curation.txt` as written: `selected` when it starts with `SELECTED`, `curated`
     otherwise. An empty note, or a directory not named by a PMID, gives no update."""
     updates: list[PublicationUpdate] = []
@@ -208,7 +204,7 @@ def read_notes(run_id: int, directory: Path) -> list[PublicationUpdate]:
             state: Literal["selected", "curated"] = (
                 "selected" if note.startswith("SELECTED") else "curated"
             )
-            updates.append(PublicationUpdate(run_id, int(path.parent.name), state, note))
+            updates.append(PublicationUpdate(int(path.parent.name), state, note))
     return updates
 
 
@@ -232,7 +228,6 @@ def _description_values(d: Description | None) -> dict[str, Any]:
 def format_new_description(item: NewDescription) -> str:
     """A description to add as a line of JSON (the inverse of `new_description`)."""
     values = {
-        "run_id": item.run_id,
         "pmid": item.pmid,
         **_description_values(item.description),
         "note": item.note,
@@ -245,7 +240,6 @@ def format_revision(item: Revision) -> str:
     values = {
         "stable_id": item.stable_id,
         "version": item.version,
-        "run_id": item.run_id,
         "pmid": item.pmid,
         "action": item.action,
         "into": item.into or None,
@@ -257,7 +251,7 @@ def format_revision(item: Revision) -> str:
 
 def format_publication(item: PublicationUpdate) -> str:
     """A publication update as a line of JSON (the inverse of `publication`)."""
-    values = {"run_id": item.run_id, "pmid": item.pmid, "state": item.state, "note": item.note}
+    values = {"pmid": item.pmid, "state": item.state, "note": item.note}
     return json.dumps(values, ensure_ascii=False)
 
 
@@ -345,11 +339,10 @@ def notes_main() -> None:
     parser = argparse.ArgumentParser(
         description="Write the publications file of a curation batch from its publication notes."
     )
-    parser.add_argument("run_id", type=int, help="the run of the publications, its id")
     parser.add_argument("dir", type=Path, help="the batch directory, one directory per PMID")
     args = parser.parse_args()
     directory = cast(Path, args.dir)
-    updates = read_notes(args.run_id, directory)
+    updates = read_notes(directory)
     out = directory / BATCH_PUBLICATIONS
     write_publications(out, updates)
     states = [update.state for update in updates]
@@ -396,7 +389,6 @@ def diff_main() -> None:
     parser = argparse.ArgumentParser(
         description="Diff the curated descriptions of a publication against its live ones."
     )
-    parser.add_argument("run_id", type=int)
     parser.add_argument("pmid", type=int)
     parser.add_argument("file", type=Path, help="the publication's descriptions, JSON Lines")
     args = parser.parse_args()
@@ -405,11 +397,11 @@ def diff_main() -> None:
         items = [item for _, item in read_descriptions([path])]
         with connect(readonly=True) as conn, conn.cursor() as cur:
             cur.execute("SET statement_timeout = '30s'")
-            diff = diff_descriptions(cur, args.run_id, args.pmid, items)
-    except ValueError as e:  # a file error, or a description of another publication
+            diff = diff_descriptions(cur, args.pmid, items)
+    except ValueError as e:  # a file error, a publication in no vh run, or another publication
         sys.exit(str(e))
     stem = path.with_suffix("")
-    print(f"PMID {args.pmid}, run {args.run_id}: {len(diff.same)} same")
+    print(f"PMID {args.pmid}: {len(diff.same)} same")
     added = stem.with_name(f"{stem.name}.add.jsonl")
     write_descriptions(added, diff.added)
     print(f"{len(diff.added)} to add: {added}")

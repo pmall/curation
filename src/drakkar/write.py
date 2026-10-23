@@ -65,9 +65,8 @@ class Description:
 
 @dataclass(frozen=True)
 class NewDescription:
-    """A description to add to a publication of a vh run, with its note."""
+    """A description to add to a publication, in its vh run, with its note."""
 
-    run_id: int
     pmid: int
     description: Description
     note: str = ""
@@ -86,7 +85,6 @@ class Revision:
 
     stable_id: str
     version: int
-    run_id: int
     pmid: int
     action: Literal["revise", "remove"]
     description: Description | None = None
@@ -96,9 +94,8 @@ class Revision:
 
 @dataclass(frozen=True)
 class PublicationUpdate:
-    """The state of a publication (`selected` or `curated`) and the note of a pass."""
+    """The state of a publication in its vh run (`selected` or `curated`) and the note of a pass."""
 
-    run_id: int
     pmid: int
     state: Literal["selected", "curated"]
     note: str
@@ -106,7 +103,7 @@ class PublicationUpdate:
 
 @dataclass
 class Outcome:
-    written: list[str]  # stable IDs, `run_id/pmid` for publications, `run/pmid → run` for moves
+    written: list[str]  # stable IDs, PMIDs for publications, `run/pmid → run` for moves
     problems: list[tuple[int, str]]  # (row number, why) for each problem of a row not written
     results: list[check.Result]  # the full check on the result
     committed: bool
@@ -207,31 +204,45 @@ def snapshot_of(cur: Any, accession: str, snapshot_id: int | None = None) -> _Sn
 
 
 @dataclass(frozen=True)
-class _Association:
+class Association:
     id: int
+    pmid: int
+    run: str  # its name
     run_type: str
     state: str
 
 
-def _association(cur: Any, run_id: int, pmid: int) -> _Association:
-    """A publication in a run, `selected` or `curated`: where descriptions are written."""
-    cur.execute(
-        "SELECT a.id, r.type, a.state FROM associations AS a JOIN runs AS r ON r.id = a.run_id "
-        "WHERE a.run_id = %s AND a.pmid = %s",
-        (run_id, pmid),
-    )
-    row = cur.fetchone()
-    if row is None:
-        raise InvalidRow(f"publication {pmid} is not in run {run_id}")
-    association = _Association(*row)
+ASSOCIATION = """
+    SELECT a.id, a.pmid, r.name, r.type, a.state
+    FROM associations AS a
+    JOIN runs AS r ON r.id = a.run_id
+"""
+
+
+def vh_association(cur: Any, pmid: int) -> Association:
+    """A publication in its vh run: where new curation is written."""
+    cur.execute(ASSOCIATION + "WHERE a.pmid = %s AND r.type = 'vh'", (pmid,))
+    found = [Association(*row) for row in cur.fetchall()]
+    if not found:
+        raise InvalidRow(f"publication {pmid} is in no vh run")
+    if len(found) > 1:
+        runs = ", ".join(sorted(association.run for association in found))
+        raise InvalidRow(f"publication {pmid} is in several vh runs: {runs}")
+    return found[0]
+
+
+def _writable(association: Association) -> Association:
+    """A publication `selected` or `curated`: where descriptions are written."""
     if association.state not in ("selected", "curated"):
-        raise InvalidRow(f"publication {pmid} of run {run_id} is {association.state}")
+        raise InvalidRow(
+            f"publication {association.pmid} of run {association.run} is {association.state}"
+        )
     return association
 
 
 def _build(
     cur: Any,
-    association: _Association,
+    association: Association,
     item: Description,
     kept: tuple[tuple[str, int], tuple[str, int]] | None = None,
 ) -> dict[str, Any]:
@@ -361,9 +372,7 @@ def _new_stable_id(cur: Any) -> str:
 
 
 def _add(cur: Any, item: NewDescription) -> str:
-    association = _association(cur, item.run_id, item.pmid)
-    if association.run_type != "vh":
-        raise InvalidRow(f"run {item.run_id} is an hh run: new descriptions go to a vh run")
+    association = _writable(vh_association(cur, item.pmid))
     note = item.note.strip()
     row = _build(cur, association, item.description)
     stable_id = _new_stable_id(cur)
@@ -381,7 +390,7 @@ def add_descriptions(
 # --- Revising -----------------------------------------------------------------------------------
 
 
-def _live(cur: Any, revision: Revision) -> tuple[int, int, _Association]:
+def _live(cur: Any, revision: Revision) -> tuple[int, int, Association]:
     """The live row of a revision's stable ID, locked: its row ID, version and publication."""
     cur.execute(
         "SELECT id, version, association_id FROM descriptions "
@@ -397,11 +406,12 @@ def _live(cur: Any, revision: Revision) -> tuple[int, int, _Association]:
             f"{revision.stable_id}: decided on version {revision.version}, "
             f"but the live version is {version}"
         )
-    association = _association(cur, revision.run_id, revision.pmid)
-    if association_id != association.id:
+    cur.execute(ASSOCIATION + "WHERE a.id = %s", (association_id,))
+    association = _writable(Association(*cur.fetchone()))
+    if association.pmid != revision.pmid:
         raise InvalidRow(
-            f"{revision.stable_id} is not a description of publication {revision.pmid} "
-            f"in run {revision.run_id}"
+            f"{revision.stable_id} is a description of publication {association.pmid}, "
+            f"not {revision.pmid}"
         )
     return id_, version, association
 
@@ -492,46 +502,45 @@ def _revise(cur: Any, revision: Revision) -> str:
     return revision.stable_id
 
 
-def live_revisions(cur: Any, run_id: int, pmid: int) -> list[Revision]:
-    """The live descriptions of a publication, each as a `revise` row to edit (empty note).
+def live_revisions(cur: Any, pmid: int) -> list[Revision]:
+    """The live descriptions of a publication in its vh run, each as a `revise` row to edit
+    (empty note).
 
     Accessions are those of the snapshots used, even obsolete: a revision keeps them unless the
     accession changes. `below_threshold` lists the mappings stored below `MIN_IDENTITY`.
     """
+    association = vh_association(cur, pmid)
     cur.execute(
         """
         SELECT d.stable_id, d.version, m.psimi_id, p1.accession, p2.accession, d.name2, d.start2,
-               d.stop2, d.mapping1::text, d.mapping2::text, r.type
+               d.stop2, d.mapping1::text, d.mapping2::text
         FROM descriptions AS d
-        JOIN associations AS a ON a.id = d.association_id
-        JOIN runs AS r ON r.id = a.run_id
         JOIN methods AS m ON m.id = d.method_id
         JOIN proteins AS p1 ON p1.id = d.protein1_id
         JOIN proteins AS p2 ON p2.id = d.protein2_id
-        WHERE a.run_id = %s AND a.pmid = %s AND d.deleted_at IS NULL
+        WHERE d.association_id = %s AND d.deleted_at IS NULL
         ORDER BY d.stable_id
         """,
-        (run_id, pmid),
+        (association.id,),
     )
     revisions: list[Revision] = []
-    for stable_id, version, method, a1, a2, name2, start2, stop2, m1, m2, run_type in cur:
+    for stable_id, version, method, a1, a2, name2, start2, stop2, m1, m2 in cur:
         mappings = [cast(list[dict[str, Any]], json.loads(m)) for m in (m1, m2)]
         below = tuple(
             written(m) for side in mappings for m in side if best_identity(m) < MIN_IDENTITY
         )
-        hh = run_type == "hh"
         description = Description(
             method=method,
             accession1=a1,
             accession2=a2,
-            name2="" if hh else name2,
-            start2=None if hh else start2,
-            stop2=None if hh else stop2,
+            name2=name2,
+            start2=start2,
+            stop2=stop2,
             mappings1=tuple(written(m) for m in mappings[0]),
             mappings2=tuple(written(m) for m in mappings[1]),
             below_threshold=below,
         )
-        revisions.append(Revision(stable_id, version, run_id, pmid, "revise", description))
+        revisions.append(Revision(stable_id, version, pmid, "revise", description))
     return revisions
 
 
@@ -569,9 +578,7 @@ NEW_NOTE = "concat_ws(E'\\n---\\n', nullif(%s::text, ''), nullif(annotation, '')
 
 
 def _publication(cur: Any, update: PublicationUpdate) -> str:
-    association = _association(cur, update.run_id, update.pmid)
-    if association.run_type != "vh":
-        raise InvalidRow(f"run {update.run_id} is an hh run: hh curation is frozen")
+    association = _writable(vh_association(cur, update.pmid))
     if update.state not in ("selected", "curated"):
         raise InvalidRow(f"state {update.state!r} is not selected or curated")
     cur.execute(
@@ -579,7 +586,7 @@ def _publication(cur: Any, update: PublicationUpdate) -> str:
         "updated_at = now() WHERE id = %s",
         (update.state, _dated(cur, update.note), association.id),
     )
-    return f"{update.run_id}/{update.pmid}"
+    return str(update.pmid)
 
 
 def _dated(cur: Any, note: str) -> str:
@@ -645,23 +652,19 @@ def _move(cur: Any, move: Move, target_id: int, target: str) -> str:
     return f"{move.run}/{move.pmid} → {target}"
 
 
-def _movable(cur: Any, publications: Sequence[tuple[int, int]]) -> list[Move]:
-    """The publications given as (run_id, pmid) that a move takes."""
+def _movable(cur: Any, pmids: Sequence[int]) -> list[Move]:
+    """The publications of these PMIDs, in their vh runs, that a move takes."""
     cur.execute(
-        "SELECT a.id, given.pmid, r.name, r.type, a.state, a.ai_pass_at "
-        "FROM unnest(%s::int[], %s::bigint[]) AS given (run_id, pmid) "
-        "JOIN associations AS a ON a.run_id = given.run_id AND a.pmid = given.pmid "
-        "JOIN runs AS r ON r.id = a.run_id",
-        ([run_id for run_id, _ in publications], [pmid for _, pmid in publications]),
+        "SELECT a.id, a.pmid, r.name, a.state, a.ai_pass_at "
+        "FROM associations AS a JOIN runs AS r ON r.id = a.run_id "
+        "WHERE a.pmid = ANY(%s) AND r.type = 'vh'",
+        (list(pmids),),
     )
     return sorted(
         {
             Move(association_id, pmid, run)
-            for association_id, pmid, run, run_type, state, ai_pass_at in cur.fetchall()
-            if run_type == "vh"
-            and not SPECIAL_RUN.fullmatch(run)
-            and state == "selected"
-            and ai_pass_at is not None
+            for association_id, pmid, run, state, ai_pass_at in cur.fetchall()
+            if not SPECIAL_RUN.fullmatch(run) and state == "selected" and ai_pass_at is not None
         },
         key=lambda move: (move.run, move.pmid),
     )
@@ -696,8 +699,8 @@ def write_batch(
             _apply_rows(cur, additions, _add, len(revisions) + 1),
             _apply_rows(cur, updates, _publication, len(revisions) + len(additions) + 1),
         ]
-        # A publication not in its run is already refused by its update.
-        moves.extend(_movable(cur, [(u.run_id, u.pmid) for u in updates]))
+        # A publication in no vh run is already refused by its update.
+        moves.extend(_movable(cur, [u.pmid for u in updates]))
         if moves:
             target_id, target = _special_run(cur, new_run)
             first = len(revisions) + len(additions) + len(updates) + 1

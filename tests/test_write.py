@@ -16,13 +16,13 @@ from drakkar.write import (
     write_batch,
 )
 
-SARS = (1, 22046132)  # Q6VA95 `N` carried by EY73D2C965 and EYF737084C
-RABIES = (69, 38566321)
-SELECTED = (12, 25031347)
+SARS = 22046132  # Q6VA95 `N` carried by EY73D2C965 and EYF737084C
+RABIES = 38566321
+SELECTED = 25031347
 
 
-def live(conn, run_id, pmid) -> dict[str, Revision]:
-    rows = {r.stable_id: r for r in live_revisions(conn.cursor(), run_id, pmid)}
+def live(conn, pmid) -> dict[str, Revision]:
+    rows = {r.stable_id: r for r in live_revisions(conn.cursor(), pmid)}
     conn.rollback()
     return rows
 
@@ -50,7 +50,7 @@ def new(conn) -> NewDescription:
     ).fetchone()[0]
     conn.rollback()
     return NewDescription(
-        *SELECTED,
+        SELECTED,
         Description("MI:0007", "P46934", "P25223", "P", mappings2=(sequence[:20],)),
         "anti-tag co-IP (MI:0007), Fig. 2B",
     )
@@ -96,9 +96,21 @@ def test_add_duplicate_is_caught_by_the_full_check(conn, new):
     assert not outcome.committed
 
 
-def test_add_to_an_hh_run_is_refused(conn, new):
-    outcome = add_descriptions(conn, [replace(new, run_id=31, pmid=15471871)])
-    assert "hh run" in outcome.problems[0][1]
+def test_add_to_a_publication_in_no_vh_run_is_refused(conn, new):
+    outcome = add_descriptions(conn, [replace(new, pmid=15471871)])  # in an hh run
+    assert outcome.problems[0][1] == "publication 15471871 is in no vh run"
+
+
+def test_add_to_a_publication_in_several_vh_runs_is_refused(conn, new):
+    conn.execute("INSERT INTO runs (type, name) VALUES ('vh', '99')")
+    conn.execute(
+        "INSERT INTO associations (run_id, pmid, state) "
+        "SELECT id, %s, 'selected' FROM runs WHERE name = '99'",
+        (SELECTED,),
+    )
+    conn.commit()
+    outcome = add_descriptions(conn, [new])
+    assert outcome.problems[0][1] == f"publication {SELECTED} is in several vh runs: 32, 99"
 
 
 def test_mapping_below_threshold_needs_to_be_listed(conn, new):
@@ -114,7 +126,7 @@ def test_mapping_below_threshold_needs_to_be_listed(conn, new):
 
 
 def test_rename_an_interactor_carried_by_two_descriptions(conn):
-    rows = live(conn, *SARS)
+    rows = live(conn, SARS)
     note = "name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
     outcome = revise_descriptions(conn, revisions, commit=True)
@@ -127,7 +139,7 @@ def test_rename_an_interactor_carried_by_two_descriptions(conn):
 
 
 def test_rename_one_of_two_breaks_one_name_per_interactor(conn):
-    rows = live(conn, *SARS)
+    rows = live(conn, SARS)
     outcome = revise_descriptions(conn, [renamed(rows["EY73D2C965"], "orf6")], commit=True)
     assert not outcome.problems
     assert [r.invariant.id for r in outcome.errors] == ["D6"]
@@ -135,31 +147,31 @@ def test_rename_one_of_two_breaks_one_name_per_interactor(conn):
 
 
 def test_revision_on_a_stale_version_is_refused(conn):
-    revision = renamed(live(conn, *SARS)["EY73D2C965"], "orf6")
+    revision = renamed(live(conn, SARS)["EY73D2C965"], "orf6")
     outcome = revise_descriptions(conn, [replace(revision, version=revision.version + 1)])
     assert "live version is" in outcome.problems[0][1]
 
 
 def test_revision_that_changes_nothing_is_refused(conn):
-    revision = live(conn, *SARS)["EY73D2C965"]
+    revision = live(conn, SARS)["EY73D2C965"]
     assert "changes nothing" in revise_descriptions(conn, [revision]).problems[0][1]
 
 
 def test_revision_of_another_publication_is_refused(conn):
-    revision = renamed(live(conn, *SARS)["EY73D2C965"], "orf6")
-    outcome = revise_descriptions(conn, [replace(revision, run_id=69, pmid=38566321)])
-    assert "not a description of publication" in outcome.problems[0][1]
+    revision = renamed(live(conn, SARS)["EY73D2C965"], "orf6")
+    outcome = revise_descriptions(conn, [replace(revision, pmid=RABIES)])
+    assert f"is a description of publication {SARS}, not {RABIES}" in outcome.problems[0][1]
 
 
 def test_stable_id_twice_is_refused(conn):
-    revision = renamed(live(conn, *SARS)["EY73D2C965"], "orf6")
+    revision = renamed(live(conn, SARS)["EY73D2C965"], "orf6")
     with pytest.raises(ValueError, match="twice"):
         revise_descriptions(conn, [revision, revision])
 
 
 def test_merge_a_description_decided_to_be_a_duplicate(conn):
     # EYC9AE3284 (NEDD4, A4UHQ0 M) is decided to be NEDD4 with P25223 P: EY10BAD696.
-    rows = live(conn, *RABIES)
+    rows = live(conn, RABIES)
     removed = rows["EYC9AE3284"]
     assert removed.description is not None
     decided = replace(removed.description, accession2="P25223", name2="P", start2=1, stop2=202)
@@ -172,11 +184,11 @@ def test_merge_a_description_decided_to_be_a_duplicate(conn):
     )
     outcome = revise_descriptions(conn, [merge], commit=True)
     assert outcome.ok and outcome.committed
-    assert "EYC9AE3284" not in live(conn, *RABIES)
+    assert "EYC9AE3284" not in live(conn, RABIES)
 
 
 def test_merge_of_different_descriptions_is_refused(conn):
-    removed = live(conn, *RABIES)["EYC9AE3284"]
+    removed = live(conn, RABIES)["EYC9AE3284"]
     merge = replace(
         removed,
         action="remove",
@@ -192,7 +204,7 @@ def test_removal_needs_no_note(conn):
     query = "SELECT annotation, deleted_at IS NOT NULL FROM descriptions WHERE stable_id = %s"
     before = conn.execute(f"{query} AND deleted_at IS NULL", ("EYC9AE3284",)).fetchone()[0]
     conn.rollback()
-    removed = replace(live(conn, *RABIES)["EYC9AE3284"], action="remove", description=None)
+    removed = replace(live(conn, RABIES)["EYC9AE3284"], action="remove", description=None)
     assert removed.note == "" and revise_descriptions(conn, [removed], commit=True).committed
     after = conn.execute(f"{query} ORDER BY version DESC LIMIT 1", ("EYC9AE3284",)).fetchone()
     conn.rollback()
@@ -204,11 +216,11 @@ def test_removal_needs_no_note(conn):
 
 def test_publication_curated(conn):
     note = "CURATED: no description, a review of earlier screens\n- Full text: PMC1234567 (cc by)"
-    update = PublicationUpdate(*SELECTED, "curated", note)
+    update = PublicationUpdate(SELECTED, "curated", note)
     assert update_publications(conn, [update], commit=True).committed
     state, ai_pass_at = conn.execute(
-        "SELECT state, ai_pass_at IS NOT NULL FROM associations "
-        "WHERE run_id = 12 AND pmid = 25031347"
+        "SELECT state, ai_pass_at IS NOT NULL FROM associations WHERE pmid = %s",
+        (SELECTED,),
     ).fetchone()
     assert (state, ai_pass_at) == ("curated", True)
 
@@ -216,20 +228,20 @@ def test_publication_curated(conn):
 def test_publication_note_goes_first(conn):
     """SELECTED has no note yet; then each note goes first, the previous ones after `---`, after
     the date of the write."""
-    first = PublicationUpdate(*SELECTED, "selected", "SELECTED: no full text, closed")
+    first = PublicationUpdate(SELECTED, "selected", "SELECTED: no full text, closed")
     assert update_publications(conn, [first], commit=True).committed
     dated = f"[{today(conn)}] SELECTED: no full text, closed"
-    assert note_of(conn, SELECTED[1]) == dated
+    assert note_of(conn, SELECTED) == dated
     note = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
     assert update_publications(conn, [replace(first, state="curated", note=note)], commit=True).ok
-    assert note_of(conn, SELECTED[1]) == f"[{today(conn)}] {note}\n---\n{dated}"
+    assert note_of(conn, SELECTED) == f"[{today(conn)}] {note}\n---\n{dated}"
 
 
 def test_publication_note_is_taken_as_written(conn):
     """The state is the update's; the note, whatever its first line, is stored after the date."""
-    update = PublicationUpdate(*SELECTED, "curated", "co-IP of NS1 with TRIM25")
+    update = PublicationUpdate(SELECTED, "curated", "co-IP of NS1 with TRIM25")
     assert update_publications(conn, [update], commit=True).committed
-    assert note_of(conn, SELECTED[1]) == f"[{today(conn)}] co-IP of NS1 with TRIM25"
+    assert note_of(conn, SELECTED) == f"[{today(conn)}] co-IP of NS1 with TRIM25"
 
 
 def today(conn) -> str:
@@ -251,9 +263,9 @@ def note_of(conn, pmid) -> str:
 NOT_ACCESSIBLE = "SELECTED: no full text, closed — not open access anywhere"
 
 
-def left_selected(run_id: int = SELECTED[0]) -> PublicationUpdate:
+def left_selected() -> PublicationUpdate:
     """SELECTED left `selected` by a pass: what the batch moves."""
-    return PublicationUpdate(run_id, SELECTED[1], "selected", NOT_ACCESSIBLE)
+    return PublicationUpdate(SELECTED, "selected", NOT_ACCESSIBLE)
 
 
 def run_of(conn, pmid) -> tuple[int, str, str]:
@@ -269,31 +281,30 @@ def run_of(conn, pmid) -> tuple[int, str, str]:
 def test_move_takes_the_descriptions(conn, new):
     [stable_id] = add_descriptions(conn, [new], commit=True).written
     assert write_batch(conn, [], [], [left_selected()], commit=True)[1].committed
-    run_id, name, moved = run_of(conn, SELECTED[1])
+    _, name, moved = run_of(conn, SELECTED)
     day = today(conn)
     selected = f"[{day}] {NOT_ACCESSIBLE}"
     assert name == "special-1" and moved == f"[{day}] Moved from run 32\n---\n{selected}"
-    assert stable_id in live(conn, run_id, SELECTED[1])
+    assert stable_id in live(conn, SELECTED)
     curated = "CURATED: co-IP of NS1 with TRIM25\n- Full text: PDF provided by the user"
-    update = PublicationUpdate(run_id, SELECTED[1], "curated", curated)
+    update = PublicationUpdate(SELECTED, "curated", curated)
     assert update_publications(conn, [update], commit=True).committed
     dated = f"[{day}] {curated}"
-    assert note_of(conn, SELECTED[1]) == f"{dated}\n---\n{moved}"
+    assert note_of(conn, SELECTED) == f"{dated}\n---\n{moved}"
 
 
 def test_move_to_a_new_special_run(conn):
     conn.execute("INSERT INTO runs (type, name) VALUES ('vh', 'special-1')")
     conn.commit()
     assert write_batch(conn, [], [], [left_selected()], new_run=True, commit=True)[1].committed
-    assert run_of(conn, SELECTED[1])[1] == "special-2"
+    assert run_of(conn, SELECTED)[1] == "special-2"
 
 
 def test_move_leaves_the_others(conn):
-    curated = PublicationUpdate(*SARS, "curated", "CURATED: co-IP of SARS-CoV N")
+    curated = PublicationUpdate(SARS, "curated", "CURATED: co-IP of SARS-CoV N")
     assert write_batch(conn, [], [], [curated])[0] == []
     assert write_batch(conn, [], [], [left_selected()], commit=True)[1].committed
-    run_id = run_of(conn, SELECTED[1])[0]
-    assert write_batch(conn, [], [], [left_selected(run_id)])[0] == []  # already in a special run
+    assert write_batch(conn, [], [], [left_selected()])[0] == []  # already in a special run
 
 
 def test_open_transaction_is_refused(conn, new):
@@ -312,7 +323,7 @@ def test_extra_end_residues_in_lowercase_are_left_out_of_the_occurrences(conn, n
     ).fetchone()[0]
     assert mapping["sequence"] == "GST" + sequence and mapping["nter"] == "GST"
     assert mapping["isoforms"][0]["occurrences"][0] == {"start": 1, "stop": 20, "identity": 100}
-    row = {r.stable_id: r for r in live_revisions(conn.cursor(), *SELECTED)}[outcome.written[0]]
+    row = {r.stable_id: r for r in live_revisions(conn.cursor(), SELECTED)}[outcome.written[0]]
     assert row.description is not None and row.description.mappings2 == ("gst" + sequence,)
 
 
@@ -329,11 +340,11 @@ def test_the_same_sequence_with_other_extra_residues_is_a_duplicate(conn, new):
 def batch(conn) -> tuple[list[Revision], list[NewDescription], list[PublicationUpdate]]:
     """SARS's `N` renamed `orf6` with a new `orf6` description, which holds only after the
     renames; SELECTED left `selected`, which the batch then moves."""
-    rows = live(conn, *SARS)
+    rows = live(conn, SARS)
     note = "name2 N → orf6, Drakkar name of the protein"
     revisions = [renamed(rows[s], "orf6", note) for s in ("EY73D2C965", "EYF737084C")]
     added = NewDescription(
-        *SARS,
+        SARS,
         Description("MI:0007", "P46934", "Q6VA95", "orf6"),
         "anti-tag co-IP (MI:0007), Fig. 2B",
     )
@@ -345,13 +356,13 @@ def test_batch_writes_everything_in_one_transaction(conn):
     assert [r.invariant.id for r in add_descriptions(conn, additions).errors] == ["D6"]  # alone
     before = count(conn)
     moves, outcome = write_batch(conn, revisions, additions, updates)  # a dry run
-    assert outcome.ok and not outcome.committed and [m.pmid for m in moves] == [SELECTED[1]]
-    assert count(conn) == before and run_of(conn, SELECTED[1])[1] == "32"
+    assert outcome.ok and not outcome.committed and [m.pmid for m in moves] == [SELECTED]
+    assert count(conn) == before and run_of(conn, SELECTED)[1] == "32"
     moves, outcome = write_batch(conn, revisions, additions, updates, commit=True)
     assert outcome.committed and count(conn) == before + 3
-    names = {r.description.name2 for r in live(conn, *SARS).values() if r.description}
+    names = {r.description.name2 for r in live(conn, SARS).values() if r.description}
     assert "orf6" in names and "N" not in names
-    _, name, note = run_of(conn, SELECTED[1])
+    _, name, note = run_of(conn, SELECTED)
     assert name == "special-1" and note.startswith(f"[{today(conn)}] Moved from run 32\n---\n")
 
 
