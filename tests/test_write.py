@@ -113,13 +113,17 @@ def test_add_to_a_publication_in_several_vh_runs_is_refused(conn, new):
     assert outcome.problems[0][1] == f"publication {SELECTED} is in several vh runs: 32, 99"
 
 
-def test_mapping_below_threshold_needs_to_be_listed(conn, new):
-    low = replace(new, description=replace(new.description, mappings2=("WWWWWWWWWWWWWWWWWWWW",)))
-    assert "below_threshold" in add_descriptions(conn, [low]).problems[0][1]
-    listed = replace(
-        low, description=replace(low.description, below_threshold=("WWWWWWWWWWWWWWWWWWWW",))
+def test_a_mapping_below_90_percent_is_skipped(conn, new):
+    [sequence] = new.description.mappings2
+    both = (sequence, "WWWWWWWWWWWWWWWWWWWW")
+    outcome = add_descriptions(
+        conn, [replace(new, description=replace(new.description, mappings2=both))], commit=True
     )
-    assert add_descriptions(conn, [listed]).ok
+    assert outcome.ok
+    [mapping] = conn.execute(
+        "SELECT mapping2 FROM descriptions WHERE stable_id = %s", outcome.written
+    ).fetchone()[0]
+    assert mapping["sequence"] == sequence
 
 
 # --- Revising -----------------------------------------------------------------------------------
@@ -155,6 +159,15 @@ def test_revision_on_a_stale_version_is_refused(conn):
 def test_revision_that_changes_nothing_is_refused(conn):
     revision = live(conn, SARS)["EY73D2C965"]
     assert "changes nothing" in revise_descriptions(conn, [revision]).problems[0][1]
+
+
+def test_revision_that_changes_only_a_skipped_mapping_is_skipped(conn):
+    revision = live(conn, SARS)["EY73D2C965"]
+    assert revision.description is not None
+    mappings2 = (*revision.description.mappings2, "WWWWWWWWWWWWWWWWWWWW")
+    low = replace(revision, description=replace(revision.description, mappings2=mappings2))
+    outcome = revise_descriptions(conn, [low])
+    assert not outcome.problems and outcome.written == []
 
 
 def test_revision_of_another_publication_is_refused(conn):
