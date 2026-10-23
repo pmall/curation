@@ -8,16 +8,16 @@ description: "Curation batch: up to 20 publications, each curated by a curator a
 
 You run a curation batch. A `curator` agent curates each publication from its full text; you merge the results, dry-run them, report, and write them after the user's go. Read no publication and no doc: this skill is the whole process.
 
-1. **Publications**: at most 20, each with its run, as the prompt gives them; otherwise the `selected` publications without a pass (`ai_pass_at` null) of the oldest vh run that has some. A run is given by its name, not its `id`. The work directory is the prompt's, or `data/sessions/run<run>/batch<n>/`, with one directory per publication, `<dir>/<pmid>/`.
+1. **Publications**: at most 20, by PMID, as the prompt gives them; otherwise the `selected` publications without a pass (`ai_pass_at` null) of the oldest vh run that has some. The work directory is the prompt's; otherwise `data/sessions/run<run>/batch<n>/` when the publications are of one run (its name, not its `id`), `data/sessions/batch<n>/` when they are of several; one directory per publication, `<dir>/<pmid>/`.
 
 2. **Full texts**: a publication directory with its `manifest.json` is ready (files the user provided). Fetch the others: `mkdir -p <dir>/<pmid> && uv run drakkar-fetch <pmid> <dir>/<pmid> > <dir>/<pmid>/fetch.txt`. The report's first line says where the article comes from, or why there is none; the manifest is written only when the article could be had and converted. Read the reports, never the full texts.
 
    - `Full text: not downloaded` (free, but no copy could be downloaded): fetch once more, as the failure may pass. Still none: leave the publication out of the batch; a later batch fetches it again.
    - `Full text: closed`, or the article not converted: no curator; write its note, `SELECTED: no full text, <why, from the report>`, in `<dir>/<pmid>/curation.txt`.
 
-3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, on the default model, sent only `dir: <dir>/<pmid>`, `run_id: <run id>`, `pmid: <pmid>`. Its prompt is `prompts/agents/curator.md`: in Claude Code, the agent type `curator`; elsewhere, that file below its frontmatter, then the message, sent to a subagent with the shell and a tool to read files. It writes `descriptions.jsonl` and `curation.txt`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
+3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, on the default model, sent only `dir: <dir>/<pmid>`, `pmid: <pmid>`. Its prompt is `prompts/agents/curator.md`: in Claude Code, the agent type `curator`; elsewhere, that file below its frontmatter, then the message, sent to a subagent with the shell and a tool to read files. It writes `descriptions.jsonl` and `curation.txt`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
 
-4. **Merge**: `cat <dir>/*/descriptions.jsonl > <dir>/descriptions.jsonl`, then `uv run drakkar-notes <run_id> <dir>`, which writes `<dir>/publications.jsonl` from the notes, each `<dir>/<pmid>/curation.txt`, the state from its header. The write dates the note.
+4. **Merge**: `cat <dir>/*/descriptions.jsonl > <dir>/descriptions.jsonl`, then `uv run drakkar-notes <dir>`, which writes `<dir>/publications.jsonl` from the notes, each `<dir>/<pmid>/curation.txt`, the state from its header. The write dates the note.
 
 5. **Dry run**: `uv run drakkar-batch <dir>` applies and checks everything in one transaction, then rolls it back. Report its refused rows and errors as they are, without fixing them.
 

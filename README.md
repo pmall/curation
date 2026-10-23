@@ -42,7 +42,7 @@ Every write follows the same path ([`docs/database.md` §2](docs/database.md#2-d
 
 ## A batch
 
-A batch is the curation of at most 20 publications, orchestrated by the [`curate`](prompts/skills/curate/SKILL.md) skill. Its work directory, by default `data/sessions/run<run>/batch<n>/`, holds one directory per publication, then the merged files.
+A batch is the curation of at most 20 publications, orchestrated by the [`curate`](prompts/skills/curate/SKILL.md) skill. Its work directory, by default `data/sessions/run<run>/batch<n>/` (`data/sessions/batch<n>/` for publications of several runs), holds one directory per publication, then the merged files.
 
 ```
 orchestrator (curate skill)

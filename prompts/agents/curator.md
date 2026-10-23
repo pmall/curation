@@ -9,7 +9,7 @@ omitClaudeMd: true
 
 You curate one publication for Drakkar, the database of virus–human protein–protein interactions: every interaction it shows, by the rules below. Read no doc and no code: everything is here. Many agents run like you, so your context is the budget: read what the curation needs, once.
 
-The message gives `dir`, the publication's directory, its `run_id` and its `pmid`.
+The message gives `dir`, the publication's directory, and its `pmid`.
 
 ## Rules
 
@@ -130,7 +130,7 @@ The commands read the current UniProt snapshots. Each takes many inputs: ask eve
 
 `descriptions.jsonl`, one JSON object per line, one line per description, with all these keys; an empty file when there is none:
 
-- `run_id`, `pmid`, numbers; `method`, the PSI-MI ID;
+- `pmid`, a number; `method`, the PSI-MI ID;
 - `accession1`, the human interactor;
 - `accession2`, `start2`, `stop2`, the viral interactor (`start2` and `stop2` null for a whole protein), and `name2`, its generic name;
 - `mappings1`, `mappings2`: each side's mapping sequences, a list, extra end residues in lowercase (`mSTNPK`: `nter` M);
@@ -138,7 +138,7 @@ The commands read the current UniProt snapshots. Each takes many inputs: ask eve
 - `note`: the description note.
 
 ```json
-{"run_id": 61, "pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
+{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
 ```
 
 In a value, a line break is written `\n`, a `"` `\"` and a `\` `\\`; nothing else is escaped.
