@@ -146,7 +146,7 @@ def test_a_publication_in_another_state_is_refused_with_its_line(tmp_path: Path)
 
 
 def test_notes_command_writes_the_publications_of_a_batch(tmp_path: Path):
-    """One row per note, the PMID its directory's name, the state its header, the note as
+    """One row per note, the PMID its directory's name, the state from its first word, the note as
     written; a directory without a note, and the merged files, are left out."""
     notes = {
         "22046132": "CURATED: co-IP of SARS-CoV N with NEDD4\n- Not kept: N × B — only cited\n",

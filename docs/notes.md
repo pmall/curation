@@ -1,23 +1,16 @@
 # Notes
 
-The notes only serve Claude to explain its choices later, to an external reviewer or in a report on a curation run or batch. Free text, in short lines, under the labels below, which make them easy to read and search.
+The notes only serve Claude to explain and justify its choices later, to an external reviewer or in a report on a curation run or batch: free text, in short lines, with what that needs and nothing else.
 
 ## Publication note
 
-`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, a header line `STATE: summary` and its detail lines, which the write puts after the date (`[2026-10-06] CURATED: …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
+`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, its first word the state, which the write puts after the date (`[2026-10-06] CURATED …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
 
-| State | Summary |
+| State | Then |
 | -- | -- |
-| `SELECTED` | Before a pass, what the abstract suggests; after one, as `CURATED`, or `no full text, <why>`. |
+| `SELECTED` | Before a pass, what the abstract suggests; after one, as `CURATED`, with the relevant file that could not be had and why, or `no full text, <why>`. |
 | `DISCARDED` | `<reason code>`, then a short why: `no-viral-protein`, `no-human-protein`, `no-ppi` (no physical interaction suggested), `non-human-host`, `review`, `preprint`, `not-research` (editorial, erratum, protocol…), `other`. |
-| `CURATED` | What the publication shows, in a few words; with no description, why. |
-
-Detail lines:
-
-- `Strain:` the strain and where the publication gives it, when one strain holds for all the viral interactors; otherwise each description's `Entry` line gives it.
-- `Not read:` each supplementary file listed or cited and not read, where it is cited and why: not relevant (what it holds), or relevant and why it could not be read, which keeps the publication `selected`.
-- `Not kept:` each pair the publication shows that is not a description, where and why.
-- `Remark:` anything else a reviewer or a report needs (for a curator file, how ambiguous rows were interpreted).
+| `CURATED` | Free text, what explains the choices on the publication as a whole: each pair the publication shows that is not a description, where and why; with no description, why; anything else a reviewer would ask (the strain all the descriptions share). No summary of the publication, nothing on the other files, read or not. |
 
 ## Description note
 
@@ -34,17 +27,16 @@ A curation's detail lines explain each value that was a choice: a line naming th
 ## Examples
 
 ```
-[2026-10-06] CURATED: co-IP and pull-down of HCV NS5A with human kinases
-- Strain: genotype 1b, Con1 (Methods, "Plasmids")
-- Not read: Video S1 (Fig. 5) — not relevant, live imaging
-- Not kept: NS5A × TRIM25 (Discussion) — only cited from ref. 12
+[2026-10-06] CURATED
+- HCV genotype 1b, strain Con1 (Methods, "Plasmids"), for every viral interactor
+- NS5A × TRIM25 not kept: only cited from ref. 12 (Discussion)
 ```
 
 ```
 [2026-10-21] Moved from run 88
 ---
-[2026-10-20] SELECTED: Y2H screen of ZIKV proteins against a human library
-- Not read: Table S2 (Results, "Screen") — relevant, no URL given
+[2026-10-20] SELECTED
+- Table S2, the screen's hits (Results, "Screen"), could not be had: no URL given
 ---
 Y2H, see table S2
 ```
