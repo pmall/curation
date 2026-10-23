@@ -576,7 +576,7 @@ def _publication(cur: Any, update: PublicationUpdate) -> str:
 
 
 def _dated(cur: Any, note: str) -> str:
-    """A publication note as written, after the date of the write: `[2026-10-22] CURATED: …`."""
+    """A publication note as written, after the date of the write: `[2026-10-22] CURATED …`."""
     cur.execute("SELECT current_date::text")
     return f"[{cur.fetchone()[0]}] {note.strip()}"
 

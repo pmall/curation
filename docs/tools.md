@@ -33,10 +33,10 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 | description keys | on a `revise`: the whole new description, the keys of the descriptions to add from `method` to `mappings2`; on a `remove`, null |
 | `note` | `revise`: the note of the new version (the curation's note from `drakkar-diff`, `UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
-**Publications** (`*.jsonl`), one line per publication whose state or note changes: `pmid`, a number, the publication in its vh run; `state`, `selected` or `curated`; `note`, the note of the pass. The write puts it first in the publication's note, after the date (`[2026-10-22] CURATED: …`), the previous notes after a line `---`.
+**Publications** (`*.jsonl`), one line per publication whose state or note changes: `pmid`, a number, the publication in its vh run; `state`, `selected` or `curated`; `note`, the note of the pass. The write puts it first in the publication's note, after the date (`[2026-10-22] CURATED …`), the previous notes after a line `---`.
 
 ```json
-{"pmid": 35939498, "state": "curated", "note": "CURATED: co-IP of HSV-1 gE with ANXA1\n- Not kept: ..."}
+{"pmid": 35939498, "state": "curated", "note": "CURATED\n- gE × ANXA2 not kept: colocalization only (Fig. 4)"}
 ```
 
 ## Tools
