@@ -34,7 +34,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | Full texts | `drakkar-fetch`, `drakkar-download`, `drakkar-parse` | Download a full text with its supplementary files, convert them, and list them in a manifest; download and convert one file at a URL; convert a file (XML, HTML, PDF, Word, spreadsheets). |
 | Reading | `drakkar-read`, `drakkar-align`, `drakkar-genbank` | Lookups of methods, taxa, entries and sequences, and of the generic names in use; mappings aligned as the write computes them, the entries closest to a sequence; free read-only SQL; NCBI protein sequences. |
 | Diffing | `drakkar-diff` | A publication's curated descriptions against its live ones, as files to add, revise and remove. |
-| Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-notes`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes, moves to the special run; the publications file of a batch, from its notes; a whole batch in one transaction. |
+| Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-notes`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes; the publications file of a batch, from its notes; a whole batch in one transaction. |
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
 | Releases | `drakkar-taxonomy`, `drakkar-uniprot` | Load the NCBI taxonomy and a UniProt release. |
 
@@ -55,8 +55,7 @@ orchestrator (curate skill)
   5. dry run        drakkar-batch: the whole batch checked in one transaction, rolled back
   6. report         to the user, with the errors of the dry run       ── nothing written yet
      ── go ──
-  7. commit         drakkar-batch --commit: descriptions, publications, then the move
-                      of the publications left selected to the special run
+  7. commit         drakkar-batch --commit: descriptions, publications
 ```
 
 - **Full texts first.** The orchestrator fetches every full text and its supplementary files before any subagent starts, from PMC (its open access files, Europe PMC, NCBI, the PMC article page), the publisher's page, then the free copies' PDFs (OpenAlex, Unpaywall), and converts them to text. A free article that could not be downloaded is fetched once more; a publication still without the article gets no subagent. A subagent downloads a missing supplementary file it needs from the URL the text gives (`drakkar-download`), and any file it needs to identify an interactor, its coordinates or a mapping (a sequence, an entry, a taxon) from a public database, never the article. When no route works, the user can provide the files: they are set up as the fetch does, with their manifest.
@@ -64,7 +63,7 @@ orchestrator (curate skill)
 - **Every description is written.** Each value comes from the first tier that gives it, from the most direct to the most inferred, and the description note names the tier (by its label) and the evidence of each value that is not obvious ([`docs/curation-rules.md` §4](docs/curation-rules.md#4-how-each-value-is-identified)); a publication stays `selected` only for a relevant file the subagent could not get.
 - **A dry run before the report.** `drakkar-batch` applies the merged files in one transaction, checks every invariant on the result and rolls back. Its refused rows and errors, inconsistencies between publications among them, go to the report as they are, not fixed.
 - **The report leaves no open question**: what each file holds, the publications without a full text or not curated, with why.
-- **The go.** After it, the orchestrator commits the batch files, the last write moving the publications the agent could not curate fully (a relevant file missing: the full text or a supplementary file) to the open special run, so the run they came from can be complete. Their manual pass happens there.
+- **The go.** After it, the orchestrator commits the batch files. The publications the agent could not curate fully (a relevant file missing: the full text or a supplementary file) stay `selected` with a date; they are moved to the open special run when the user asks, so the run they came from can be complete. Their manual pass happens there.
 
 Batches are independent: each takes its own publications, works in its own directory and writes only them. Many could run in parallel, given distinct publications; the default pick, the next publications of the oldest run, serves one batch at a time.
 

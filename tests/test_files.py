@@ -220,7 +220,7 @@ def test_add_command_reports_the_refused_row(dbname, tmp_path: Path):
 
 def test_batch_command_writes_a_curation_batch(dbname, tmp_path: Path):
     """A curation batch, its files merged as the curate skill merges them: a new description, and
-    its publication left `selected`, moved last with it."""
+    its publication left `selected`."""
     added = NewDescription(SELECTED, Description("MI:0007", "P46934", "P25223", "P"), "Fig. 2B")
     publication = tmp_path / "25031347"
     publication.mkdir()
@@ -236,8 +236,7 @@ def test_batch_command_writes_a_curation_batch(dbname, tmp_path: Path):
     dry = run("drakkar-batch", str(tmp_path))
     assert dry.returncode == 0 and "dry run passed" in dry.stdout, dry.stdout + dry.stderr
     done = run("drakkar-batch", str(tmp_path), "--commit")
-    assert done.returncode == 0 and "3 rows, 3 applied: committed" in done.stdout, done.stdout
-    assert "move 32/25031347 to the special run" in done.stdout
+    assert done.returncode == 0 and "2 rows, 2 applied: committed" in done.stdout, done.stdout
 
 
 def test_batch_command_writes_the_files_of_a_diff(conn, tmp_path: Path):

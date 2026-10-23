@@ -9,13 +9,12 @@ concatenate.
     uv run drakkar-publications <file>... [--commit]
     uv run drakkar-diff <pmid> <file>
     uv run drakkar-notes <dir>
-    uv run drakkar-batch <dir> [--new-run] [--commit]
+    uv run drakkar-batch <dir> [--commit]
 
 Without `--commit`, a dry run: everything is applied and checked, then rolled back. The diff is
 read-only: it writes the add, revise and delete files of a curated publication beside its file.
 The notes command writes the publications file of a curation batch from its publication notes.
-The batch writes the merged files of a curation batch in one transaction, then moves the
-publications Claude could not curate fully to a special run.
+The batch writes the merged files of a curation batch in one transaction.
 """
 
 import argparse
@@ -351,10 +350,9 @@ def notes_main() -> None:
 
 def batch_main() -> None:
     parser = argparse.ArgumentParser(
-        description="Write a curation batch: its descriptions, its publications, then the move."
+        description="Write a curation batch: its descriptions and its publications."
     )
     parser.add_argument("dir", type=Path, help="the batch directory, with its merged files")
-    parser.add_argument("--new-run", action="store_true", help="open a new special run first")
     parser.add_argument("--commit", action="store_true", help="commit if everything passes")
     args = parser.parse_args()
     directory = cast(Path, args.dir)
@@ -367,20 +365,16 @@ def batch_main() -> None:
         addition_rows = read_descriptions(present(BATCH_ADDITIONS)[:1])
         publication_rows = read_publications([directory / BATCH_PUBLICATIONS])
         with connect() as conn:
-            moves, outcome = write_batch(
+            outcome = write_batch(
                 conn,
                 [item for _, item in revision_rows],
                 [item for _, item in addition_rows],
                 [item for _, item in publication_rows],
-                new_run=args.new_run,
                 commit=args.commit,
             )
     except ValueError as e:  # a file error, or a stable ID given twice
         sys.exit(str(e))
     wheres = [where for where, _ in [*revision_rows, *addition_rows, *publication_rows]]
-    wheres += [f"{move.run}/{move.pmid}" for move in moves]
-    for move in moves:
-        print(f"move {move.run}/{move.pmid} to the special run")
     print(report(outcome, wheres))
     sys.exit(0 if outcome.ok else 1)
 
