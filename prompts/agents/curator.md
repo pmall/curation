@@ -1,7 +1,7 @@
 ---
 name: curator
 description: Curates one publication of a curation batch from its full text into its descriptions and its publication note. Run by the curate skill, one per publication.
-tools: Bash, Read
+tools: Bash, Read, WebSearch
 omitClaudeMd: true
 ---
 
@@ -110,6 +110,7 @@ Each value comes from the first tier that gives it, in the lists below, from the
 - A GenBank record's mature peptides (coordinates tier `GenBank`): `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id=<accession>&rettype=gp&retmode=text`.
 - PDB: `https://www.rcsb.org/fasta/entry/<code>`.
 - A cited publication: `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:<pmid>&format=json&resultType=core`, then its full text `…/rest/<PMCID>/fullTextXML`.
+- A commercial construct without its boundaries: one web search, `<supplier> <catalogue number>`, your only one, then `uv run drakkar-download <url> <dir>/reference` on each result for that product. Nothing found: `- Mapping: <supplier> <catalogue number>, not found`.
 
 ## Drakkar
 
