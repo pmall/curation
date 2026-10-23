@@ -19,7 +19,7 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 | `note` | the description note |
 
 ```json
-{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
+{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "note": "..."}
 ```
 
 **Revisions** (`*.revise.jsonl`, `*.delete.jsonl`), one line per revised or removed description:
@@ -36,7 +36,7 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 **Publications** (`*.jsonl`), one line per publication whose state or note changes: `pmid`, a number, the publication in its vh run; `state`, `selected` or `curated`; `note`, the note of the pass. The write puts it first in the publication's note, after the date (`[2026-10-22] CURATED …`), the previous notes after a line `---`.
 
 ```json
-{"pmid": 35939498, "state": "curated", "note": "CURATED\n- gE × ANXA2 not kept: colocalization only (Fig. 4)"}
+{"pmid": 35939498, "state": "curated", "note": "CURATED ..."}
 ```
 
 ## Tools
