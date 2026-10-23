@@ -4,8 +4,7 @@ A curation gives the whole list of a publication's descriptions; the diff says w
 would change (`docs/tools.md`). Descriptions are matched on what makes them one description
 (`glossary.md`): method, human accession, viral accession and coordinates, empty
 coordinates being the full protein. A matched description whose generic name or mapping
-sequences differ is revised, with the curation's note as it is; `below_threshold` is not
-compared, it follows from the mappings.
+sequences differ is revised, with the curation's note as it is.
 A curated description without a match is added, a live one without a match is deleted. The
 publication is given, so an empty list deletes every live description.
 """

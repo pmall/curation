@@ -53,7 +53,7 @@ For each interactor, its UniProt entry and, for a mature protein, its coordinate
 
 **The mappings**: a mapping is a fragment of the bait or the prey the publication shows bound: the part of the interactor its construct carried, recorded as the exact sequence tested. It is always a strict subsequence of its interactor, never the whole of it, and at least 4 residues: a peptide of 20 residues or less is a mapping like any other, and easy to miss. The interactor is identified first (the whole protein, or the mature protein the fragment belongs to), then the mapping within it. A mapping is only what is demonstrated: never a region concluded from the results, nor what the experiment adds without its being detected bound (07). A mapping belongs to one side of one description, so to its method; a description holds every mapping its publication shows for it, or none.
 
-The sequence is the one tested, from the publication's own sequence, never adapted to UniProt. It is aligned on the interactor and its isoforms, which verifies that it belongs to the protein, finds all its occurrences and gives their positions, and never changes it. Its identity should reach 90 % on at least one isoform: a mapping of 10 to 19 residues can have one mismatch or gap, a shorter one must match exactly. Below 90 %, it is kept with its best alignment only when the description note says why. A mapping may differ from its interactor for one reason only: the UniProt sequence is not the one of the experiment (viral: the entry is the closest strain, not the publication's; human: the Swiss-Prot sequence changed since). Any other difference is an error, in the mapping, the interactor or the alignment.
+The sequence is the one tested, from the publication's own sequence, never adapted to UniProt. It is aligned on the interactor and its isoforms, which verifies that it belongs to the protein, finds all its occurrences and gives their positions, and never changes it. Its identity must reach 90 % on at least one isoform: a mapping of 10 to 19 residues can have one mismatch or gap, a shorter one must match exactly. Below 90 %, the mapping is not kept: a sequence from the publication that far from its interactor points to an error, in the mapping or the interactor. A mapping may differ from its interactor for one reason only: the UniProt sequence is not the one of the experiment (viral: the entry is the closest strain, not the publication's; human: the Swiss-Prot sequence changed since). Any other difference is an error, in the mapping, the interactor or the alignment.
 
 Residues at a mapping's N- or C-terminal end that are not on its interactor, the protein's own just outside it (the initiator methionine before a mature protein, residues of the cleaved protein past its end) or the construct's (a tag, a linker), are kept, named `nter` (at its start) and `cter` (at its end); only the rest is aligned. A fragment across the cleavage site between two mature proteins belongs to neither and cannot be recorded: the pair is not kept, and the publication note says so.
 
@@ -134,11 +134,10 @@ The commands read the current UniProt snapshots. Each takes many inputs: ask eve
 - `accession1`, the human interactor;
 - `accession2`, `start2`, `stop2`, the viral interactor (`start2` and `stop2` null for a whole protein), and `name2`, its generic name;
 - `mappings1`, `mappings2`: each side's mapping sequences, a list, extra end residues in lowercase (`mSTNPK`: `nter` M);
-- `below_threshold`: the list of the mapping sequences kept below 90 % identity;
 - `note`: the description note.
 
 ```json
-{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
+{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
 ```
 
 In a value, a line break is written `\n`, a `"` `\"` and a `\` `\\`; nothing else is escaped.

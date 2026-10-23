@@ -460,7 +460,7 @@ def check_d12(cur: Any) -> Rows:
     """Mapping identity (warning): the best recorded identity of a mapping is below the threshold.
 
     `LEGACY_MIN_IDENTITY` (96 %) for legacy descriptions, `MIN_IDENTITY` (90 %) for Claude's
-    `CW` ones. A mapping below 90 % is explained in its description note (`curation-rules.md` §3).
+    `CW` ones.
     """
     cur.execute(MAPPING_SIDES)
     rows: list[tuple[Any, ...]] = []
@@ -544,7 +544,7 @@ INVARIANTS = sorted(
             "D12",
             "warning",
             "Mapping identity: the best occurrence of a mapping is below 96 % (legacy) or 90 % "
-            "(CW); below 90 %, the description note explains it.",
+            "(CW).",
             check_d12,
         ),
         Invariant(

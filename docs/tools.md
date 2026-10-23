@@ -16,11 +16,10 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 | `accession2`, `start2`, `stop2` | viral interactor; `start2` and `stop2` numbers, or null for the full protein |
 | `name2` | generic name |
 | `mappings1`, `mappings2` | lists of mapping sequences, extra end residues in lowercase (`mSTNPK`: `nter` M); occurrences are computed at write time |
-| `below_threshold` | list of the mapping sequences kept below 90 % identity, explained in the note |
 | `note` | the description note |
 
 ```json
-{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "below_threshold": [], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
+{"pmid": 35939498, "method": "MI:0007", "accession1": "Q13501", "accession2": "P29990", "start2": null, "stop2": null, "name2": "C", "mappings1": [], "mappings2": ["mSTNPK", "mDREMA"], "note": "anti-tag co-IP (MI:0007), Fig. 2B and 5C\n- Entry: ..."}
 ```
 
 **Revisions** (`*.revise.jsonl`, `*.delete.jsonl`), one line per revised or removed description:
@@ -31,7 +30,7 @@ JSON Lines: one JSON object per line, with every key of its format and no other,
 | `pmid` | its publication, a number |
 | `action` | `revise` (new version) or `remove` (no successor) |
 | `into` | on a `remove` that merges a duplicate: the stable ID of the survivor, otherwise null; the description keys may then give what the removed description was decided to become, checked against the survivor |
-| description keys | on a `revise`: the whole new description, the keys of the descriptions to add from `method` to `below_threshold`; on a `remove`, null |
+| description keys | on a `revise`: the whole new description, the keys of the descriptions to add from `method` to `mappings2`; on a `remove`, null |
 | `note` | `revise`: the note of the new version (the curation's note from `drakkar-diff`, `UPDATED` in a versioning pass, `FIXED` for a fix); `remove`: its `REMOVED` line |
 
 **Publications** (`*.jsonl`), one line per publication whose state or note changes: `pmid`, a number, the publication in its vh run; `state`, `selected` or `curated`; `note`, the note of the pass. The write puts it first in the publication's note, after the date (`[2026-10-22] CURATED: …`), the previous notes after a line `---`.
@@ -52,7 +51,7 @@ They take several files at once.
 
 - `uv run drakkar-notes <dir>`: writes `<dir>/publications.jsonl` from the publication notes of a curation batch, each `<dir>/<pmid>/curation.txt`, plain text, as written: one row per note, the PMID its directory's name, the state `selected` when the note starts with `SELECTED`, `curated` otherwise; an empty note gives no row. It never refuses a note.
 - `uv run drakkar-batch <dir> [--commit]`: writes a batch from the files of its directory: `descriptions.jsonl`, the descriptions to add of a curation batch; `descriptions.add.jsonl`, `descriptions.revise.jsonl` and `descriptions.delete.jsonl`, the files `drakkar-diff` writes beside a `descriptions.jsonl`, the first read in place of `descriptions.jsonl` when it is there; and `publications.jsonl`. A missing descriptions file has no rows. One transaction, in this order: the revisions and removals, the new descriptions, the publication states and notes. Every invariant is checked once, on the result, so a row can rely on an earlier one (an addition on a rename). Refused rows are reported with their file and line.
-- `uv run drakkar-diff <pmid> <file>`: read-only. Diffs the descriptions of the file (descriptions to add, all of one publication) against the live descriptions of that publication in its vh run, and writes beside the file `<name>.add.jsonl`, the descriptions that are not live; `<name>.revise.jsonl`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.jsonl`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein; `below_threshold` follows from the mappings and is not compared. An empty file puts every live description of the publication in `<name>.delete.jsonl`.
+- `uv run drakkar-diff <pmid> <file>`: read-only. Diffs the descriptions of the file (descriptions to add, all of one publication) against the live descriptions of that publication in its vh run, and writes beside the file `<name>.add.jsonl`, the descriptions that are not live; `<name>.revise.jsonl`, the live descriptions with another generic name or other mapping sequences, as `revise` rows; `<name>.delete.jsonl`, the live descriptions the file does not hold, as `remove` rows. Descriptions are matched on their method and interactors, empty coordinates being the full protein. An empty file puts every live description of the publication in `<name>.delete.jsonl`.
 - `uv run drakkar-check <dir>`: checks every invariant, read-only.
 
 Reading, `drakkar-read`, read-only, on the current snapshots. Each command takes many inputs; `entry` prints a block per entry, the others tab-separated lines under one `#` header line naming the columns, each line starting with the input it answers (`(none)` when nothing is found), the best first. `--limit <n>` bounds the lines per input (20); a list that is cut ends with a line `… 20 of 622 shown, cut by --limit 20`. A text matches as a substring, case aside, except in `methods`. A taxon is given by its NCBI ID and covers its whole subtree; it is written `<ID> <name>`, a lineage `<ID> <name> < …` up to the family. A stretch of a protein is written `<accession>:<start>-<stop>`, then `obsolete` when its snapshot is (its generic name stays reusable, its entry does not). An input that cannot be read gets its own line, with why.

@@ -75,7 +75,7 @@ def test_descriptions_round_trip_in_json_lines(tmp_path: Path):
     whole."""
     note = 'anti-tag co-IP (MI:0007), Fig. 2B\n- Remark: "NS3"\tmutant \\ 1–180 \u2028 kept'
     ns3 = Description(
-        "MI:0018", "P46934", "P26662", "NS3", 1027, 1657, ("mSTNPK",), ("DREMA", "gstQQ"), ("QQ",)
+        "MI:0018", "P46934", "P26662", "NS3", 1027, 1657, ("mSTNPK",), ("DREMA", "gstQQ")
     )
     items = [replace(N, note=note), NewDescription(SELECTED, ns3, "Y2H (MI:0018), Table S1")]
     path = tmp_path / "descriptions.jsonl"

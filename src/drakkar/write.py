@@ -46,8 +46,8 @@ class Description:
     interactor (in hh, the gene name, derived). Human names and coordinates are derived from the
     snapshots. Mappings are the domain sequences as used in the publication
     (`curation-rules.md` §3), their extra end residues in lowercase (`drakkar.align`); their
-    occurrences are computed. `below_threshold` lists the mapping sequences accepted below
-    `MIN_IDENTITY`, explained in the note; they are stored with their best occurrences.
+    occurrences are computed by `map_sequence`, and a mapping whose best identity is below
+    `MIN_IDENTITY` is skipped.
     """
 
     method: str  # PSI-MI ID, e.g. "MI:0007"
@@ -58,7 +58,6 @@ class Description:
     stop2: int | None = None
     mappings1: tuple[str, ...] = ()
     mappings2: tuple[str, ...] = ()
-    below_threshold: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -124,19 +123,23 @@ Applied = tuple[list[str], list[tuple[int, str]]]  # what was written, the probl
 def _apply_rows[T](
     cur: Any,
     rows: Sequence[T],
-    apply: Callable[[Any, T], str],
+    apply: Callable[[Any, T], str | None],
     first: int = 1,
     order: Callable[[T], int] = lambda _: 0,
 ) -> Applied:
-    """Apply each row in its own savepoint; rows are numbered from `first` in their problems."""
+    """Apply each row in its own savepoint; rows are numbered from `first` in their problems. A row
+    applied as None is skipped: nothing written, no problem."""
     written: list[str] = []
     problems: list[tuple[int, str]] = []
     for number, row in sorted(enumerate(rows, first), key=lambda n_row: order(n_row[1])):
         try:
             with cur.connection.transaction():
-                written.append(apply(cur, row))
+                done = apply(cur, row)
         except InvalidRow as e:
             problems += [(number, p) for p in e.problems]
+            continue
+        if done is not None:
+            written.append(done)
     return written, problems
 
 
@@ -287,9 +290,6 @@ def _build(
     if problems:
         raise InvalidRow(*problems)
 
-    below = {b.upper() for b in item.below_threshold}
-    if unknown := below - {m.upper() for m in item.mappings1 + item.mappings2}:
-        problems.append(f"below_threshold lists sequences that are not mappings: {sorted(unknown)}")
     mappings: list[list[dict[str, Any]]] = []
     for side, snapshot, sequences, start, stop in (
         (1, p1, item.mappings1, 1, p1.length),
@@ -312,18 +312,8 @@ def _build(
             mapping = map_sequence(
                 sequence, snapshot.sequences, snapshot.accession, start, stop, nter, cter
             )
-            if not mapping["isoforms"]:
-                problems.append(
-                    f"protein {side}: mapping {sequence[:20]}… ({len(sequence)} aa) aligns "
-                    f"nowhere on {snapshot.accession}[{start}-{stop}]"
-                )
-            elif best_identity(mapping) < MIN_IDENTITY and sequence not in below:
-                problems.append(
-                    f"protein {side}: mapping {sequence[:20]}… ({len(sequence)} aa) is below "
-                    f"{MIN_IDENTITY:g} % on every isoform of {snapshot.accession}[{start}-{stop}]: "
-                    "explain it in the note and list it in below_threshold"
-                )
-            computed.append(mapping)
+            if best_identity(mapping) >= MIN_IDENTITY:
+                computed.append(mapping)
         mappings.append(computed)
     if problems:
         raise InvalidRow(*problems)
@@ -456,7 +446,7 @@ def _check_merge(cur: Any, revision: Revision, removed: tuple[Any, ...]) -> None
             )
 
 
-def _revise(cur: Any, revision: Revision) -> str:
+def _revise(cur: Any, revision: Revision) -> str | None:
     live_id, version, association = _live(cur, revision)
     cur.execute(LIVE_DESCRIPTION, (revision.stable_id,))
     _, method_id, a1, id1, a2, id2, start2, stop2, mappings1, mappings2 = cur.fetchone()
@@ -494,6 +484,8 @@ def _revise(cur: Any, revision: Revision) -> str:
     old = dict(zip(row, cur.fetchone(), strict=True))  # same order; JSON columns come parsed
     new = {**row, "mapping1": json.loads(row["mapping1"]), "mapping2": json.loads(row["mapping2"])}
     if old == new:
+        if len(new["mapping1"]) + len(new["mapping2"]) < len(item.mappings1 + item.mappings2):
+            return None  # it changes only mappings `_build` skips
         raise InvalidRow(f"the revision of {revision.stable_id} changes nothing")
     cur.execute("UPDATE descriptions SET deleted_at = now() WHERE id = %s", (live_id,))
     _insert(cur, revision.stable_id, version + 1, row, note)
@@ -505,7 +497,7 @@ def live_revisions(cur: Any, pmid: int) -> list[Revision]:
     (empty note).
 
     Accessions are those of the snapshots used, even obsolete: a revision keeps them unless the
-    accession changes. `below_threshold` lists the mappings stored below `MIN_IDENTITY`.
+    accession changes.
     """
     association = vh_association(cur, pmid)
     cur.execute(
@@ -524,9 +516,6 @@ def live_revisions(cur: Any, pmid: int) -> list[Revision]:
     revisions: list[Revision] = []
     for stable_id, version, method, a1, a2, name2, start2, stop2, m1, m2 in cur:
         mappings = [cast(list[dict[str, Any]], json.loads(m)) for m in (m1, m2)]
-        below = tuple(
-            written(m) for side in mappings for m in side if best_identity(m) < MIN_IDENTITY
-        )
         description = Description(
             method=method,
             accession1=a1,
@@ -536,7 +525,6 @@ def live_revisions(cur: Any, pmid: int) -> list[Revision]:
             stop2=stop2,
             mappings1=tuple(written(m) for m in mappings[0]),
             mappings2=tuple(written(m) for m in mappings[1]),
-            below_threshold=below,
         )
         revisions.append(Revision(stable_id, version, pmid, "revise", description))
     return revisions

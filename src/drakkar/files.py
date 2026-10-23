@@ -47,7 +47,6 @@ DESCRIPTION = [
     "name2",
     "mappings1",
     "mappings2",
-    "below_threshold",
 ]
 ADD = ["pmid", *DESCRIPTION, "note"]
 REVISE = ["stable_id", "version", "pmid", "action", "into", *DESCRIPTION, "note"]
@@ -140,7 +139,7 @@ def _texts(where: str, row: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _description(where: str, row: dict[str, Any]) -> Description:
-    """The description keys of a row, from `method` to `below_threshold`."""
+    """The description keys of a row, from `method` to `mappings2`."""
     return Description(
         method=_text(where, row, "method").strip(),
         accession1=_text(where, row, "accession1").strip(),
@@ -150,7 +149,6 @@ def _description(where: str, row: dict[str, Any]) -> Description:
         name2=_text(where, row, "name2").strip(),
         mappings1=_texts(where, row, "mappings1"),
         mappings2=_texts(where, row, "mappings2"),
-        below_threshold=_texts(where, row, "below_threshold"),
     )
 
 
@@ -220,7 +218,6 @@ def _description_values(d: Description | None) -> dict[str, Any]:
         "name2": d.name2,
         "mappings1": list(d.mappings1),
         "mappings2": list(d.mappings2),
-        "below_threshold": list(d.below_threshold),
     }
 
 
