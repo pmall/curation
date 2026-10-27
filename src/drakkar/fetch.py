@@ -20,15 +20,14 @@ Three steps, each a list of routes; a route answers yes or no by one test.
    skipped. The article's figures, the other images of the PMC open access files, are saved
    too.
 A TIFF or a BMP image is saved as PNG, one per image it holds, which the Read tool reads. Each
-file but an image is converted as `drakkar-parse` does: the article to `<pmid>.md`, a
-supplementary file to `<file>.md` beside it. Last, the manifest `manifest.json` lists the files
-the curation can use, with the size of each text, written only when the article could be
-converted. Prints the report: a line saying where the article comes from, or why there is none,
-then what could not be had.
+file but an image is converted as `drakkar-parse` does, its texts beside it, named by their
+format. Last, the manifest `manifest.json` lists the files the curation can use, each with its
+texts and their sizes, written only when the article could be converted. Prints the report: a
+line saying where the article comes from, or why there is none, then what could not be had.
 
 `drakkar-download` saves the file at a URL, unpacks an archive (its videos left out), converts
-each file but an image, and prints one line per file: its text or its image, or why it could
-not be had.
+each file but an image, and prints one line per file: its entry, as in the manifest, or why it
+could not be had.
 
 Configuration, in the project's `.env`: `UNPAYWALL_EMAIL`, the address Unpaywall asks for to
 answer a request. Without it Unpaywall is not asked at all.
@@ -54,7 +53,7 @@ from dotenv import load_dotenv
 from lxml import etree
 from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
 
-from drakkar.parse import XLINK, ParseError, class_names, one_line, parse, tag_name
+from drakkar.parse import XLINK, ParseError, class_names, convert, one_line, tag_name
 
 EUROPE_PMC = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
@@ -270,15 +269,6 @@ def save(folder: Path, name: str, body: bytes) -> Path:
 
 def is_image(path: Path) -> bool:
     return path.suffix.lower() in IMAGES
-
-
-def convert(source: Path, text: Path) -> str | None:
-    """A file converted to text (`drakkar-parse`); returns why it cannot be."""
-    try:
-        text.write_text(parse(source), encoding="utf-8")
-    except ParseError as e:
-        return str(e)
-    return None
 
 
 def _same_file(name: str, url: str, text: str = "") -> bool:
@@ -841,22 +831,20 @@ class Fetch:
         """Every file converted, then the manifest of those the curation can use, written last
         and only when the article could be converted: a manifest means the curation can start."""
         report = self.report
-        text = f"{self.pmid}.md"
-        if why := convert(self.out / report["file"], self.out / text):
-            report["not_converted"] = why
+        try:
+            article = convert(self.out, report["file"])
+        except ParseError as e:
+            report["not_converted"] = str(e)
             return
-        article = {"file": report["file"], "text": text, "bytes": (self.out / text).stat().st_size}
-        supplements: list[dict[str, str | int]] = []
+        supplements: list[dict[str, Any]] = []
         for x in report["supplements"]:
-            text = f"{x['file']}.md"
             if is_image(Path(x["file"])):
                 supplements.append({"name": x["name"], "file": x["file"]})
-            elif why := convert(self.out / x["file"], self.out / text):
-                x["not_converted"] = why
-            else:
-                size = (self.out / text).stat().st_size
-                supplement = {"name": x["name"], "file": x["file"], "text": text, "bytes": size}
-                supplements.append(supplement)
+                continue
+            try:
+                supplements.append({"name": x["name"]} | convert(self.out, x["file"]))
+            except ParseError as e:
+                x["not_converted"] = str(e)
         path = self.out / MANIFEST
         tmp = path.with_suffix(".json.tmp")
         manifest = {"article": article, "supplements": supplements, "figures": report["figures"]}
@@ -922,8 +910,8 @@ def report_lines(report: dict[str, Any]) -> list[str]:
 
 def download(url: str, out: Path, get: Get = http_get) -> list[str]:
     """The file at a URL saved in `out`, an archive unpacked, each file but an image converted
-    to `<file>.md` beside it; returns one line per file: its text or its image, or why it could
-    not be had."""
+    beside it; returns one line per file: its entry, as in the manifest (paths starting with
+    `out`), or why it could not be had."""
     r = get(url)
     if r.status != 200:
         return [f"{url}: {_outcome(r)}"]
@@ -931,13 +919,13 @@ def download(url: str, out: Path, get: Get = http_get) -> list[str]:
     lines: list[str] = []
     for file, _, content in unpacked(name, r.body, r.url or url):
         path = save(out, file, content)
-        text = path.with_name(path.name + ".md")
         if is_image(path):
-            lines.append(str(path))
-        elif why := convert(path, text):
-            lines.append(f"{path}: not converted, {why}")
-        else:
-            lines.append(str(text))
+            lines.append(json.dumps({"file": str(path)}, ensure_ascii=False))
+            continue
+        try:
+            lines.append(json.dumps(convert(Path(), str(path)), ensure_ascii=False))
+        except ParseError as e:
+            lines.append(f"{path}: not converted, {e}")
     return lines
 
 

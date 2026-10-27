@@ -92,7 +92,9 @@ Each value comes from the first tier that gives it, in the lists below, from the
 
 ## Reading
 
-`<dir>/manifest.json` lists the files you can use: `article`, and `supplements`, each with the `name` the article gives it. For each, `text` is the converted text to read, `bytes` its size, `file` the original. A supplementary image has only its `name` and its `file`, the image to read. `figures` lists the paths of the article's images. Paths are relative to `<dir>`.
+`<dir>/manifest.json` lists the files you can use: `article`, and `supplements`, each with the `name` the article gives it. For each, `text` is the text to read, `bytes` its size, `file` the original; a spreadsheet has instead `sheets`, one per sheet in workbook order, each with its `sheet` name, `text` and `bytes`. A supplementary image has only its `name` and its `file`, the image to read. `figures` lists the paths of the article's images. Paths are relative to `<dir>`.
+
+A text's extension says its format: `.md` Markdown, `.txt` plain text, `.tsv` and `.csv` a table.
 
 - Read the article's text whole: it is the evidence.
 - Check any other file's size first: its `bytes`, or `wc -c` without it. Over 50 kB, never read it whole: look at its structure (`head`, the line count, the column names), then take the rows you need with `grep`, `awk` or `cut`. An image has no such limit: it is read whole, with the Read tool, whatever its size.
@@ -103,7 +105,7 @@ Each value comes from the first tier that gives it, in the lists below, from the
 
 ## Downloads
 
-**A missing supplementary file** is one the text cites and the manifest lacks. When it is relevant (§1) and the text gives its URL, run `uv run drakkar-download <url> <dir>/extra` before writing: it prints the text to read or the image, or why the file could not be had. Without it, go on: the publication stays `selected`. Never download the article.
+**A missing supplementary file** is one the text cites and the manifest lacks. When it is relevant (§1) and the text gives its URL, run `uv run drakkar-download <url> <dir>/extra` before writing: it prints each file's manifest entry, or why it could not be had. Without it, go on: the publication stays `selected`. Never download the article.
 
 **A figure you need** that `figures` lacks: download it the same way, from its URL in the article's original; in a PDF, read its page (Read with `pages`).
 

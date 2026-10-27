@@ -1,14 +1,19 @@
-"""Convert one full text or supplementary file to text a curation reads, short in tokens.
+"""Convert full texts and supplementary files to the texts a curation reads, short in tokens.
 
-uv run drakkar-parse <file> <out>
+uv run drakkar-parse <dir> <file>...
 
 PMC XML, HTML (a PMC article page by its structure, as its XML) and Word documents (.docx,
-and .doc through our own reader) become Markdown, a PDF its text page by page, a spreadsheet
-one TSV block per sheet. The converter is chosen by the file type; no network.
+and .doc through our own reader) become Markdown, `<file>.md`; a PDF its plain text page by
+page, `<file>.txt`; a spreadsheet one TSV file per sheet, `<file>.<n>.tsv` in workbook order.
+CSV, TSV and plain text are their own text, cleaned in place: in UTF-8, invisible characters
+removed. The texts are written beside the file, named by their format; the converter is chosen
+by the file type; no network. Prints each file's entry of the manifest (`drakkar-fetch`), its
+paths relative to `<dir>`.
 """
 
 import argparse
 import bisect
+import json
 import re
 import struct
 import sys
@@ -18,6 +23,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import charset_normalizer
 import docx
 import olefile
 import openpyxl
@@ -331,30 +337,27 @@ def _cell(value: Any) -> str:
     return one_line(str(value))
 
 
-def _sheets(sheets: list[tuple[str, list[list[Any]]]]) -> str:
-    blocks: list[str] = []
-    for name, rows in sheets:
-        lines: list[str] = []
-        for row in rows:
-            cells = [_cell(v) for v in row]
-            while cells and not cells[-1]:
-                cells.pop()
-            if cells:
-                lines.append("\t".join(cells))
-        blocks.append(f"## Sheet {name}\n\n" + ("\n".join(lines) if lines else "(empty)"))
-    return "\n\n".join(blocks) + "\n"
+def _tsv(rows: list[list[Any]]) -> str:
+    """A sheet's rows, tab-separated; its empty rows and the empty cells ending a row left out."""
+    lines: list[str] = []
+    for row in rows:
+        cells = [_cell(v) for v in row]
+        while cells and not cells[-1]:
+            cells.pop()
+        if cells:
+            lines.append("\t".join(cells) + "\n")
+    return "".join(lines)
 
 
-def xlsx(path: Path) -> str:
+def xlsx(path: Path) -> list[tuple[str, str]]:
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
-        sheets = [
-            (ws.title, [list(r) for r in ws.iter_rows(values_only=True)])
+        return [
+            (ws.title, _tsv([list(r) for r in ws.iter_rows(values_only=True)]))
             for ws in workbook.worksheets
         ]
     finally:
         workbook.close()
-    return _sheets(sheets)
 
 
 def _xls_value(cell: Any, datemode: Literal[0, 1]) -> Any:
@@ -367,13 +370,13 @@ def _xls_value(cell: Any, datemode: Literal[0, 1]) -> Any:
     return cell.value
 
 
-def xls(path: Path) -> str:
+def xls(path: Path) -> list[tuple[str, str]]:
     book: Any = xlrd.open_workbook(str(path))
-    sheets: list[tuple[str, list[list[Any]]]] = []
+    sheets: list[tuple[str, str]] = []
     for sheet in book.sheets():
         rows = [[_xls_value(c, book.datemode) for c in sheet.row(i)] for i in range(sheet.nrows)]
-        sheets.append((str(sheet.name), rows))
-    return _sheets(sheets)
+        sheets.append((str(sheet.name), _tsv(rows)))
+    return sheets
 
 
 # Word
@@ -643,53 +646,115 @@ def doc(path: Path) -> str:
     return "\n\n".join(b for b in blocks if b) + "\n"
 
 
-def text(path: Path) -> str:
-    """CSV or plain text, in UTF-8, else in the Windows encoding of Excel's exports."""
-    raw = path.read_bytes()
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw.decode("cp1252", errors="replace")
-
-
-CONVERTERS: dict[str, Callable[[Path], str]] = {
-    ".xml": jats,
-    ".nxml": jats,
-    ".html": html,
-    ".htm": html,
-    ".pdf": pdf,
+# The converters of each file type, with the extension of the text they give: Markdown, or
+# a PDF's plain text.
+CONVERTERS: dict[str, tuple[Callable[[Path], str], str]] = {
+    ".xml": (jats, ".md"),
+    ".nxml": (jats, ".md"),
+    ".html": (html, ".md"),
+    ".htm": (html, ".md"),
+    ".pdf": (pdf, ".txt"),
+    ".docx": (word, ".md"),
+    ".doc": (doc, ".md"),
+}
+# Spreadsheets: each sheet's name and rows, one TSV text per sheet.
+SPREADSHEETS: dict[str, Callable[[Path], list[tuple[str, str]]]] = {
     ".xlsx": xlsx,
     ".xlsm": xlsx,
     ".xls": xls,
-    ".docx": word,
-    ".doc": doc,
-    ".csv": text,
-    ".tsv": text,
-    ".txt": text,
 }
+# Already text: cleaned in place.
+AS_THEY_ARE = {".csv", ".tsv", ".txt"}
+# The encodings of text files other than UTF-8: spreadsheet exports (Excel's "Unicode text",
+# Windows, old Mac).
+ENCODINGS = ["utf_16", "utf_16_le", "utf_16_be", "cp1252", "mac_roman"]
 
 
-def parse(path: Path) -> str:
-    converter = CONVERTERS.get(path.suffix.lower())
-    if converter is None:
-        raise ParseError(f"no converter for {path.suffix or 'files without extension'}")
+def _read[T](converter: Callable[[Path], T], path: Path) -> T:
     try:
-        result = converter(path)
+        return converter(path)
     except ParseError:
         raise
     except Exception as e:  # a damaged or encrypted file, from anywhere: refused with why
         raise ParseError(f"cannot be read: {type(e).__name__}: {e}") from e
+
+
+def _visible(text: str) -> str:
     # Zero-width spaces and soft hyphens: invisible, and tokens all the same.
-    return re.sub("[\u200b\u200c\u200d\u00ad\ufeff]", "", result)
+    return re.sub("[\u200b\u200c\u200d\u00ad\ufeff]", "", text)
+
+
+def parse(path: Path) -> str:
+    """A full text or a document, as Markdown or plain text by its type."""
+    found = CONVERTERS.get(path.suffix.lower())
+    if found is None:
+        raise ParseError(f"no converter for {path.suffix or 'files without extension'}")
+    return _visible(_read(found[0], path))
+
+
+def sheets(path: Path) -> list[tuple[str, str]]:
+    """A spreadsheet's sheets, in workbook order: each its name and its rows as TSV."""
+    return [(name, _visible(rows)) for name, rows in _read(SPREADSHEETS[path.suffix.lower()], path)]
+
+
+def _decoded(raw: bytes) -> str:
+    """A text file's text: UTF-8 (never with NUL bytes, which UTF-16 has), else in the encoding
+    found among `ENCODINGS`."""
+    if b"\x00" not in raw:
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+    found = charset_normalizer.from_bytes(raw, cp_isolation=ENCODINGS).best()
+    if found is None:
+        raise ParseError("unknown encoding")
+    return str(found)
+
+
+def _write(path: Path, text: str) -> int:
+    data = text.encode()
+    path.write_bytes(data)
+    return len(data)
+
+
+def convert(base: Path, file: str) -> dict[str, Any]:
+    """A file, at a path relative to `base`, converted to its texts, written beside it; returns
+    its entry of the manifest, paths relative to `base`: `file`, then `text` and `bytes`, or for
+    a spreadsheet `sheets`, each with `sheet` (its name), `text` and `bytes`. CSV, TSV and plain
+    text are their own text, rewritten in UTF-8 without invisible characters when they were not.
+    A file that cannot be converted writes nothing."""
+    path = base / file
+    suffix = path.suffix.lower()
+    if not path.is_file():
+        raise ParseError("no such file")
+    if suffix in AS_THEY_ARE:
+        raw = path.read_bytes()
+        cleaned = _visible(_decoded(raw)).encode()
+        if cleaned != raw:
+            path.write_bytes(cleaned)
+        return {"file": file, "text": file, "bytes": len(cleaned)}
+    if suffix in SPREADSHEETS:
+        found: list[dict[str, Any]] = []
+        for n, (name, rows) in enumerate(sheets(path), 1):
+            text = f"{file}.{n}.tsv"
+            found.append({"sheet": name, "text": text, "bytes": _write(base / text, rows)})
+        return {"file": file, "sheets": found}
+    content = parse(path)
+    text = file + CONVERTERS[suffix][1]
+    return {"file": file, "text": text, "bytes": _write(base / text, content)}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert a full text or a supplement to text.")
-    parser.add_argument("file", type=Path)
-    parser.add_argument("out", type=Path)
+    parser = argparse.ArgumentParser(description="Convert full texts or supplements to text.")
+    parser.add_argument("dir", type=Path)
+    parser.add_argument("files", nargs="+", metavar="file")
     args = parser.parse_args()
-    try:
-        result = parse(args.file)
-    except ParseError as e:
-        sys.exit(f"{args.file}: {e}")
-    args.out.write_text(result, encoding="utf-8")
+    refused = False
+    for file in args.files:
+        try:
+            print(json.dumps(convert(args.dir, file), ensure_ascii=False))
+        except ParseError as e:
+            print(f"{file}: not converted, {e}", file=sys.stderr)
+            refused = True
+    if refused:
+        sys.exit(1)

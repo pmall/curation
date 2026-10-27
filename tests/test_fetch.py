@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import openpyxl
 import pytest
 
 from drakkar.fetch import (
@@ -138,7 +139,7 @@ def test_pmc_open_access_files(tmp_path: Path):
     assert report["missing_supplements"] == []
     assert report["file"] == f"{PMID}.xml"
     assert not (tmp_path / f"{PMID}.pdf").exists()
-    assert (tmp_path / f"{PMID}.md").read_text().startswith("Text\n")
+    assert (tmp_path / f"{PMID}.xml.md").read_text().startswith("Text\n")
     assert report["supplements"] == [
         {
             "name": "s1.xlsx",
@@ -152,9 +153,9 @@ def test_pmc_open_access_files(tmp_path: Path):
             "url": f"{PMC_AWS}/PMC9.2/fig_s1.tif",
         },
     ]
-    size = (tmp_path / f"{PMID}.md").stat().st_size
+    size = (tmp_path / f"{PMID}.xml.md").stat().st_size
     assert json.loads((tmp_path / "manifest.json").read_text()) == {
-        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md", "bytes": size},
+        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.xml.md", "bytes": size},
         "supplements": [{"name": "fig_s1.tif", "file": f"{PMID}.supp/fig_s1.png"}],
         "figures": [f"{PMID}.fig/g001.jpg"],
     }
@@ -428,26 +429,55 @@ def test_closed(tmp_path: Path):
 
 
 def test_manifest_lists_the_converted_files(tmp_path: Path):
+    """Each text named by its format: a CSV its own text, a spreadsheet one TSV per sheet."""
     xml = (
         b'<article xmlns:xlink="http://www.w3.org/1999/xlink"><body><p>Text</p>'
-        b'<supplementary-material xlink:href="s1.csv"/></body></article>'
+        b'<supplementary-material xlink:href="s1.csv"/>'
+        b'<supplementary-material xlink:href="s2.xlsx"/></body></article>'
     )
+    book = openpyxl.Workbook()
+    assert book.active is not None
+    book.active.title = "Y2H"
+    book.active.append(["NS1", "TRIM25"])
+    book.create_sheet("Co-IP").append(["NS2"])
+    workbook = io.BytesIO()
+    book.save(workbook)
     responses = {
         SEARCH: found(),
         WORK: json_ok({}),
-        f"{PMC_AWS}/?list-type=2&prefix=PMC9.": listing("PMC9.1/PMC9.1.xml", "PMC9.1/s1.csv"),
+        f"{PMC_AWS}/?list-type=2&prefix=PMC9.": listing(
+            "PMC9.1/PMC9.1.xml", "PMC9.1/s1.csv", "PMC9.1/s2.xlsx"
+        ),
         f"{PMC_AWS}/PMC9.1/PMC9.1.xml": ok(xml),
         f"{PMC_AWS}/PMC9.1/s1.csv": ok(b"a,b\n1,2\n", "text/csv"),
+        f"{PMC_AWS}/PMC9.1/s2.xlsx": ok(workbook.getvalue()),
     }
     report, _ = run(tmp_path, responses)
-    size = (tmp_path / f"{PMID}.md").stat().st_size
-    s1 = {"name": "s1.csv", "file": f"{PMID}.supp/s1.csv", "text": f"{PMID}.supp/s1.csv.md"}
+    size = (tmp_path / f"{PMID}.xml.md").stat().st_size
+    s1 = {"name": "s1.csv", "file": f"{PMID}.supp/s1.csv", "text": f"{PMID}.supp/s1.csv"}
+    s2 = f"{PMID}.supp/s2.xlsx"
     assert json.loads((tmp_path / "manifest.json").read_text()) == {
-        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md", "bytes": size},
-        "supplements": [s1 | {"bytes": 8}],  # a,b\n1,2\n
+        "article": {"file": f"{PMID}.xml", "text": f"{PMID}.xml.md", "bytes": size},
+        "supplements": [
+            s1 | {"bytes": 8},  # a,b\n1,2\n
+            {
+                "name": "s2.xlsx",
+                "file": s2,
+                "sheets": [
+                    {"sheet": "Y2H", "text": f"{s2}.1.tsv", "bytes": 11},  # NS1\tTRIM25\n
+                    {"sheet": "Co-IP", "text": f"{s2}.2.tsv", "bytes": 4},  # NS2\n
+                ],
+            },
+        ],
         "figures": [],
     }
-    assert (tmp_path / f"{PMID}.supp" / "s1.csv.md").read_text() == "a,b\n1,2\n"
+    assert (tmp_path / f"{s2}.1.tsv").read_text() == "NS1\tTRIM25\n"
+    assert sorted(p.name for p in (tmp_path / f"{PMID}.supp").iterdir()) == [
+        "s1.csv",
+        "s2.xlsx",
+        "s2.xlsx.1.tsv",
+        "s2.xlsx.2.tsv",
+    ]
     assert report_lines(report) == ["Full text: PMC9 (no license given)"]
 
 
@@ -598,9 +628,12 @@ def test_download_unpacks_and_converts(tmp_path: Path):
         z.writestr("movie_s2.mp4", "frames")
     url = "https://zenodo.org/records/1/files/data.zip"
     lines = download(url, tmp_path, Server({url: ok(archive.getvalue(), "application/zip")}))
-    assert lines == [str(tmp_path / "s1.csv.md"), str(tmp_path / "fig_s3.png")]
+    s1 = str(tmp_path / "s1.csv")
+    assert [json.loads(line) for line in lines] == [
+        {"file": s1, "text": s1, "bytes": 8},
+        {"file": str(tmp_path / "fig_s3.png")},
+    ]
     assert (tmp_path / "fig_s3.png").read_bytes().startswith(PNG)
-    assert (tmp_path / "s1.csv.md").read_text() == "a,b\n1,2\n"
     assert not (tmp_path / "movie_s2.mp4").exists()
 
 
@@ -608,7 +641,10 @@ def test_download_saves_each_image_of_a_tiff_as_png(tmp_path: Path):
     url = "https://journal.org/suppl/fig_s1.tif"
     two = (SAMPLES / "two-images.tif").read_bytes()
     lines = download(url, tmp_path, Server({url: ok(two, "image/tiff")}))
-    assert lines == [str(tmp_path / "fig_s1-1.png"), str(tmp_path / "fig_s1-2.png")]
+    assert [json.loads(line)["file"] for line in lines] == [
+        str(tmp_path / "fig_s1-1.png"),
+        str(tmp_path / "fig_s1-2.png"),
+    ]
     assert (tmp_path / "fig_s1-2.png").read_bytes().startswith(PNG)
 
 
@@ -616,7 +652,7 @@ def test_download_names_the_type_from_the_response(tmp_path: Path):
     """A link without an extension (`?download=1`): the type from the response."""
     url = "https://figshare.com/ndownloader/files/42"
     lines = download(url, tmp_path, Server({url: ok(b"x\ty\n", "text/csv")}))
-    assert lines == [str(tmp_path / "42.csv.md")]
+    assert [json.loads(line)["file"] for line in lines] == [str(tmp_path / "42.csv")]
 
 
 def test_download_failure(tmp_path: Path):

@@ -1,5 +1,6 @@
 """The converters of drakkar-parse, on small samples of each file type (no network)."""
 
+import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +11,7 @@ import pymupdf
 import pytest
 import xlwt
 
-from drakkar.parse import ParseError, markdown_table, parse
+from drakkar.parse import ParseError, convert, markdown_table, parse, sheets
 
 # ppat.1002331.s00*.doc: supplementary tables of PMID 22046132 (CC BY). Ours, made once with
 # LibreOffice from a .docx (LibreOffice is no dependency): beyond-bmp.doc, and page-break.doc,
@@ -235,22 +236,27 @@ def test_scanned_pdf(tmp_path: Path):
         parse(path)
 
 
-def test_xlsx(tmp_path: Path):
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
+def workbook(path: Path) -> None:
+    """A workbook of two sheets, the second empty."""
+    book = openpyxl.Workbook()
+    sheet = book.active
     assert sheet is not None
-    sheet.title = "Y2H"
+    sheet.title = "Y2H; Caco-2"
     sheet.append(["Bait", "Prey", "Score", None])
-    sheet.append(["NS1", "TRIM25", 2.0, None])
+    sheet.append(["NS1", "TRIM\u200b25", 2.0, None])
     sheet.append([None, None, None, None])
     sheet.append(["NS2", "line\nbreak", 0.5])
-    workbook.create_sheet("Empty")
+    book.create_sheet("Empty")
+    book.save(path)
+
+
+def test_xlsx(tmp_path: Path):
     path = tmp_path / "a.xlsx"
-    workbook.save(path)
-    assert parse(path) == (
-        "## Sheet Y2H\n\nBait\tPrey\tScore\nNS1\tTRIM25\t2\nNS2\tline break\t0.5\n\n"
-        "## Sheet Empty\n\n(empty)\n"
-    )
+    workbook(path)
+    assert sheets(path) == [
+        ("Y2H; Caco-2", "Bait\tPrey\tScore\nNS1\tTRIM25\t2\nNS2\tline break\t0.5\n"),
+        ("Empty", ""),
+    ]
 
 
 def test_xls(tmp_path: Path):
@@ -265,7 +271,7 @@ def test_xls(tmp_path: Path):
     sheet.write(1, 2, 2.0)
     path = tmp_path / "a.xls"
     workbook.save(str(path))
-    assert parse(path) == "## Sheet Y2H\n\nBait\tPrey\tScore\nNS1\t2002-09-02T00:00:00\t2\n"
+    assert sheets(path) == [("Y2H", "Bait\tPrey\tScore\nNS1\t2002-09-02T00:00:00\t2\n")]
 
 
 def test_docx(tmp_path: Path):
@@ -353,18 +359,6 @@ def test_not_a_doc(tmp_path: Path):
         parse(path)
 
 
-def test_text_is_kept_without_invisible_characters(tmp_path: Path):
-    path = tmp_path / "a.csv"
-    path.write_text("bait,prey\nNS1,TRIM\u200b25,co\u00adIP\n")
-    assert parse(path) == "bait,prey\nNS1,TRIM25,coIP\n"
-
-
-def test_text_in_windows_encoding(tmp_path: Path):
-    path = tmp_path / "a.csv"
-    path.write_bytes("bait;prey\nNS1;prot\u00e9ine\n".encode("cp1252"))
-    assert parse(path) == "bait;prey\nNS1;prot\u00e9ine\n"
-
-
 def test_unknown_type(tmp_path: Path):
     path = tmp_path / "a.tif"
     path.write_bytes(b"II*\x00")
@@ -376,22 +370,88 @@ def test_damaged_file_is_refused(tmp_path: Path):
     path = tmp_path / "a.xlsx"
     path.write_bytes(b"PK\x03\x04 not really a workbook")
     with pytest.raises(ParseError, match="cannot be read"):
-        parse(path)
+        sheets(path)
 
 
-def test_command_writes_the_output(tmp_path: Path):
-    source, out = tmp_path / "a.xml", tmp_path / "a.md"
-    source.write_text(JATS)
-    done = subprocess.run(
-        ["uv", "run", "drakkar-parse", str(source), str(out)], capture_output=True, text=True
-    )
-    assert done.returncode == 0, done.stderr
-    assert out.read_text().startswith("# NS1 binds TRIM25")
-    done = subprocess.run(
-        ["uv", "run", "drakkar-parse", str(tmp_path / "a.tif"), str(tmp_path / "b.md")],
-        capture_output=True,
-        text=True,
-    )
+# The texts, named by their format
+
+
+def test_spreadsheet_gives_one_tsv_file_per_sheet(tmp_path: Path):
+    """Numbered in workbook order, an empty sheet an empty file: every sheet listed."""
+    (tmp_path / "1.supp").mkdir()
+    workbook(tmp_path / "1.supp" / "s1.xlsx")
+    rows = "Bait\tPrey\tScore\nNS1\tTRIM25\t2\nNS2\tline break\t0.5\n"
+    assert convert(tmp_path, "1.supp/s1.xlsx") == {
+        "file": "1.supp/s1.xlsx",
+        "sheets": [
+            {"sheet": "Y2H; Caco-2", "text": "1.supp/s1.xlsx.1.tsv", "bytes": len(rows)},
+            {"sheet": "Empty", "text": "1.supp/s1.xlsx.2.tsv", "bytes": 0},
+        ],
+    }
+    assert (tmp_path / "1.supp" / "s1.xlsx.1.tsv").read_text() == rows
+    assert (tmp_path / "1.supp" / "s1.xlsx.2.tsv").read_text() == ""
+
+
+def test_pdf_gives_plain_text_and_xml_markdown(tmp_path: Path):
+    document = pymupdf.open()
+    document.new_page().insert_text((72, 72), "NS1 binds TRIM25")
+    document.save(tmp_path / "1.pdf")
+    (tmp_path / "1.xml").write_text(JATS)
+    pdf = convert(tmp_path, "1.pdf")
+    assert pdf == {"file": "1.pdf", "text": "1.pdf.txt", "bytes": pdf["bytes"]}
+    assert (tmp_path / "1.pdf.txt").read_text() == "--- page 1 ---\n\nNS1 binds TRIM25\n\n"
+    xml = convert(tmp_path, "1.xml")
+    assert xml == {"file": "1.xml", "text": "1.xml.md", "bytes": xml["bytes"]}
+    assert xml["bytes"] == (tmp_path / "1.xml.md").stat().st_size
+
+
+def test_text_files_are_their_own_text(tmp_path: Path):
+    (tmp_path / "s1.csv").write_bytes(b"bait,prey\nNS1,TRIM25\n")
+    assert convert(tmp_path, "s1.csv") == {"file": "s1.csv", "text": "s1.csv", "bytes": 21}
+    assert [p.name for p in tmp_path.iterdir()] == ["s1.csv"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "bait;prey\nNS1;prot\u00e9ine\n".encode("cp1252"),  # Excel's Windows export
+        "bait;prey\nNS1;prot\u00e9ine\n".encode("utf-16"),  # Excel's "Unicode text"
+        "bait;prey\nNS1;prot\u00e9ine\n".encode("mac_roman"),
+        "\ufeffbait;prey\nNS1;prot\u200b\u00e9i\u00adne\n".encode(),
+    ],
+)
+def test_text_files_are_cleaned_in_place(tmp_path: Path, raw: bytes):
+    """In UTF-8, invisible characters removed."""
+    (tmp_path / "s1.csv").write_bytes(raw)
+    entry = convert(tmp_path, "s1.csv")
+    assert (tmp_path / "s1.csv").read_text() == "bait;prey\nNS1;prot\u00e9ine\n"
+    assert entry == {"file": "s1.csv", "text": "s1.csv", "bytes": 24}
+
+
+def test_text_of_unknown_encoding_is_refused(tmp_path: Path):
+    (tmp_path / "s1.txt").write_bytes(bytes(range(256)) * 4)
+    with pytest.raises(ParseError, match="unknown encoding"):
+        convert(tmp_path, "s1.txt")
+
+
+def test_refused_file_writes_nothing(tmp_path: Path):
+    (tmp_path / "s1.xlsx").write_bytes(b"PK\x03\x04 not really a workbook")
+    with pytest.raises(ParseError, match="cannot be read"):
+        convert(tmp_path, "s1.xlsx")
+    with pytest.raises(ParseError, match="no such file"):
+        convert(tmp_path, "s2.pdf")
+    assert [p.name for p in tmp_path.iterdir()] == ["s1.xlsx"]
+
+
+def test_command_prints_the_manifest_entries(tmp_path: Path):
+    (tmp_path / "1.xml").write_text(JATS)
+    (tmp_path / "s1.tif").write_bytes(b"II*\x00")
+    workbook(tmp_path / "s2.xlsx")
+    command = ["uv", "run", "drakkar-parse", str(tmp_path), "1.xml", "s1.tif", "s2.xlsx"]
+    done = subprocess.run(command, capture_output=True, text=True)
     assert done.returncode == 1
-    assert "no converter" in done.stderr
-    assert not (tmp_path / "b.md").exists()
+    assert done.stderr == "s1.tif: not converted, no converter for .tif\n"
+    entries = [json.loads(line) for line in done.stdout.splitlines()]
+    assert [e.get("text") for e in entries] == ["1.xml.md", None]
+    assert [s["sheet"] for s in entries[1]["sheets"]] == ["Y2H; Caco-2", "Empty"]
+    assert (tmp_path / "1.xml.md").read_text().startswith("# NS1 binds TRIM25")
