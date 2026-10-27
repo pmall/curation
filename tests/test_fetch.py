@@ -36,6 +36,8 @@ XML = (
     b'<supplementary-material><media xlink:href="s2.pdf"><caption><p>Reporting Summary</p>'
     b"</caption></media></supplementary-material></body></article>"
 )
+TIFF = (SAMPLES / "cmyk.tif").read_bytes()  # CMYK, LZW-compressed, as figures often are
+PNG = b"\x89PNG"
 DOI = "10.1/x"
 PUBLISHER = f"https://doi.org/{DOI}"
 
@@ -107,9 +109,10 @@ def outcomes(report: dict[str, Any]) -> dict[str, str]:
 
 
 def test_pmc_open_access_files(tmp_path: Path):
-    """The article, its XML alone; videos, images and the Reporting Summary skipped, never
-    asked. Each file converted, the manifest listing those the curation can use: not a file
-    that cannot be converted, which the report gives with why."""
+    """The article, its XML alone; videos and the Reporting Summary skipped, never asked; the
+    article's figures, the other images of the files, saved; a TIFF as PNG. Each file but an
+    image converted, the manifest listing those the curation can use: not a file that cannot be
+    converted, which the report gives with why."""
     report, server = run(
         tmp_path,
         {
@@ -123,9 +126,12 @@ def test_pmc_open_access_files(tmp_path: Path):
                 "PMC9.2/movie_s1.mp4",
                 "PMC9.2/fig_s1.tif",
                 "PMC9.2/s2.pdf",
+                "PMC9.2/g001.jpg",
             ),
             f"{PMC_AWS}/PMC9.2/PMC9.2.xml": ok(XML),
             f"{PMC_AWS}/PMC9.2/s1.xlsx": ok(b"cells"),
+            f"{PMC_AWS}/PMC9.2/fig_s1.tif": ok(TIFF),
+            f"{PMC_AWS}/PMC9.2/g001.jpg": ok(b"\xff\xd8"),
         },
     )
     assert report["line"] == "Full text: PMC9 (cc by)"
@@ -139,18 +145,26 @@ def test_pmc_open_access_files(tmp_path: Path):
             "file": f"{PMID}.supp/s1.xlsx",
             "url": f"{PMC_AWS}/PMC9.2/s1.xlsx",
             "not_converted": "cannot be read: BadZipFile: File is not a zip file",
-        }
+        },
+        {
+            "name": "fig_s1.tif",
+            "file": f"{PMID}.supp/fig_s1.png",
+            "url": f"{PMC_AWS}/PMC9.2/fig_s1.tif",
+        },
     ]
     size = (tmp_path / f"{PMID}.md").stat().st_size
     assert json.loads((tmp_path / "manifest.json").read_text()) == {
         "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md", "bytes": size},
-        "supplements": [],
+        "supplements": [{"name": "fig_s1.tif", "file": f"{PMID}.supp/fig_s1.png"}],
+        "figures": [f"{PMID}.fig/g001.jpg"],
     }
+    assert (tmp_path / f"{PMID}.fig" / "g001.jpg").read_bytes() == b"\xff\xd8"
+    assert (tmp_path / f"{PMID}.supp" / "fig_s1.png").read_bytes().startswith(PNG)
     assert report_lines(report) == [
         "Full text: PMC9 (cc by)",
         "  s1.xlsx: not converted, cannot be read: BadZipFile: File is not a zip file",
     ]
-    assert not any(u.endswith(("movie_s1.mp4", "fig_s1.tif", "s2.pdf")) for u in server.asked)
+    assert not any(u.endswith(("movie_s1.mp4", "s2.pdf")) for u in server.asked)
     assert not any(PUBLISHER in u for u in server.asked)  # nothing missing: no other route
 
 
@@ -185,6 +199,7 @@ def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as z:
         z.writestr("s1.xlsx", "cells")
+        z.writestr("fig_s1.png", "pixels")
     report, server = run(
         tmp_path,
         {
@@ -198,7 +213,10 @@ def test_europe_pmc_xml_and_its_supplementary_files_service(tmp_path: Path):
         },
     )
     assert report["file"] == f"{PMID}.xml"
-    assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.xlsx"]
+    assert [s["file"] for s in report["supplements"]] == [
+        f"{PMID}.supp/s1.xlsx",
+        f"{PMID}.supp/fig_s1.png",
+    ]
     assert (
         report["line"] == "Full text: PMC9 (no license given), supplementary files missing: s3.pdf"
     )
@@ -308,7 +326,8 @@ def test_page_declaring_a_creative_commons_license(tmp_path: Path):
     assert outcomes(report)[PUBLISHER] == "HTTP 200, declares free access"
     assert report["file"] == f"{PMID}.html"
     assert [s["file"] for s in report["supplements"]] == [
-        f"{PMID}.supp/journal.ppat.1009743.s005.xlsx"
+        f"{PMID}.supp/journal.ppat.1009743.s001.tiff",
+        f"{PMID}.supp/journal.ppat.1009743.s005.xlsx",
     ]
     assert [x["name"] for x in report["missing_supplements"]] == [
         f"journal.ppat.1009743.s00{n}" for n in (2, 3, 4, 6, 7)
@@ -366,6 +385,7 @@ def test_plos_link_names_the_file_without_its_extension(tmp_path: Path):
 
 
 def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
+    """A link that names no type: an image kept, named by its type; a damaged TIFF as it is."""
     links = (
         '<a href="/file?type=supplementary&id=s1">Supplementary Table S1</a>'
         '<a href="/file?type=supplementary&id=s2">Supplementary Figure S2</a>'
@@ -382,7 +402,10 @@ def test_supplement_known_as_an_image_only_once_downloaded(tmp_path: Path):
         },
     )
     assert report["file"] == f"{PMID}.html"
-    assert [s["file"] for s in report["supplements"]] == [f"{PMID}.supp/s1.doc"]
+    assert [s["file"] for s in report["supplements"]] == [
+        f"{PMID}.supp/s1.doc",
+        f"{PMID}.supp/s2.tiff",
+    ]
     assert report["missing_supplements"] == []
 
 
@@ -422,6 +445,7 @@ def test_manifest_lists_the_converted_files(tmp_path: Path):
     assert json.loads((tmp_path / "manifest.json").read_text()) == {
         "article": {"file": f"{PMID}.xml", "text": f"{PMID}.md", "bytes": size},
         "supplements": [s1 | {"bytes": 8}],  # a,b\n1,2\n
+        "figures": [],
     }
     assert (tmp_path / f"{PMID}.supp" / "s1.csv.md").read_text() == "a,b\n1,2\n"
     assert report_lines(report) == ["Full text: PMC9 (no license given)"]
@@ -565,16 +589,27 @@ def test_pmc_copy_of_a_preprint_is_no_article(tmp_path: Path):
 
 
 def test_download_unpacks_and_converts(tmp_path: Path):
-    """A repository's archive: each file saved and converted, a video left out."""
+    """A repository's archive: each file saved and converted, an image saved as it is (a TIFF as
+    PNG), a video left out."""
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as z:
         z.writestr("data/s1.csv", "a,b\n1,2\n")
+        z.writestr("fig_s3.tif", TIFF)
         z.writestr("movie_s2.mp4", "frames")
     url = "https://zenodo.org/records/1/files/data.zip"
     lines = download(url, tmp_path, Server({url: ok(archive.getvalue(), "application/zip")}))
-    assert lines == [str(tmp_path / "s1.csv.md")]
+    assert lines == [str(tmp_path / "s1.csv.md"), str(tmp_path / "fig_s3.png")]
+    assert (tmp_path / "fig_s3.png").read_bytes().startswith(PNG)
     assert (tmp_path / "s1.csv.md").read_text() == "a,b\n1,2\n"
     assert not (tmp_path / "movie_s2.mp4").exists()
+
+
+def test_download_saves_each_image_of_a_tiff_as_png(tmp_path: Path):
+    url = "https://journal.org/suppl/fig_s1.tif"
+    two = (SAMPLES / "two-images.tif").read_bytes()
+    lines = download(url, tmp_path, Server({url: ok(two, "image/tiff")}))
+    assert lines == [str(tmp_path / "fig_s1-1.png"), str(tmp_path / "fig_s1-2.png")]
+    assert (tmp_path / "fig_s1-2.png").read_bytes().startswith(PNG)
 
 
 def test_download_names_the_type_from_the_response(tmp_path: Path):

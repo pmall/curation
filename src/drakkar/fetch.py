@@ -16,16 +16,19 @@ Three steps, each a list of routes; a route answers yes or no by one test.
 3. The supplementary files the article lists (its XML, or the supplementary links of its
    page), each looked for on every route that serves one, whatever route gave the article: the
    PMC open access files, the link the article gives, the publisher's page, then Europe PMC's
-   supplementary files service. Videos, images, the Reporting Summary and the peer review
-   file are skipped.
-Each file is converted as `drakkar-parse` does: the article to `<pmid>.md`, a supplementary file
-to `<file>.md` beside it. Last, the manifest `manifest.json` lists the files the curation can
-use, with the size of each text, written only when the article could be converted. Prints the
-report: a line saying where the article comes from, or why there is none, then what could not
-be had.
+   supplementary files service. Videos, the Reporting Summary and the peer review file are
+   skipped. The article's figures, the other images of the PMC open access files, are saved
+   too.
+A TIFF or a BMP image is saved as PNG, one per image it holds, which the Read tool reads. Each
+file but an image is converted as `drakkar-parse` does: the article to `<pmid>.md`, a
+supplementary file to `<file>.md` beside it. Last, the manifest `manifest.json` lists the files
+the curation can use, with the size of each text, written only when the article could be
+converted. Prints the report: a line saying where the article comes from, or why there is none,
+then what could not be had.
 
-`drakkar-download` saves the file at a URL, unpacks an archive (its videos and images left
-out), converts each file, and prints one line per file: its text, or why it could not be had.
+`drakkar-download` saves the file at a URL, unpacks an archive (its videos left out), converts
+each file but an image, and prints one line per file: its text or its image, or why it could
+not be had.
 
 Configuration, in the project's `.env`: `UNPAYWALL_EMAIL`, the address Unpaywall asks for to
 answer a request. Without it Unpaywall is not asked at all.
@@ -46,6 +49,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote, unquote, urljoin, urlparse
 
+import pymupdf
 from dotenv import load_dotenv
 from lxml import etree
 from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
@@ -73,9 +77,12 @@ SUPPLEMENT_SUFFIXES = {
     ".pdf",
     ".zip",
 }
-# Supplementary files no curation reads: videos and images.
+# Supplementary files no curation reads.
 VIDEOS = {".mp4", ".mov", ".avi", ".wmv", ".mpg", ".mpeg", ".m4v", ".webm"}
+# Images are read as they are, never converted to text.
 IMAGES = {".tif", ".tiff", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".eps", ".svg", ".webp"}
+# Images the Read tool cannot open, saved as PNG.
+TO_PNG = {".tif", ".tiff", ".bmp"}
 # Preprints are not peer-reviewed publications: their copies are never fetched.
 PREPRINT_HOSTS = (
     "biorxiv.org",
@@ -196,9 +203,9 @@ def _url_name(url: str) -> str:
 
 def _left_out(name: str, caption: str = "") -> bool:
     """Whether a supplementary file is never fetched: a video (or an archive named as videos,
-    `movies_s1_to_s3.zip`), an image, or by its caption the Reporting Summary (a checklist) or
-    the peer review file: none holds an interaction."""
-    if Path(name).suffix.lower() in VIDEOS | IMAGES or re.search(r"movie|video", name, re.I):
+    `movies_s1_to_s3.zip`), or by its caption the Reporting Summary (a checklist) or the peer
+    review file: none holds an interaction."""
+    if Path(name).suffix.lower() in VIDEOS or re.search(r"movie|video", name, re.I):
         return True
     useless = r"reporting summary|peer review (file|report)|transparent peer review"
     return re.search(useless, caption, re.I) is not None
@@ -206,17 +213,18 @@ def _left_out(name: str, caption: str = "") -> bool:
 
 def _typed(name: str, content_type: str) -> str:
     """A file name with the extension of its type, from the response when the name gives none."""
-    if Path(name).suffix.lower() not in SUPPLEMENT_SUFFIXES:
+    if Path(name).suffix.lower() not in SUPPLEMENT_SUFFIXES | IMAGES:
         name += mimetypes.guess_extension(content_type) or ""
     return name
 
 
 def unpacked(name: str, body: bytes, url: str) -> Iterator[tuple[str, str, bytes]]:
-    """A downloaded file, or each file of a zip archive but its videos and images: its name, its
-    URL (`<url>#<path>` for a file of an archive) and its body."""
+    """A downloaded file, or each file of a zip archive but its videos, a TIFF or a BMP image as
+    PNG (`as_png`): its name, its URL (`<url>#<path>` for a file of an archive) and its body."""
     archive = _zip(body) if name.lower().endswith(".zip") else None
     if archive is None:
-        yield name, url, body
+        for file, content in as_png(name, body):
+            yield file, url, content
         return
     for info in archive.infolist():
         member = Path(info.filename)
@@ -226,12 +234,42 @@ def unpacked(name: str, body: bytes, url: str) -> Iterator[tuple[str, str, bytes
             yield from unpacked(member.name, archive.read(info), f"{url}#{info.filename}")
 
 
+def as_png(name: str, body: bytes) -> list[tuple[str, bytes]]:
+    """A TIFF or a BMP image as PNG, in RGB (a TIFF can be CMYK), one file per image it holds
+    (`<name>-<n>.png` when several); a file that cannot be opened as it is."""
+    if Path(name).suffix.lower() not in TO_PNG:
+        return [(name, body)]
+    try:
+        document = pymupdf.open(stream=body)
+    except pymupdf.FileDataError:
+        return [(name, body)]
+    with document:  # one page per image, its image at its own resolution
+        blocks = [
+            block
+            for page in document
+            for block in cast(dict[str, Any], page.get_text("dict"))["blocks"]  # pyright: ignore[reportUnknownMemberType]
+            if block["type"] == 1
+        ]
+    images = [
+        cast(bytes, pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(b["image"])).tobytes("png"))  # pyright: ignore[reportUnknownMemberType]
+        for b in blocks
+    ]
+    stem = Path(name).stem
+    if len(images) > 1:
+        return [(f"{stem}-{n}.png", image) for n, image in enumerate(images, 1)]
+    return [(f"{stem}.png", image) for image in images] or [(name, body)]
+
+
 def save(folder: Path, name: str, body: bytes) -> Path:
     """A file saved in the folder under a name no other file there has."""
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / _safe_name(name, {p.name for p in folder.iterdir()})
     path.write_bytes(body)
     return path
+
+
+def is_image(path: Path) -> bool:
+    return path.suffix.lower() in IMAGES
 
 
 def convert(source: Path, text: Path) -> str | None:
@@ -721,10 +759,10 @@ class Fetch:
         return still
 
     def _take(self, item: Supplement, r: Response, url: str, tried: list[dict[str, str]]) -> bool:
-        """Whether a response is the file: kept, or skipped once its type shows an image."""
+        """Whether a response is the file: kept, or skipped once its type shows a video."""
         if r.status != 200:
             return False
-        if r.content_type.startswith(("image/", "video/")):  # a link that named no type
+        if r.content_type.startswith("video/"):  # a link that named no type
             return True
         if _is_html(r):
             tried[-1]["outcome"] += ", an HTML page"
@@ -734,13 +772,24 @@ class Fetch:
         return True
 
     def _keep(self, item: Supplement, name: str, body: bytes, url: str) -> None:
-        """A supplementary file saved; a zip archive is unpacked, its videos and images left
-        out."""
+        """A supplementary file saved; a zip archive is unpacked, its videos left out."""
         for file, where, content in unpacked(name, body, url):
             path = save(self.out / f"{self.pmid}.supp", file, content)
             self.report.setdefault("supplements", []).append(
                 {"name": item.name, "file": str(path.relative_to(self.out)), "url": where}
             )
+
+    def figures(self) -> None:
+        """The article's figures: the images of the PMC open access files that are no
+        supplementary file."""
+        figures: list[str] = []
+        taken = {x["url"] for x in self.report["supplements"]}
+        for name, url in self.oa_files.items():
+            if is_image(Path(name)) and url not in taken and (r := self.get(url)).status == 200:
+                for file, _, content in unpacked(name, r.body, url):
+                    path = save(self.out / f"{self.pmid}.fig", file, content)
+                    figures.append(str(path.relative_to(self.out)))
+        self.report["figures"] = figures
 
     # The report
 
@@ -800,7 +849,9 @@ class Fetch:
         supplements: list[dict[str, str | int]] = []
         for x in report["supplements"]:
             text = f"{x['file']}.md"
-            if why := convert(self.out / x["file"], self.out / text):
+            if is_image(Path(x["file"])):
+                supplements.append({"name": x["name"], "file": x["file"]})
+            elif why := convert(self.out / x["file"], self.out / text):
                 x["not_converted"] = why
             else:
                 size = (self.out / text).stat().st_size
@@ -808,7 +859,7 @@ class Fetch:
                 supplements.append(supplement)
         path = self.out / MANIFEST
         tmp = path.with_suffix(".json.tmp")
-        manifest = {"article": article, "supplements": supplements}
+        manifest = {"article": article, "supplements": supplements, "figures": report["figures"]}
         tmp.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
         tmp.replace(path)
 
@@ -842,6 +893,7 @@ class Fetch:
             report.setdefault("supplements", [])
             missing = self.find(self.listed)
             report["missing_supplements"] = [self._missing(item, tried) for item, tried in missing]
+            self.figures()
             self.write_manifest()
         self.conclude()
         return report
@@ -869,8 +921,9 @@ def report_lines(report: dict[str, Any]) -> list[str]:
 
 
 def download(url: str, out: Path, get: Get = http_get) -> list[str]:
-    """The file at a URL saved in `out`, an archive unpacked, each file converted to `<file>.md`
-    beside it; returns one line per file: its text, or why it could not be had."""
+    """The file at a URL saved in `out`, an archive unpacked, each file but an image converted
+    to `<file>.md` beside it; returns one line per file: its text or its image, or why it could
+    not be had."""
     r = get(url)
     if r.status != 200:
         return [f"{url}: {_outcome(r)}"]
@@ -879,8 +932,12 @@ def download(url: str, out: Path, get: Get = http_get) -> list[str]:
     for file, _, content in unpacked(name, r.body, r.url or url):
         path = save(out, file, content)
         text = path.with_name(path.name + ".md")
-        why = convert(path, text)
-        lines.append(f"{path}: not converted, {why}" if why else str(text))
+        if is_image(path):
+            lines.append(str(path))
+        elif why := convert(path, text):
+            lines.append(f"{path}: not converted, {why}")
+        else:
+            lines.append(str(text))
     return lines
 
 
