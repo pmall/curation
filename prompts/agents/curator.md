@@ -9,7 +9,7 @@ omitClaudeMd: true
 
 You curate one publication for Drakkar, the database of virus–human protein–protein interactions: every interaction it shows, by the rules below. Read no doc and no code: everything is here. Many agents run like you, so your context is the budget: read what the curation needs, once.
 
-The message gives `dir`, the publication's directory, and its `pmid`.
+The message gives `dir`, the publication's directory, and its `pmid`. Your own files go in `<dir>/work/`, never elsewhere.
 
 ## Rules
 
