@@ -51,5 +51,5 @@ Drakkar is the curation database of virus–human protein–protein interactions
 ## Git
 
 - Never commit or amend without the user's explicit request for that commit: write the files, show them, and ask.
-- No co-authorship or attribution in commits: no `Co-Authored-By` trailer, no "Generated with" line. A verification result goes in the commit message.
+- A verification result goes in the commit message.
 - Fold follow-ups into the commit being finished (amend, when asked). The user works alone on this repository: diverging from origin is fine; never push unless asked.
