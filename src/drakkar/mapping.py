@@ -1,0 +1,87 @@
+"""Check mapping sequences on an identified entry, as the write will (`align.py`).
+
+uv run drakkar-mapping <accession>[:<start>-<stop>] <sequence>...
+
+Read-only. For each mapping sequence (extra end residues in lowercase): its extra end residues,
+its occurrences on each isoform with their identity, in the entry's numbering, and whether it is
+below 90 %. One interactor per call: an accession among the sequences is refused.
+"""
+
+import argparse
+import sys
+from typing import Any
+
+from drakkar.align import MIN_IDENTITY, best_identity, map_sequence, read_written
+from drakkar.check import AMINO_ACIDS
+from drakkar.db import connect
+from drakkar.read import label_of, location, spaced
+from drakkar.write import InvalidRow, snapshot_of
+
+
+def _occurrences(aligned: dict[str, Any], canonical: str, start: int) -> str:
+    """The occurrences of a mapping JSON on each isoform, in the entry's numbering: the write's
+    positions on the canonical isoform are relative to the interactor's start."""
+    return "; ".join(
+        f"{i['accession']} "
+        + ", ".join(
+            f"{o['start'] + shift}-{o['stop'] + shift} ({o['identity']:g} %)"
+            for o in i["occurrences"]
+        )
+        for i in aligned["isoforms"]
+        for shift in [start - 1 if i["accession"] == canonical else 0]
+    )
+
+
+def mapping(cur: Any, interactor: str, sequences: list[str]) -> str:
+    """What the write computes for each mapping sequence on the interactor (its current
+    snapshot): extra end residues, occurrences on each isoform with their identity, in the
+    entry's numbering, and whether it is below 90 %."""
+    for text in sequences:
+        if not spaced(text) and any(c.isdigit() for c in text):  # an accession, not a sequence
+            sys.exit(f"{text}: an accession where a sequence is expected: one interactor per call")
+    try:
+        accession, isoform, start, stop = location(interactor)
+        if isoform != accession:
+            raise ValueError("an interactor is an entry, not an isoform")
+        snapshot = snapshot_of(cur, accession)
+    except (ValueError, InvalidRow) as e:
+        sys.exit(f"{interactor}: {e}")
+    length = snapshot.length
+    start, stop = start or 1, stop or length
+    if not 1 <= start <= stop <= length:
+        sys.exit(f"{interactor}: {start}-{stop} is outside 1-{length}")
+    lines = ["#sequence\tnter\tcter\toccurrences\tverdict"]
+    for text in sequences:
+        if why := spaced(text):
+            lines.append(f"{label_of(text)}\t{why}")
+            continue
+        try:
+            sequence, nter, cter = read_written(text)
+        except ValueError as e:
+            lines.append(f"{text}\t{e}")
+            continue
+        if not AMINO_ACIDS.fullmatch(sequence):
+            lines.append(f"{text}\tnot an amino acid sequence")
+            continue
+        aligned = map_sequence(sequence, snapshot.sequences, accession, start, stop, nter, cter)
+        identity = best_identity(aligned)
+        verdict = (
+            "aligns nowhere"
+            if not aligned["isoforms"]
+            else f"below {MIN_IDENTITY:g} %"
+            if identity < MIN_IDENTITY
+            else "ok"
+        )
+        occurrences = _occurrences(aligned, accession, start)
+        lines.append(f"{text}\t{nter or '-'}\t{cter or '-'}\t{occurrences or '-'}\t{verdict}")
+    return "\n".join(lines)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Check mapping sequences on an entry.")
+    parser.add_argument("interactor", help="<accession>[:<start>-<stop>]")
+    parser.add_argument("sequences", nargs="+", help="extra end residues in lowercase")
+    args = parser.parse_args()
+    with connect(readonly=True) as conn, conn.cursor() as cur:
+        cur.execute("SET statement_timeout = '30s'")
+        print(mapping(cur, args.interactor, args.sequences))

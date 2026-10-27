@@ -4,19 +4,24 @@ uv run drakkar-parse <dir> <file>...
 
 PMC XML, HTML (a PMC article page by its structure, as its XML) and Word documents (.docx,
 and .doc through our own reader) become Markdown, `<file>.md`; a PDF its plain text page by
-page, `<file>.txt`; a spreadsheet one TSV file per sheet, `<file>.<n>.tsv` in workbook order.
+page, a table's row on one line when the PDF writes it cell after cell, `<file>.txt`; a
+spreadsheet one TSV file per sheet, `<file>.<n>.tsv` in workbook order, every row as wide as
+its widest.
 CSV, TSV and plain text are their own text, cleaned in place: in UTF-8, invisible characters
-removed. The texts are written beside the file, named by their format; the converter is chosen
-by the file type; no network. Prints each file's entry of the manifest (`drakkar-fetch`), its
-paths relative to `<dir>`.
+removed, a CSV's or TSV's rows padded as a sheet's. The texts are written beside the file,
+named by their format; the converter is chosen by the file type; no network. Prints each
+file's entry of the manifest (`drakkar-fetch`), its paths relative to `<dir>`.
 """
 
 import argparse
 import bisect
+import csv
+import io
 import json
 import re
 import struct
 import sys
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -312,16 +317,55 @@ def html(path: Path) -> str:
 # PDF
 
 
+@dataclass
+class _Line:
+    """A line of a page as MuPDF reads it: its text, the baseline and the size of its largest
+    characters, and whether it is horizontal (not rotated)."""
+
+    text: str
+    baseline: float
+    size: float
+    horizontal: bool
+
+
+def _beside(a: _Line, b: _Line) -> bool:
+    """On one line of the page: both horizontal, their baselines closer than half the smaller
+    size."""
+    return a.horizontal and b.horizontal and abs(a.baseline - b.baseline) < min(a.size, b.size) / 2
+
+
+def _page(page: Any) -> str:
+    """A page's text as MuPDF reads it, line by line, in its order; a line read right after
+    another and beside it (the next cell of a table's row) continues it, after a tab. Nothing
+    is moved: two columns of text are never mixed."""
+    rows: list[str] = []
+    before: _Line | None = None
+    blocks = page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]  # pyright: ignore[reportUnknownMemberType]
+    for line in (line for block in blocks for line in block["lines"]):
+        spans = [s for s in line["spans"] if s["text"].strip()]
+        if not spans:
+            continue
+        largest = max(spans, key=lambda s: s["size"])
+        text = "".join(s["text"] for s in line["spans"]).strip()
+        current = _Line(text, largest["origin"][1], largest["size"], line["dir"][0] > 0.99)
+        if before is not None and _beside(before, current):
+            rows[-1] += "\t" + text
+        else:
+            rows.append(text)
+        before = current
+    return "\n".join(rows)
+
+
 def pdf(path: Path) -> str:
     try:
         document = pymupdf.open(path)
     except pymupdf.FileDataError as e:
         raise ParseError(f"not a PDF: {e}") from e
     with document:
-        pages = [cast(str, page.get_text("text")) for page in document]  # pyright: ignore[reportUnknownMemberType]
-    if not any(p.strip() for p in pages):
+        pages = [_page(page) for page in document]
+    if not any(pages):
         raise ParseError("no text layer: a scanned PDF")
-    return "".join(f"--- page {n} ---\n\n{p.strip()}\n\n" for n, p in enumerate(pages, 1))
+    return "".join(f"--- page {n} ---\n\n{p}\n\n" for n, p in enumerate(pages, 1))
 
 
 # Spreadsheets
@@ -337,16 +381,24 @@ def _cell(value: Any) -> str:
     return one_line(str(value))
 
 
-def _tsv(rows: list[list[Any]]) -> str:
-    """A sheet's rows, tab-separated; its empty rows and the empty cells ending a row left out."""
-    lines: list[str] = []
-    for row in rows:
-        cells = [_cell(v) for v in row]
-        while cells and not cells[-1]:
-            cells.pop()
+def _padded(rows: Iterable[list[str]]) -> list[list[str]]:
+    """A table's rows, each as many cells as its widest row: its empty rows, and the empty
+    cells after the last that holds a value, left out."""
+    table: list[list[str]] = []
+    for cells in rows:
+        while cells and not cells[-1].strip():
+            cells = cells[:-1]
         if cells:
-            lines.append("\t".join(cells) + "\n")
-    return "".join(lines)
+            table.append(cells)
+    width = max((len(cells) for cells in table), default=0)
+    return [cells + [""] * (width - len(cells)) for cells in table]
+
+
+def _tsv(rows: list[list[Any]]) -> str:
+    """A sheet's rows, tab-separated, padded."""
+    return "".join(
+        "\t".join(cells) + "\n" for cells in _padded([_cell(v) for v in r] for r in rows)
+    )
 
 
 def xlsx(path: Path) -> list[tuple[str, str]]:
@@ -711,6 +763,37 @@ def _decoded(raw: bytes) -> str:
     return str(found)
 
 
+def _csv(text: str, separator: str) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(text, newline=""), delimiter=separator))
+
+
+def _fit(rows: list[list[str]]) -> tuple[int, int]:
+    """How many rows share the commonest number of fields, and that number; none for one field."""
+    widths = Counter(len(cells) for cells in rows if any(cells))
+    width, count = max(widths.items(), key=lambda w: (w[1], w[0]), default=(0, 0))
+    return (count, width) if width > 1 else (0, 0)
+
+
+def _table(text: str, suffix: str) -> str:
+    """A CSV or TSV file's text, its rows padded as a sheet's: a TSV split at its tabs, a CSV
+    read as CSV, its separator the one, among comma, semicolon and tab, that gives the most rows
+    the same number of fields (left as it is when each gives one field). Plain text as it is."""
+    if suffix == ".tsv":
+        rows = _padded(line.split("\t") for line in text.splitlines())
+        return "".join("\t".join(cells) + "\n" for cells in rows)
+    if suffix != ".csv":
+        return text
+    try:
+        separator, rows = max(((s, _csv(text, s)) for s in ",;\t"), key=lambda s: _fit(s[1]))
+    except csv.Error:  # a field over the csv module's size limit
+        return text
+    if _fit(rows) == (0, 0):
+        return text
+    out = io.StringIO()
+    csv.writer(out, delimiter=separator, lineterminator="\n").writerows(_padded(rows))
+    return out.getvalue()
+
+
 def _write(path: Path, text: str) -> int:
     data = text.encode()
     path.write_bytes(data)
@@ -721,15 +804,15 @@ def convert(base: Path, file: str) -> dict[str, Any]:
     """A file, at a path relative to `base`, converted to its texts, written beside it; returns
     its entry of the manifest, paths relative to `base`: `file`, then `text` and `bytes`, or for
     a spreadsheet `sheets`, each with `sheet` (its name), `text` and `bytes`. CSV, TSV and plain
-    text are their own text, rewritten in UTF-8 without invisible characters when they were not.
-    A file that cannot be converted writes nothing."""
+    text are their own text, rewritten in UTF-8 without invisible characters, a CSV's or TSV's
+    rows padded, when they were not. A file that cannot be converted writes nothing."""
     path = base / file
     suffix = path.suffix.lower()
     if not path.is_file():
         raise ParseError("no such file")
     if suffix in AS_THEY_ARE:
         raw = path.read_bytes()
-        cleaned = _visible(_decoded(raw)).encode()
+        cleaned = _table(_visible(_decoded(raw)), suffix).encode()
         if cleaned != raw:
             path.write_bytes(cleaned)
         return {"file": file, "text": file, "bytes": len(cleaned)}

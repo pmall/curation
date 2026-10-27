@@ -2,7 +2,18 @@
 
 import subprocess
 
-from drakkar.read import Page, entries, entry, methods, names, search, seq, taxa
+from drakkar.read import (
+    Page,
+    closest,
+    entries,
+    entry,
+    methods,
+    names,
+    search,
+    seq,
+    sequence_of,
+    taxa,
+)
 
 
 def _command(*args: str) -> subprocess.CompletedProcess[str]:
@@ -57,11 +68,17 @@ def test_entry(conn):
     )
     assert "\nGeneric names (live descriptions):\n- 810-1026 NS2-3 (" in text
     assert "Generic names" not in entry(conn.cursor(), "Q14258")  # human
-    secondary = entry(conn.cursor(), "O00297")
+    secondary = entry(conn.cursor(), "sp|O00297|BIN1_HUMAN")
     assert secondary.startswith("# O00297 is a secondary accession of O00499\n# O00499: ")
-    both = entries(conn.cursor(), ["P26662", "X1"])
+    assert entry(conn.cursor(), "o00499-2").startswith("# o00499-2 is an isoform of O00499\n")
+    obsolete = entry(conn.cursor(), "Q6SRE2")  # obsolete snapshots only: never shown
+    assert obsolete == "# Q6SRE2: no current entry has this accession, current or old"
+    both = entries(conn.cursor(), ["P26662;", "X1", "Q9Y6K9"])
     assert both.startswith("# P26662: ")
-    assert both.endswith("\n\n# X1: no snapshot, and no current entry holds it as secondary")
+    assert both.endswith(
+        "\n\n# X1: not an accession"
+        "\n\n# Q9Y6K9: no current entry has this accession, current or old"
+    )
 
 
 def test_search(conn):
@@ -69,19 +86,83 @@ def test_search(conn):
     whole subtree."""
     lines = search(conn.cursor(), ["brf1", "nothing such"]).splitlines()
     assert lines == [
-        "#text\taccession\tdb\tgene\tprotein\ttaxon\tlength",
-        "brf1\tQ92994\tSP\tBRF1\tTranscription factor IIIB 90 kDa subunit\t9606 Homo sapiens\t677",
+        "#text\taccession\tother_accessions\tdb\tgene\tprotein\ttaxon\tlength",
+        f"brf1\tQ92994\t{BRF1_OLD}\tSP\tBRF1\tTranscription factor IIIB 90 kDa subunit\t"
+        "9606 Homo sapiens\t677",
         "nothing such\t(none)",
     ]
-    dbs = [line.split("\t")[2] for line in search(conn.cursor(), ["protein"]).splitlines()[1:-1]]
+    dbs = [line.split("\t")[3] for line in search(conn.cursor(), ["protein"]).splitlines()[1:-1]]
     assert dbs == sorted(dbs)  # Swiss-Prot first
     under = search(conn.cursor(), ["Uncharacterized"], taxon=694009, page=Page(3)).splitlines()
     assert (
-        "Uncharacterized\tQ6VA95\tTR\tN/A\tUncharacterized protein\t"
+        "Uncharacterized\tQ6VA95\t-\tTR\tN/A\tUncharacterized protein\t"
         "239241 SARS coronavirus CUHK-AG01\t63"
     ) in under
     assert under[-1] == "Uncharacterized\t… 3 of 5 shown, cut by --limit 3"
     assert search(conn.cursor(), ["brf1"], taxon=694009).splitlines()[1] == "brf1\t(none)"
+
+
+BRF1_OLD = (
+    "B3KU36,B4DIG5,B7Z2N3,F5H5Z7,F8WA46,Q13223,Q3SYD9,Q5PR24,Q6IQ02,Q96KX3,Q9HCW6,Q9HCW7,Q9HCW8"
+)
+
+
+def test_search_accessions_as_written(conn):
+    """An accession as publications write it gives its current entry: a UniProt ID, a group one
+    by one, an isoform's, a version, an old accession, case aside; an accession of no entry,
+    none."""
+    texts = ["sp|Q92994|BRF1_HUMAN", "o00297; Q92994", "O00499-2", "Q92994.1", "Q9Y6K9"]
+    found = [line.split("\t")[:2] for line in search(conn.cursor(), texts).splitlines()[1:]]
+    assert found == [
+        ["sp|Q92994|BRF1_HUMAN", "Q92994"],
+        ["o00297", "O00499"],
+        ["Q92994", "Q92994"],
+        ["O00499-2", "O00499"],
+        ["Q92994.1", "Q92994"],
+        ["Q9Y6K9", "(none)"],
+    ]
+    assert search(conn.cursor(), ["O00297"]).splitlines()[1].split("\t")[2].startswith("O00297,")
+
+
+SARS = "694009 Severe acute respiratory syndrome-related coronavirus"
+
+
+def test_closest(conn):
+    """The entries of the taxon subtree by the score of their best isoform, Swiss-Prot first
+    among equals, an accession or a sequence as query, as `search` shows them; every entry
+    counted."""
+    lines = closest(conn.cursor(), ["P0C6X7:1-20", "MESLVLGVNE"], 694009, Page(3)).splitlines()
+    assert lines[:5] == [
+        "#sequence\taccession\tother_accessions\tdb\tgene\tprotein\ttaxon\tlength"
+        "\tidentity\tcoverage\tregion",
+        f"P0C6X7:1-20\tP0C6U8\tP59641\tSP\t1a\tReplicase polyprotein 1a\t{SARS}\t4382"
+        "\t100.0 %\t100.0 %\t1-20",
+        "P0C6X7:1-20\tP0C6X7\tP59641,Q6WGN0,Q7T697,Q808C0,Q80BV7,Q80BV8,Q80E51\tSP\trep"
+        f"\tReplicase polyprotein 1ab\t{SARS}\t7073\t100.0 %\t100.0 %\t1-20",
+        "P0C6X7:1-20\tP0C6W6\tQ3I5J6,Q3I5J7\tSP\trep\tReplicase polyprotein 1ab"
+        "\t349344 Bat SARS CoV Rp3/2004\t7071\t95.0 %\t100.0 %\t1-20",
+        "P0C6X7:1-20\t… 3 of 18 shown, cut by --limit 3",
+    ]
+    unread = closest(conn.cursor(), ["X1", "MESLVLGVNE", "NS-protease"], 694009).splitlines()
+    assert unread[-2:] == [
+        "X1\tX1 has no current snapshot",
+        "NS-protease\tneither an accession nor an amino acid sequence",
+    ]
+    spaced = closest(conn.cursor(), ["MESLVLGVNE\n", "MESLVLGVNE KTHVQLSLPV"], 694009)
+    assert spaced.splitlines()[1:] == [
+        "MESLVLGVNE\tleading or trailing whitespace around the argument",
+        "MESLVLGVNE KTHVQLSLP…(21 characters)\t2 parts separated by whitespace: one sequence "
+        "per argument",
+    ]
+
+
+def test_closest_identity_counts_the_gaps(conn):
+    """A residue deleted from the query: one gap column among the aligned columns."""
+    query = sequence_of(conn.cursor(), "P0C6X7:1-41")
+    gapped = query[:20] + query[21:]  # 40 residues, 41 columns
+    line = closest(conn.cursor(), [gapped], 694009, Page(1)).splitlines()[1]
+    fields = line.split("\t")
+    assert [fields[1], *fields[-3:]] == ["P0C6U8", "97.6 %", "100.0 %", "1-41"]
 
 
 def test_seq(conn):

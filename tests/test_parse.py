@@ -227,6 +227,30 @@ def test_pdf_pages(tmp_path: Path):
     )
 
 
+def test_pdf_table_rows_on_one_line(tmp_path: Path):
+    """Two columns of text, each written whole, then a table written row by row: the columns
+    stay as they are read, each row of the table is one line."""
+    document = pymupdf.open()
+    page = document.new_page()
+    for x, lines in [
+        (50, ["NS1 binds TRIM25 in infected cells, as", "co-immunoprecipitation shows."]),
+        (320, ["The NS1 mutant R38A/K41A does not bind", "TRIM25 in the same assay."]),
+    ]:
+        for n, text in enumerate(lines):
+            page.insert_text((x, 72 + 14 * n), text, fontsize=10)
+    for n, row in enumerate([["P84243", "H3-3A", "2.07"], ["Q969G3", "SMARCE1", "2.06"]]):
+        for x, cell in zip((100, 200, 300), row, strict=True):
+            page.insert_text((x, 200 + 14 * n), cell, fontsize=10)
+    path = tmp_path / "a.pdf"
+    document.save(path)
+    assert parse(path) == (
+        "--- page 1 ---\n\n"
+        "NS1 binds TRIM25 in infected cells, as\nco-immunoprecipitation shows.\n"
+        "The NS1 mutant R38A/K41A does not bind\nTRIM25 in the same assay.\n"
+        "P84243\tH3-3A\t2.07\nQ969G3\tSMARCE1\t2.06\n\n"
+    )
+
+
 def test_scanned_pdf(tmp_path: Path):
     document = pymupdf.open()
     document.new_page()
@@ -256,6 +280,20 @@ def test_xlsx(tmp_path: Path):
     assert sheets(path) == [
         ("Y2H; Caco-2", "Bait\tPrey\tScore\nNS1\tTRIM25\t2\nNS2\tline break\t0.5\n"),
         ("Empty", ""),
+    ]
+
+
+def test_sheet_rows_as_wide_as_the_widest(tmp_path: Path):
+    """A title above the header, a row whose last cells are empty: every row has every field."""
+    book = openpyxl.Workbook()
+    sheet = book.active
+    assert sheet is not None
+    for row in [["Table S1. Y2H screen"], ["Bait", "Prey", "Score"], ["NS1", "TRIM25", None]]:
+        sheet.append(row)
+    path = tmp_path / "a.xlsx"
+    book.save(path)
+    assert sheets(path) == [
+        ("Sheet", "Table S1. Y2H screen\t\t\nBait\tPrey\tScore\nNS1\tTRIM25\t\n")
     ]
 
 
@@ -426,6 +464,29 @@ def test_text_files_are_cleaned_in_place(tmp_path: Path, raw: bytes):
     entry = convert(tmp_path, "s1.csv")
     assert (tmp_path / "s1.csv").read_text() == "bait;prey\nNS1;prot\u00e9ine\n"
     assert entry == {"file": "s1.csv", "text": "s1.csv", "bytes": 24}
+
+
+@pytest.mark.parametrize(
+    ("name", "raw", "padded"),
+    [
+        (
+            "s1.tsv",
+            "Table S1\n\nbait\tprey\tscore\r\nNS1\tTRIM25\n",
+            "Table S1\t\t\nbait\tprey\tscore\nNS1\tTRIM25\t\n",
+        ),
+        (
+            "s1.csv",
+            'bait,prey,note\nNS1,"TRIM25, RIG-I"\n',
+            'bait,prey,note\nNS1,"TRIM25, RIG-I",\n',
+        ),
+        ("s1.csv", "bait;prey;score\nNS1;TRIM25\n", "bait;prey;score\nNS1;TRIM25;\n"),
+    ],
+)
+def test_tables_are_padded_in_place(tmp_path: Path, name: str, raw: str, padded: str):
+    """Every row as many fields as the widest, as a sheet's; a quoted separator kept."""
+    (tmp_path / name).write_text(raw, newline="")
+    convert(tmp_path, name)
+    assert (tmp_path / name).read_bytes().decode() == padded
 
 
 def test_text_of_unknown_encoding_is_refused(tmp_path: Path):
