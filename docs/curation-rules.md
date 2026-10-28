@@ -4,12 +4,13 @@ The biological rules of curation, explained: what is curated, and how each value
 
 ## Principles
 
-Curation follows four principles, and every rule below derives from them:
+Curation follows five principles, and every rule below derives from them:
 
-1. Record an interaction whenever an experiment of the publication shows an affinity between two proteins.
-2. Choose the UniProt entry that best represents each protein the experiment tested.
-3. Align the sequences the experiment used on the chosen UniProt entry, as mappings.
-4. Write in the notes what the publication shows that the descriptions cannot hold.
+1. Two proteins are considered to interact whenever an experiment detects an affinity between them.
+2. The results are taken as the authors present them.
+3. Each protein the experiment tested is assigned the UniProt entry that best represents it.
+4. The sequences the experiment used are aligned as mappings on the assigned entry.
+5. What the publication shows that the descriptions cannot hold is written in the notes.
 
 A case no rule decides is decided by these principles.
 
