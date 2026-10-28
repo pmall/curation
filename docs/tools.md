@@ -81,7 +81,7 @@ Read-only, on an identified entry.
 
 ## NCBI sequences
 
-A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken from its sequence (`curation-rules.md` §3). Read-only, no database; the record used is named in the description note.
+A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken from its sequence (`curation-rules.md`, the mapping). Read-only, no database; the record used is named in the description note.
 
 - `uv run drakkar-genbank search <query>... [--limit <n>]`: the GenBank (with EMBL and DDBJ) and RefSeq protein records of each query, never NCBI's copies of Swiss-Prot or PDB, in NCBI search syntax (`JFH-1 AND polyprotein`, `"Hepatitis C virus JFH-1"[Organism]`), or of a nucleotide accession (a genome: the proteins it codes for), bounded and counted as `drakkar-read`: accession and version, title, length, taxon (`<ID> <name>`).
 - `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: a protein record: its accession and version, title, length and sequence, or the subsequence between those coordinates (1-based, inclusive). A genome's accession is no protein record: `search` lists its proteins.

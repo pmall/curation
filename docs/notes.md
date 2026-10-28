@@ -4,7 +4,7 @@ The notes only serve Claude to explain and justify its choices later, to an exte
 
 ## Publication note
 
-`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, its first word the state, which the write puts after the date (`[2026-10-06] CURATED …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
+`associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, its first word the state, which the write puts after the date (`[2026-10-06] CURATED …`); a move to a special run writes the note `Moved from run <name>`, dated the same way. A mapping across a cleavage site, which the data model cannot record, is written in the publication note.
 
 ## Description note
 
