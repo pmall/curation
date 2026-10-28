@@ -86,6 +86,20 @@ A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken
 - `uv run drakkar-genbank search <query>... [--limit <n>]`: the GenBank (with EMBL and DDBJ) and RefSeq protein records of each query, never NCBI's copies of Swiss-Prot or PDB, in NCBI search syntax (`JFH-1 AND polyprotein`, `"Hepatitis C virus JFH-1"[Organism]`), or of a nucleotide accession (a genome: the proteins it codes for), bounded and counted as `drakkar-read`: accession and version, title, length, taxon (`<ID> <name>`).
 - `uv run drakkar-genbank seq <accession>[:<start>-<stop>]...`: a protein record: its accession and version, title, length and sequence, or the subsequence between those coordinates (1-based, inclusive). A genome's accession is no protein record: `search` lists its proteins.
 
+## Generic viral proteins
+
+The generic viral proteins of the vh descriptions dataset (`derived-datasets.md`) are three files of `generic/`, versioned in git, tab-separated under a header line:
+
+| File | Columns |
+| -- | -- |
+| `species.tsv` | `family_ncbi_taxon_id` (empty when the NCBI taxonomy places the taxon in no family), `ncbi_taxon_id`, `name` (the virus name readers use, not the NCBI binomial), `publications` (the publications of its live vh descriptions): the species, one line each, sorted by family, then species (a species in no family last). A person writes `ncbi_taxon_id` and `name`; the tool fills the others. |
+| `placed.tsv` | `ncbi_taxon_id`, `species_ncbi_taxon_id`, `name`: a taxon of viral interactors placed in its species, with its subtree: one missing from the NCBI taxonomy, or one the taxonomy keeps outside the species its virus is (an old species beside its successor, an unclassified taxon of a known virus); sorted by species, then taxon. |
+| `proteins.tsv` | `ncbi_taxon_id` (the species), `generic_name`, `protein`, `note`: one line per generic name of the dataset in its species, the label of the generic viral protein it is shown as, and why when it is not obvious; sorted as `species.tsv`, then by name. |
+
+The species of a viral interactor is given by the deepest taxon at or above its taxon in `species.tsv` (that taxon) or `placed.tsv` (the species it is placed in).
+
+- `uv run drakkar-generic sync <dir>`: read-only on the database. Rewrites the three files of the directory, sorted, and from Drakkar the families and publications of `species.tsv` and the names of `proteins.tsv`: the names the dataset no longer has are removed, the new ones added with an empty `protein`. Prints the counts, the names removed, then what a person decides, or `nothing`: a species missing from the NCBI taxonomy; a placed taxon now under its species in it (its line can go); a taxon under no species, with its lineage and its names; a name with no protein; a name whose protein is a name of the species mapped to another protein. A file whose header is not its format is refused.
+
 ## Full texts
 
 A full text is fetched and converted by these tools, then read from the files they write.

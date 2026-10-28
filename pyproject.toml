@@ -33,6 +33,7 @@ drakkar-fetch = "drakkar.fetch:main"
 drakkar-download = "drakkar.fetch:download_main"
 drakkar-parse = "drakkar.parse:main"
 drakkar-genbank = "drakkar.genbank:main"
+drakkar-generic = "drakkar.generic:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

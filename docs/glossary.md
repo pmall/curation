@@ -45,6 +45,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Human interactor | Always the full protein: coordinates 1 to the length. Named by its gene name (`name1`; in hh, `name2` too). |
 | Viral interactor | A full viral protein or a mature protein (`protein2_id`, `start2`, `stop2` in vh). Named by its generic name (`name2`). |
 | Generic name | The standard name of a viral interactor (e.g. `NS1`), independent of how UniProt or the publication names it. One viral interactor has one generic name, and in one protein a generic name names one viral interactor: (accession, start, stop) ↔ (accession, generic name). |
+| Generic viral protein | A viral protein of the derived datasets: one node of an interaction graph, one name in a species, grouping the generic names of that species that make sense as a single viral protein (`derived-datasets.md`). |
 | Method | A PSI-MI interaction detection method (`methods`, e.g. `MI:0007`). |
 | Description | One row of evidence: a publication × a method × a human interactor × a viral interactor (hh: two human interactors), with its mappings. This combination, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. Two mature proteins of the same cleaved protein are two interactors, so two descriptions. |
 | Interaction | A human interactor × a viral interactor, whatever the publication and the method. One interaction can have many descriptions: that is the point of curation. |

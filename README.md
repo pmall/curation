@@ -38,6 +38,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-notes`, `drakkar-batch` | Descriptions, revisions and removals, publication states and notes; the publications file of a batch, from its notes; a whole batch in one transaction. |
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
 | Releases | `drakkar-taxonomy`, `drakkar-uniprot` | Load the NCBI taxonomy and a UniProt release. |
+| Generic viral proteins | `drakkar-generic` | Keep the species and the generic viral proteins of the vh descriptions dataset (`generic/`) in step with Drakkar. |
 
 Every write follows the same path ([`docs/database.md` §2](docs/database.md#2-descriptions-and-versioning)). Each row is checked on what it builds on (the publication, the snapshots, the method, the coordinates, the mappings), never on its note, then every invariant is checked on the whole database inside the same transaction. Without `--commit` the transaction is rolled back: a dry run is the same code as a commit, writes nothing and needs no go. With `--commit`, it commits only when no row is refused and no error is found. What is derived (human names, full-length coordinates, mapping occurrences) is computed by the tools, never given by the agent.
 
@@ -91,7 +92,7 @@ The skills are linked from [`.claude/skills/`](.claude/skills/) and [`.agents/sk
 uv run pytest                    # on a test database built from sql/schema.sql and tests/fixture.sql, never Drakkar
 uv run ruff check && uv run ruff format
 uv run pyright
-uv run mdformat --wrap no --number --compact-tables docs/ prompts/ AGENTS.md README.md
+uv run mdformat --wrap no --number --compact-tables docs/ prompts/ generic/ AGENTS.md README.md
 ```
 
 ## Layout
@@ -100,8 +101,9 @@ uv run mdformat --wrap no --number --compact-tables docs/ prompts/ AGENTS.md REA
 AGENTS.md            instructions for the agent
 docs/                rules, notes, database, tools, derived datasets
   history/           the move from manual curation to the agent's curation (closed)
-prompts/skills/      curate (a batch)
+prompts/skills/      curate (a batch), generic (the generic viral proteins before an export)
 prompts/agents/      curator.md (one publication)
+generic/             the species and generic viral proteins of the vh descriptions dataset
 src/drakkar/         the tools
 sql/schema.sql       the database structure (written by tests/build_fixture.py)
 tests/               tests and their fixture
