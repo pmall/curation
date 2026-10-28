@@ -5,7 +5,7 @@ Drakkar is the curation database of virus–human protein–protein interactions
 This README is an overview. What makes a description right, what the database holds and how it is versioned are explained in `docs/`:
 
 - [`docs/glossary.md`](docs/glossary.md): the terms, one meaning each, used everywhere;
-- [`docs/curation-rules.md`](docs/curation-rules.md): the biological rules explained in full (the acceptance criteria, how each value of a description is identified, the mappings), which the curator's prompt holds in condensed form;
+- [`docs/curation-rules.md`](docs/curation-rules.md): the biological rules explained in full (the principles, what is curated, how each value of a description is identified), which the curator's prompt holds in condensed form;
 - [`docs/database.md`](docs/database.md): the tables, the states of a publication, the publication and description notes, versioning, UniProt releases, invariants;
 - [`docs/datasets.md`](docs/datasets.md): what is exported from Drakkar;
 - [`docs/tools.md`](docs/tools.md): the file formats and every tool.
@@ -32,7 +32,7 @@ They are all project commands, run with `uv run <command>` and described in [`do
 | -- | -- | -- |
 | Full texts | `drakkar-fetch`, `drakkar-download`, `drakkar-parse` | Download a full text with its supplementary files, convert them and list them in a manifest; download and convert one file from a URL; convert files (XML, HTML, PDF, Word, spreadsheets) to texts named by their format. |
 | Reading | `drakkar-read`, `drakkar-genbank` | Look up methods, taxa, entries (by accession, name or sequence), sequences and the generic names in use; run any read-only SQL query; search NCBI protein sequences. |
-| Mapping | `drakkar-mapping` | Compute mapping sequences on an identified entry exactly as the write does, to check them. |
+| Mapping | `drakkar-mapping` | Compute the occurrences of mapping sequences on an identified entry exactly as the write does, to check them. |
 | Diffing | `drakkar-diff` | Compare a publication's curated descriptions with its live ones, and write the differences as files to add, revise and remove. |
 | Writing | `drakkar-add`, `drakkar-revise`, `drakkar-publications`, `drakkar-notes`, `drakkar-batch` | Write descriptions, revisions and removals, publication states and notes; build a batch's publications file from its notes; write a whole batch in one transaction. |
 | Checking | `drakkar-check` | Check every invariant on the whole database, read-only. |
@@ -67,7 +67,7 @@ orchestrator (curate skill)
 - **The report leaves no open question**: it says what each file holds, which publications have no full text or were not curated, and why.
 - **The go.** The orchestrator then commits the batch files. The publications the agent could not curate fully (a relevant file missing: the full text or a supplementary file) stay `selected` with a date. When the user asks, they are moved to the open special run, where their manual pass happens, so that the run they came from can be complete.
 
-Batches are independent: each takes its own publications, works in its own directory and writes only those. Several batches could run in parallel on distinct publications; the default pick, the next publications of the oldest run, is made for one batch at a time.
+Batches are independent: each takes its own publications, works in its own directory and writes only those. Several batches can run in parallel on distinct publications.
 
 ## What is tracked
 
@@ -82,7 +82,7 @@ uv sync
 cp .env.example .env    # database connection, the address Unpaywall asks for, the NCBI API key
 ```
 
-In Claude Code, run from the repository, `/curate` starts a batch: alone, it takes the next publications into the default work directory; a prompt can name the publications, the work directory, or both. The agent ends with its report and waits for the go.
+In Claude Code, run from the repository, `/curate` starts a batch on the publications its prompt asks for, in the work directory the prompt names or the default one. The agent ends with its report and waits for the go.
 
 The skills are linked from [`.claude/skills/`](.claude/skills/) and [`.agents/skills/`](.agents/skills/), the agent from [`.claude/agents/`](.claude/agents/) and [`.agents/agents/`](.agents/agents/); [`AGENTS.md`](AGENTS.md) is read by the agent at the start of every conversation.
 

@@ -118,7 +118,7 @@ The derived datasets (`datasets.md`) are five, each written as a `.tsv` file, ta
 
 A full text is fetched and converted by these tools, then read from the files they write.
 
-- `uv run drakkar-fetch <pmid> <dir>`: downloads the full text as published, in three steps. Each step is a list of routes, each route answering yes or no by one test.
+- `uv run drakkar-fetch <dir> <pmid>`: downloads the full text as published, in three steps. Each step is a list of routes, each route answering yes or no by one test.
 
   1. **Access**: the article is free when it has a PMCID, when OpenAlex or Unpaywall list a free copy, or when the publisher's page (at the DOI) declares free access (`"isAccessibleForFree": true`, `<meta name="access" content="Yes">`, `citation_fulltext_world_readable`, or a link to the article's Creative Commons license, PLOS's only declaration); a declared paywall wins. Closed otherwise. A preprint is never a copy of the article: its copies, its DOI and a PMC copy of it (known by its own DOI) are never fetched.
   2. **The article**, one file, from the first route that gives it: the PMC open access files, Europe PMC `fullTextXML`, NCBI `efetch` (each when its XML has a body); the PMC article page, which serves the PMC copies outside the open access files (when it has the body sections; one page per publication, as NCBI forbids bulk downloads); the publisher's HTML page (when it declares free access; a page that declares a paywall is never the article); then, last, the publisher's PDF (`citation_pdf_url`) and the other free copies' PDFs (when the file is a PDF).

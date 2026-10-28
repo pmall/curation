@@ -51,9 +51,10 @@ DESCRIPTION = [
 ADD = ["pmid", *DESCRIPTION, "note"]
 REVISE = ["stable_id", "version", "pmid", "action", "into", *DESCRIPTION, "note"]
 PUBLICATIONS = ["pmid", "state", "note"]
-# The files of a batch: those of a curation batch (`skills/curate`) and those of `drakkar-diff`;
-# a descriptions file may be missing. Of the additions, only the first present is read: the
-# descriptions.add.jsonl of a diff is written beside the descriptions.jsonl it comes from.
+# The files of a batch: those of a curation batch (`prompts/skills/curate`) and those of
+# `drakkar-diff`; a descriptions file may be missing. Of the additions, only the first present is
+# read: the descriptions.add.jsonl of a diff is written beside the descriptions.jsonl it comes
+# from.
 BATCH_REVISIONS = ["descriptions.revise.jsonl", "descriptions.delete.jsonl"]
 BATCH_ADDITIONS = ["descriptions.add.jsonl", "descriptions.jsonl"]
 BATCH_PUBLICATIONS = "publications.jsonl"

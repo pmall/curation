@@ -1,8 +1,8 @@
 """Download the full text of a publication, as published, with its supplementary files, and
 convert them to text for the curation; or one file, at a URL.
 
-uv run drakkar-fetch <pmid> <dir>
-uv run drakkar-download <url> <dir>
+uv run drakkar-fetch <dir> <pmid>
+uv run drakkar-download <dir> <url>...
 
 Three steps, each a list of routes; a route answers yes or no by one test.
 1. Access: the article is free when it has a PMCID, when OpenAlex or Unpaywall list a free copy
@@ -466,8 +466,8 @@ def supplement_links(page: bytes, base: str) -> list[Supplement]:
 
 
 class Fetch:
-    def __init__(self, pmid: int, out: Path, get: Get) -> None:
-        self.pmid, self.out, self.get = pmid, out, get
+    def __init__(self, out: Path, pmid: int, get: Get) -> None:
+        self.out, self.pmid, self.get = out, pmid, get
         self.report: dict[str, Any] = {"file": None}
         self.tried: list[dict[str, str]] = []  # the routes of the article
         self.record: dict[str, Any] = {}
@@ -887,9 +887,9 @@ class Fetch:
         return report
 
 
-def fetch(pmid: int, out: Path, get: Get = http_get) -> dict[str, Any]:
+def fetch(out: Path, pmid: int, get: Get = http_get) -> dict[str, Any]:
     """The full text fetched and converted, its manifest written; returns the report."""
-    return Fetch(pmid, out, get).run()
+    return Fetch(out, pmid, get).run()
 
 
 def report_lines(report: dict[str, Any]) -> list[str]:
@@ -908,7 +908,7 @@ def report_lines(report: dict[str, Any]) -> list[str]:
     return lines
 
 
-def download(url: str, out: Path, get: Get = http_get) -> list[str]:
+def download(out: Path, url: str, get: Get = http_get) -> list[str]:
     """The file at a URL saved in `out`, an archive unpacked, each file but an image converted
     beside it; returns one line per file: its entry, as in the manifest (paths starting with
     `out`), or why it could not be had."""
@@ -934,13 +934,13 @@ def download_main() -> None:
     parser.add_argument("dir", type=Path)
     parser.add_argument("urls", nargs="+")
     args = parser.parse_args()
-    lines = [f"{url}\t{line}" for url in args.urls for line in download(url, args.dir)]
+    lines = [f"{url}\t{line}" for url in args.urls for line in download(args.dir, url)]
     print("\n".join(["#url\tmanifest entry, or why", *lines]))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download the full text of a publication.")
-    parser.add_argument("pmid", type=int)
     parser.add_argument("dir", type=Path)
+    parser.add_argument("pmid", type=int)
     args = parser.parse_args()
-    print("\n".join(report_lines(fetch(args.pmid, args.dir))))
+    print("\n".join(report_lines(fetch(args.dir, args.pmid))))

@@ -15,7 +15,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Pre-curation | The decision `selected` or `discarded`, from the title and abstract. |
 | Curation pass | Reading the relevant files of a selected publication (its full text and supplementary files) and recording its descriptions. Ends with the state `curated` when Claude could explore all of them and extracted all the descriptions; with a relevant file missing, `selected` with a date (`database.md` §1, states). Claude's last pass is dated by `associations.ai_pass_at`. |
 | Manual pass | The curation of a publication Claude could not curate fully (`selected` with a pass date), in a special run: by hand, or by Claude from a curator file, an Excel file describing its interactions. |
-| Batch | An orchestrated curation of at most 20 publications, by the `curate` skill: one subagent each, merged into one set of files and committed together after the user's go. Never "run". |
+| Batch | An orchestrated curation of publications, by the `curate` skill: one subagent each, merged into one set of files and committed together after the user's go. Never "run". |
 | Note | The free text of an association (`associations.annotation`), the publication note: decisions about the publication (`database.md` §1, notes). It never holds maintenance information. |
 
 ## Proteins

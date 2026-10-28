@@ -89,7 +89,7 @@ class Server:
 
 def run(tmp_path: Path, responses: dict[str, Response]) -> tuple[dict[str, Any], Server]:
     server = Server(responses)
-    return fetch(PMID, tmp_path, server), server
+    return fetch(tmp_path, PMID, server), server
 
 
 def location(url: str, pdf: str | None = None, name: str = "J Virol") -> dict[str, Any]:
@@ -627,7 +627,7 @@ def test_download_unpacks_and_converts(tmp_path: Path):
         z.writestr("fig_s3.tif", TIFF)
         z.writestr("movie_s2.mp4", "frames")
     url = "https://zenodo.org/records/1/files/data.zip"
-    lines = download(url, tmp_path, Server({url: ok(archive.getvalue(), "application/zip")}))
+    lines = download(tmp_path, url, Server({url: ok(archive.getvalue(), "application/zip")}))
     s1 = str(tmp_path / "s1.csv")
     assert [json.loads(line) for line in lines] == [
         {"file": s1, "text": s1, "bytes": 8},
@@ -640,7 +640,7 @@ def test_download_unpacks_and_converts(tmp_path: Path):
 def test_download_saves_each_image_of_a_tiff_as_png(tmp_path: Path):
     url = "https://journal.org/suppl/fig_s1.tif"
     two = (SAMPLES / "two-images.tif").read_bytes()
-    lines = download(url, tmp_path, Server({url: ok(two, "image/tiff")}))
+    lines = download(tmp_path, url, Server({url: ok(two, "image/tiff")}))
     assert [json.loads(line)["file"] for line in lines] == [
         str(tmp_path / "fig_s1-1.png"),
         str(tmp_path / "fig_s1-2.png"),
@@ -651,11 +651,11 @@ def test_download_saves_each_image_of_a_tiff_as_png(tmp_path: Path):
 def test_download_names_the_type_from_the_response(tmp_path: Path):
     """A link without an extension (`?download=1`): the type from the response."""
     url = "https://figshare.com/ndownloader/files/42"
-    lines = download(url, tmp_path, Server({url: ok(b"x\ty\n", "text/csv")}))
+    lines = download(tmp_path, url, Server({url: ok(b"x\ty\n", "text/csv")}))
     assert [json.loads(line)["file"] for line in lines] == [str(tmp_path / "42.csv")]
 
 
 def test_download_failure(tmp_path: Path):
     url = "https://journal.org/suppl/s1.xlsx"
-    assert download(url, tmp_path, Server({})) == ["HTTP 404"]  # its line starts with the URL
+    assert download(tmp_path, url, Server({})) == ["HTTP 404"]  # its line starts with the URL
     assert not tmp_path.exists() or not any(tmp_path.iterdir())

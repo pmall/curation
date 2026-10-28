@@ -418,7 +418,7 @@ def _protein(type_: str) -> str:
 
 def check_d9(cur: Any) -> Rows:
     """Mapping content: an amino acid sequence, once, with an occurrence that fits
-    (`curation-rules.md` §3).
+    (`curation-rules.md`, the mapping).
 
     Every stored occurrence must be true to its coordinates (`_misfit`), whatever its identity
     (low identities are D12 warnings). Occurrence positions are relative to the interactor
@@ -459,8 +459,8 @@ def check_d9(cur: Any) -> Rows:
 def check_d12(cur: Any) -> Rows:
     """Mapping identity (warning): the best recorded identity of a mapping is below the threshold.
 
-    `LEGACY_MIN_IDENTITY` (96 %) for legacy descriptions, `MIN_IDENTITY` (90 %) for Claude's
-    `CW` ones.
+    `LEGACY_MIN_IDENTITY` (96 %) for `EY` descriptions, `MIN_IDENTITY` (90 %) for Claude's `CW`
+    ones.
     """
     cur.execute(MAPPING_SIDES)
     rows: list[tuple[Any, ...]] = []
@@ -543,8 +543,7 @@ INVARIANTS = sorted(
         Invariant(
             "D12",
             "warning",
-            "Mapping identity: the best occurrence of a mapping is below 96 % (legacy) or 90 % "
-            "(CW).",
+            "Mapping identity: the best occurrence of a mapping is below 96 % (EY) or 90 % (CW).",
             check_d12,
         ),
         Invariant(

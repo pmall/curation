@@ -46,8 +46,9 @@ SQL_BATCH = 500  # rows fetched at a time
 # Its alphabet lacks U, O and J, aligned as X (`align.py`).
 SEARCH: Any = pyopal.Aligner("BLOSUM62", gap_open=11, gap_extend=1)  # pyopal is not typed
 # The features `entry` prints, by their UniProt type: the parts of the protein a mature
-# protein's coordinates can come from (`curation-rules.md` §4, tier `annotation`), and the
-# domains, zinc fingers and regions of interest a construct can be named by.
+# protein's coordinates can come from (`curation-rules.md`, the mature protein, tier
+# `annotation`), and the domains, zinc fingers and regions of interest a construct can be named
+# by.
 FEATURES = {
     "chain": "chain",
     "peptide": "peptide",
@@ -411,8 +412,8 @@ def _entry(cur: Any, accession: str) -> str:
 
 def _generic_names(cur: Any, snapshot: int) -> list[str]:
     """The generic names of the live descriptions of an entry's current snapshot, each with its
-    span and its live descriptions: one span per name and one name per span (`curation-rules.md`
-    §1, names; invariants D6 and D10)."""
+    span and its live descriptions: one span per name and one name per span (`curation-rules.md`,
+    the generic name; invariants D6 and D10)."""
     cur.execute(
         """
         SELECT name2, start2, stop2, count(*) AS descriptions

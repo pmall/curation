@@ -38,6 +38,7 @@ from typing import Any
 
 from openpyxl import Workbook
 
+from drakkar.align import written
 from drakkar.db import connect
 from drakkar.generic import proteins_of
 
@@ -358,9 +359,7 @@ def export(
         release, accession = row[f"release{side}"], row[f"accession{side}"]
         for mapping in row[f"mapping{side}"]:
             nter, cter = mapping.get("nter", ""), mapping.get("cter", "")
-            # the extra end residues in lowercase, as in the curation files: mSTNPK
-            stored = mapping["sequence"]
-            sequence = nter.lower() + stored[len(nter) : len(stored) - len(cter)] + cter.lower()
+            sequence = written(mapping)  # as in the curation files: mSTNPK
             isoform = _isoform(accession, mapping)
             line = [row["stable_id"], sequence, release, accession]
             if kind == "h":

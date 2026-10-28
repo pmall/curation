@@ -42,10 +42,10 @@ class Description:
     """What a curator decides for one description.
 
     `accession2` is viral in vh, human in hh. `start2`/`stop2` default to the full protein; a
-    mature protein of a polyprotein gets its coordinates. `name2` is the generic name of a viral
-    interactor (in hh, the gene name, derived). Human names and coordinates are derived from the
-    snapshots. Mappings are the domain sequences as used in the publication
-    (`curation-rules.md` §3), their extra end residues in lowercase (`drakkar.align`); their
+    mature protein gets its coordinates. `name2` is the generic name of a viral interactor (in
+    hh, the gene name, derived). Human names and coordinates are derived from the snapshots.
+    Mappings are the sequences the experiment used (`curation-rules.md`, the mapping), their
+    extra end residues in lowercase (`drakkar.align`); their
     occurrences are computed by `map_sequence`, and a mapping whose best identity is below
     `MIN_IDENTITY` is skipped.
     """

@@ -10,7 +10,7 @@ You run a curation batch. A `curator` agent curates each publication from its fu
 
 1. **Work directory**: the prompt's; otherwise `data/sessions/run<run>/batch<n>/` when the publications are of one run (its name, not its `id`), `data/sessions/batch<n>/` when they are of several; one directory per publication, `<dir>/<pmid>/`.
 
-2. **Full texts**: a publication directory with its `manifest.json` is ready (files the user provided). Fetch the others: `mkdir -p <dir>/<pmid> && uv run drakkar-fetch <pmid> <dir>/<pmid> > <dir>/<pmid>/fetch.txt`. The report's first line says where the article comes from, or why there is none; the manifest is written only when the article could be had and converted. Read the reports, never the full texts.
+2. **Full texts**: a publication directory with its `manifest.json` is ready (files the user provided). Fetch the others: `mkdir -p <dir>/<pmid> && uv run drakkar-fetch <dir>/<pmid> <pmid> > <dir>/<pmid>/fetch.txt`. The report's first line says where the article comes from, or why there is none; the manifest is written only when the article could be had and converted. Read the reports, never the full texts.
 
    - `Full text: not downloaded` (free, but no copy could be downloaded): fetch once more, as the failure may pass. Still none: leave the publication out of the batch; a later batch fetches it again.
    - `Full text: closed`, or the article not converted: no curator; write its note in `<dir>/<pmid>/curation.txt`: `SELECTED`, then why there is no full text.
