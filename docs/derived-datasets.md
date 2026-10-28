@@ -14,14 +14,17 @@ Each description is exact on its UniProt entries, whatever their version: the sn
 - **Viral interactors** count on the latest snapshot they can be on, which may be an old one when the entry left UniProt (e.g. a patient isolate).
 - **Live descriptions only.** A deleted version is history, not data; a removed description never counts.
 
-## The four datasets
+## The datasets
+
+The files and their columns are in `tools.md` (derived datasets).
 
 | Dataset | What it holds |
 | -- | -- |
-| hh descriptions | The pairs of human interactors, both up to date. |
-| vh descriptions | The up-to-date human interactor and the generic viral protein: (the NCBI taxon ID of the species, its name), whatever the strain and the UniProt version of the viral interactor. |
-| hh mappings | Both human interactors up to date; the mapping sequences, with all the isoforms as their source. |
-| vh mappings | The up-to-date human interactor as the target, and the viral source of the mapping, whatever its UniProt version, strain or isoform. |
+| hh descriptions | The descriptions, each with its pair of human interactors, both up to date. |
+| vh descriptions | The descriptions, each with its up-to-date human interactor and its viral interactor, whatever its strain and UniProt release, with its generic viral protein: the species (its NCBI taxon ID, our name) and the protein's label. |
+| viral interactors | The sequence of each viral interactor of the vh descriptions, by its snapshot (release, accession) and its coordinates: the snapshot of an entry gone from UniProt can be read nowhere else. |
+| human mappings | The mappings of the human interactors, of the hh descriptions (both sides) and of the vh descriptions, each with its description, which gives its target, and the isoform it is on, the canonical one whenever it can be. A homodimer's mapping on both sides is one. |
+| viral mappings | The mappings of the viral interactors of the vh descriptions, whatever their UniProt release, strain or isoform, each with its description, which gives its target, and the isoform it is on, the canonical one whenever it can be. |
 
 ## Generic viral proteins
 

@@ -8,7 +8,7 @@ The species and the generic viral proteins of the vh descriptions dataset: one v
 | [`placed.tsv`](placed.tsv) | The taxa placed by hand, with their subtree, in the species their virus is. |
 | [`proteins.tsv`](proteins.tsv) | Each generic name of a species, the label of the protein it is shown as, and a note where the decision is not obvious. |
 
-The species of a viral interactor is given by the deepest taxon at or above its taxon in `species.tsv` or `placed.tsv`. Before each export, the skill [`generic`](../prompts/skills/generic/SKILL.md) brings the files in step with Drakkar with `uv run drakkar-generic sync generic/` ([`docs/tools.md`](../docs/tools.md#generic-viral-proteins)) and decides what is new. This file says why the species are what they are.
+The species of a viral interactor is given by the deepest taxon at or above its taxon in `species.tsv` or `placed.tsv`. Before each export, the skill [`export`](../prompts/skills/export/SKILL.md) brings the files in step with Drakkar with `uv run drakkar-generic sync generic/` ([`docs/tools.md`](../docs/tools.md#generic-viral-proteins)) and decides what is new. This file says why the species are what they are.
 
 Names, ours: they are what the datasets show, and the NCBI scientific names are often ICTV binomials no reader uses (*Lymphocryptovirus humangamma4* is Epstein-Barr virus, *Orthoflavivirus zikaense* is Zika virus). Two species are in no NCBI family: Bacillus phage PBS2 and Clostridium botulinum D phage (unclassified *Caudoviricetes*).
 

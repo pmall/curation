@@ -21,7 +21,7 @@ Three layers make the harness:
 | -- | -- | -- |
 | Instructions | [`AGENTS.md`](AGENTS.md), [`docs/`](docs/) | How the agent works with the user, writes and queries; the curation rules, the database, the tools. |
 | Tools | [`src/drakkar/`](src/drakkar/), [`tests/`](tests/) | Python commands that fetch, convert, read, diff, check and write; the only way to write to Drakkar. |
-| Processes | [`prompts/`](prompts/) | The `curate` skill, the orchestration of a batch ([`SKILL.md`](prompts/skills/curate/SKILL.md)) and the `curator` agent, which curates each publication ([`curator.md`](prompts/agents/curator.md)). |
+| Processes | [`prompts/`](prompts/) | The `curate` skill, the orchestration of a batch ([`SKILL.md`](prompts/skills/curate/SKILL.md)) and the `curator` agent, which curates each publication ([`curator.md`](prompts/agents/curator.md)); the `export` skill, the derived datasets with their generic viral proteins ([`SKILL.md`](prompts/skills/export/SKILL.md)). |
 
 The rules are written once, in `docs/`, but the curation rules: the curator's prompt holds them, `docs/curation-rules.md` explains them. A skill or an agent holds a whole process, start to end, self-contained: it reads no doc, so its context goes to the publication.
 
@@ -39,6 +39,7 @@ All are commands of the project (`uv run <command>`), described in [`docs/tools.
 | Checking | `drakkar-check` | Every invariant on the whole database, read-only. |
 | Releases | `drakkar-taxonomy`, `drakkar-uniprot` | Load the NCBI taxonomy and a UniProt release. |
 | Generic viral proteins | `drakkar-generic` | Keep the species and the generic viral proteins of the vh descriptions dataset (`generic/`) in step with Drakkar. |
+| Derived datasets | `drakkar-export` | Export the vh and hh descriptions, the sequences of the viral interactors and the mappings, as files for other applications. |
 
 Every write follows the same path ([`docs/database.md` §2](docs/database.md#2-descriptions-and-versioning)). Each row is checked on what it builds on (the publication, the snapshots, the method, the coordinates, the mappings), never on its note, then every invariant is checked on the whole database inside the same transaction. Without `--commit` the transaction is rolled back: a dry run is the same code as a commit, writes nothing and needs no go. With `--commit`, it commits only when no row is refused and no error is found. What is derived (human names, full-length coordinates, mapping occurrences) is computed by the tools, never given by the agent.
 
@@ -101,7 +102,7 @@ uv run mdformat --wrap no --number --compact-tables docs/ prompts/ generic/ AGEN
 AGENTS.md            instructions for the agent
 docs/                rules, notes, database, tools, derived datasets
   history/           the move from manual curation to the agent's curation (closed)
-prompts/skills/      curate (a batch), generic (the generic viral proteins before an export)
+prompts/skills/      curate (a batch), export (the derived datasets, the generic viral proteins first)
 prompts/agents/      curator.md (one publication)
 generic/             the species and generic viral proteins of the vh descriptions dataset
 src/drakkar/         the tools

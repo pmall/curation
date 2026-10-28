@@ -20,9 +20,9 @@ The files, tab-separated under a header line:
   has.
 
 The vh descriptions dataset: the live vh descriptions whose human interactor is on its current
-snapshot, the viral interactor on any snapshot. The species of a viral interactor is given by
-the deepest taxon at or above its taxon in `species.tsv` (that taxon) or `placed.tsv` (the
-species it is placed in).
+snapshot, in Swiss-Prot, the viral interactor on any snapshot. The species of a viral interactor
+is given by the deepest taxon at or above its taxon in `species.tsv` (that taxon) or
+`placed.tsv` (the species it is placed in).
 """
 
 import argparse
@@ -95,6 +95,60 @@ def _lineages(cur: Any, ncbi_ids: set[int]) -> dict[int, list[tuple[int, str, st
     return lineages
 
 
+def _species_of(
+    taxon: int,
+    lineages: dict[int, list[tuple[int, str, str]]],
+    listed: dict[int, str],
+    placed: dict[int, int],
+) -> int | None:
+    """The deepest taxon at or above the taxon in `placed.tsv` (its species) or in `species.tsv`."""
+    if taxon in placed:  # one missing from the NCBI taxonomy has no lineage
+        return placed[taxon]
+    for i, _, _ in lineages[taxon]:
+        if i in placed:
+            return placed[i]
+        if i in listed:
+            return i
+    return None
+
+
+def proteins_of(
+    cur: Any, directory: Path, names: set[tuple[int, str]]
+) -> tuple[dict[tuple[int, str], tuple[int, str, str]], list[str]]:
+    """The generic viral protein of each (taxon, generic name) of viral interactors, by the files
+    of the directory: its species, the species' name and the protein's label; and what the files
+    miss, one line each: a taxon under no species, a species not in `species.tsv`, a name with no
+    protein."""
+    listed = {int(r["ncbi_taxon_id"]): r["name"] for r in _read(directory / "species.tsv", SPECIES)}
+    placed = {
+        int(r["ncbi_taxon_id"]): int(r["species_ncbi_taxon_id"])
+        for r in _read(directory / "placed.tsv", PLACED)
+    }
+    decided = {
+        (int(r["ncbi_taxon_id"]), r["generic_name"]): r["protein"]
+        for r in _read(directory / "proteins.tsv", PROTEINS)
+    }
+    lineages = _lineages(cur, {t for t, _ in names})
+    proteins: dict[tuple[int, str], tuple[int, str, str]] = {}
+    unplaced: set[int] = set()
+    unlisted: set[int] = set()
+    undecided: set[tuple[int, str]] = set()
+    for taxon, name in names:
+        s = _species_of(taxon, lineages, listed, placed)
+        if s is None:
+            unplaced.add(taxon)
+        elif s not in listed:
+            unlisted.add(s)
+        elif not decided.get((s, name)):
+            undecided.add((s, name))
+        else:
+            proteins[(taxon, name)] = (s, listed[s], decided[(s, name)])
+    missing = [f"taxon under no species\t{t}" for t in sorted(unplaced)]
+    missing += [f"species not in species.tsv\t{s}" for s in sorted(unlisted)]
+    missing += [f"no protein\t{s} {listed[s]}\t{n}" for s, n in sorted(undecided)]
+    return proteins, missing
+
+
 def sync(cur: Any, directory: Path) -> str:
     """Refresh `species.tsv` and `proteins.tsv` of the directory from Drakkar; the report: the
     counts, then what a person decides."""
@@ -113,7 +167,7 @@ def sync(cur: Any, directory: Path) -> str:
         JOIN proteins AS h ON h.id = d.protein1_id
         JOIN proteins_versions AS current
           ON current.accession = h.accession AND current.version = h.version
-        WHERE d.deleted_at IS NULL AND v.type = 'v'
+        WHERE d.deleted_at IS NULL AND v.type = 'v' AND current.reviewed
         GROUP BY v.ncbi_taxon_id, d.name2
         """
     )
@@ -134,16 +188,7 @@ def sync(cur: Any, directory: Path) -> str:
     lineages = _lineages(cur, taxa | listed.keys())
 
     def species_of(taxon: int) -> int | None:
-        """The deepest taxon at or above the taxon in `placed.tsv` (its species) or in
-        `species.tsv`."""
-        if taxon in placed:  # one missing from the NCBI taxonomy has no lineage
-            return placed[taxon]
-        for i, _, _ in lineages[taxon]:
-            if i in placed:
-                return placed[i]
-            if i in listed:
-                return i
-        return None
+        return _species_of(taxon, lineages, listed, placed)
 
     publications: dict[int, set[int]] = defaultdict(set)
     for taxon, pmid in pmids:

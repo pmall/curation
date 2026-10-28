@@ -1,14 +1,26 @@
 ---
-name: generic
+name: export
 disable-model-invocation: true
-description: "The generic viral proteins of the vh descriptions dataset brought in step with Drakkar before an export: new species placed, new generic names grouped, the files of generic/ shown to the user. Use when the user asks to update the generic viral proteins or to prepare a dataset export."
+description: "The derived datasets exported from Drakkar: the run cut agreed with the user, the generic viral proteins of generic/ brought in step (new species placed, new generic names grouped), then the five datasets written as .tsv and .xlsx. Use when the user asks for a dataset export, or to update the generic viral proteins."
 ---
 
-# Generic viral proteins
+# Export
 
-The vh descriptions dataset shows each interaction as one human Swiss-Prot entry × one generic viral protein: one node of an interaction graph, one name in a species. You bring the files of `generic/` in step with Drakkar, decide what is new and show it to the user. Read no doc: this skill is the whole process. You write only the files of `generic/`, never the database.
+The derived datasets are files for other applications, exported from the live descriptions: the hh and vh descriptions, the sequences of the viral interactors, the human and viral mappings. The vh descriptions show each interaction as one human Swiss-Prot entry × one generic viral protein: one node of an interaction graph, one name in a species, from the files of `generic/`, which you bring in step with Drakkar before each export. Read no doc: this skill is the whole process. You write only the files of `generic/` and the export, never the database.
 
-The files, tab-separated under a header line:
+## 1. The run cut
+
+The export takes the vh runs up to a run, given by its ID (`runs.id`), never its name, and the special runs (`special-<n>`), all of them unless the user cuts them too; hh is always whole. Take the cut from the user's request; otherwise show the vh runs still being curated, with their publications neither curated nor discarded, and agree the cut with the user before going on:
+
+```
+uv run drakkar-read sql "SELECT r.id, r.name, count(*) AS publications FROM runs AS r JOIN associations AS a ON a.run_id = r.id WHERE r.type = 'vh' AND a.state IN ('pending', 'selected') GROUP BY r.id, r.name ORDER BY r.id"
+```
+
+When the user asks only to update the generic viral proteins, skip this step and stop after the next one.
+
+## 2. The generic viral proteins
+
+The files of `generic/`, tab-separated under a header line:
 
 - `species.tsv`: `family_ncbi_taxon_id`, `ncbi_taxon_id`, `name`, `publications`. A species is an NCBI taxon treated as one virus. You write `ncbi_taxon_id` and `name`, the virus name readers use (`Epstein-Barr virus`, not the NCBI binomial *Lymphocryptovirus humangamma4*); the tool fills the others.
 - `placed.tsv`: `ncbi_taxon_id`, `species_ncbi_taxon_id`, `name`: a taxon of viral interactors placed in its species, with its subtree: one missing from the NCBI taxonomy, or one the taxonomy keeps outside the species its virus is.
@@ -43,4 +55,10 @@ The species of a viral interactor is given by the deepest taxon at or above its 
 
 4. **`protein named elsewhere`**: a name's protein is a name of the species mapped to another protein; make the group's lines agree.
 
-5. **Reply**: what `sync` reported (counts, names removed); the species added or placed, and why; the names given another name's protein (`name → protein`, with their descriptions). The user reviews `git diff generic/`; commit only on the user's request.
+## 3. The export
+
+`uv run drakkar-export data/exports/ --run <id>`, with `--special-run <id>` when the user cuts the special runs. Read-only on the database, it refuses to write anything while `generic/` is not in step. It writes five datasets, each as a `.tsv` and an `.xlsx` file named after the cut run (`descriptions_vh_run87.tsv`): `descriptions_hh`, `descriptions_vh`, `interactors_viral` (the sequence of each viral interactor), `mappings_h` and `mappings_v`; it prints the runs exported and the lines of each, then checks the files, read back, against each other and against the database: the numbers (live descriptions = exported + left out, a human interactor not up to date; mappings = lines + merged in homodimers), then `ok` or the failures, with an error.
+
+## 4. Reply
+
+The generic viral proteins: what `sync` reported (counts, names removed); the species added or placed, and why; the names given another name's protein (`name → protein`, with their descriptions). Then the export: the run cut (name and ID), the special runs, the lines of each dataset, the numbers of the check and its result, and the directory. A failed check is the first thing said, with its failures. The user reviews `git diff generic/`; when a decision there changes, export again. Commit only on the user's request.
