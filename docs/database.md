@@ -11,7 +11,7 @@ Its whole structure (tables, constraints, indexes, rules, the `dataset` view) is
 | `runs` | The PMIDs of one PubMed query (`type` `vh` or `hh`, `name` = sequence number), or a special run (vh, `special-<n>`). New runs are `vh`. |
 | `publications` | One row per PMID, with the PubMed record as JSON in `metadata`. |
 | `associations` | A publication in a run: its `state`, its publication note (`annotation`) and the date of Claude's last curation pass (`ai_pass_at`): the states below. |
-| `descriptions` | Descriptions, versioned (§2), each version with its description note (`annotation`, `notes.md`). |
+| `descriptions` | Descriptions, versioned (§2), each version with its description note (`annotation`, notes below). |
 | `methods` | The PSI-MI ontology, never modified: a missing term is reported to the user. Each term has its `synonyms` and `is_detection`, true for the interaction detection methods (under MI:0001), both from the PSI-MI file. |
 | `proteins` | One row per snapshot of a UniProt entry (§3). |
 | `proteins_versions` | The current snapshots, with their gene names, synonyms, features (chains, peptides), whether the entry is in Swiss-Prot (`reviewed`) and its secondary accessions (old accessions UniProt merged into it), from the UniProt release; `search`, its accession, names, taxon and protein name in one text, trigram-indexed. |
@@ -30,7 +30,31 @@ A publication of a vh run moves through these states, its association's `state` 
 | `curated` | All its relevant files explored and all its descriptions extracted, with or without descriptions (by Claude if dated). |
 | `discarded` | Rejected at pre-curation. |
 
-A run is **complete** when every publication is `discarded` or `curated`. Claude is **done with a run** when no publication is `pending` and every `selected` publication has a date. The publications left `selected` with a date are moved, when the user asks, to the open special run, the highest `special-<n>`, so the run they leave can be complete: the association changes run, its descriptions with it, and a `Moved` note goes first in its note (`notes.md`); a new special run is opened when the user says so. A `discarded` publication without a Claude note may have been decided on the abstract or on the full text: the two cannot be told apart, and such states are left as they are.
+A run is **complete** when every publication is `discarded` or `curated`. Claude is **done with a run** when no publication is `pending` and every `selected` publication has a date. The publications left `selected` with a date are moved, when the user asks, to the open special run, the highest `special-<n>`, so the run they leave can be complete: the association changes run, its descriptions with it, and a `Moved` note goes first in its note (notes, below); a new special run is opened when the user says so. A `discarded` publication without a Claude note may have been decided on the abstract or on the full text: the two cannot be told apart, and such states are left as they are.
+
+### Notes
+
+The notes only serve Claude to explain and justify its choices later, to an external reviewer or in a report on a curation run or batch: free text.
+
+- **Publication note**, `associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, its first word the state, which the write puts after the date (`[2026-10-06] CURATED …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
+- **Description note**, `descriptions.annotation`, one note per version. A version made by a curation holds the curation's note. A version made otherwise, and what was decided on a version later without a new version (an interactor not moved, an in-place correction, a removal), are each a line `ACTION: summary` followed by `- ` detail lines. The history of a description is its notes read version by version.
+
+| Action | Why | Example summary |
+| -- | -- | -- |
+| `UPDATED` | A UniProt release: an interactor moved to its new snapshot (a new version), or kept on its old one, or an isoform renamed (in place) | `UniProt 2026_03, Q77YF9 → P12520 (deleted; NL4-3 Vpr), 1–78 → 1–96`, `UniProt 2026_03, side 2 B0FAN5 not moved: deleted, patient isolate, no strain in the publication` |
+| `FIXED` | An error found in Drakkar | `name1 AES → TLE5, gene name of the snapshot` |
+| `REMOVED` | The end of a description, in place on its last version, with its reason | `HLA protein`, `not found by the curation` |
+
+A publication note:
+
+```
+[2026-10-21] Moved from run 88
+---
+[2026-10-20] SELECTED
+- Table S2, the screen's hits (Results, "Screen"), could not be had: no URL given
+---
+Y2H, see table S2
+```
 
 ## 2. Descriptions and versioning
 
@@ -43,7 +67,7 @@ A run is **complete** when every publication is `discarded` or `curated`. Claude
   - A revision is version + 1 of the live version it was decided on (refused if the live version changed since), same publication, the old row deleted at the same instant. It keeps the snapshots of the description, even obsolete ones, except on a side whose accession changes. A revision that changes nothing is refused, unless it changes only skipped mappings (below): it is then skipped.
   - A removal deletes the live version without successor and adds its `REMOVED` line to its note. A merged duplicate names its survivor, which has the same publication, method and interactors (those the removed description was decided to have, when given) and holds all its mapping sequences.
   - Derived, never given: human names and full-length coordinates, and mapping occurrences (identity as defined in `glossary.md`; a mapping whose best identity is below 90 % is skipped, the rest of its description written). The occurrences follow fixed rules: exact matches first, on every isoform that has one; otherwise a BLOSUM62 alignment with gaps −10/−2 (an arbitrary choice: only the rules of `curation-rules.md` §3 matter), and the isoforms with the best score keep every placement of their optimal alignments, each with the highest identity among its alignments; on each isoform, overlapping placements form one cluster, chains included, which keeps its first placement (smallest start, then smallest stop). U, O and J, not in BLOSUM62, are aligned as X.
-  - A publication update sets the state (`selected` or `curated`) and `ai_pass_at`, and puts the note of the pass first in the publication's note, after its date (`notes.md`).
+  - A publication update sets the state (`selected` or `curated`) and `ai_pass_at`, and puts the note of the pass first in the publication's note, after its date (§1, notes).
   - Moving an interactor to the current snapshot of the same accession is the versioning pass, not a revision.
 
 ## 3. UniProt versioning

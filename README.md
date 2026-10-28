@@ -6,9 +6,8 @@ This README is an overview. What makes a description right, what the database ho
 
 - [`docs/glossary.md`](docs/glossary.md): the terms, one meaning each, used everywhere;
 - [`docs/curation-rules.md`](docs/curation-rules.md): the biological rules explained in full (the acceptance criteria, how each value of a description is identified, the mappings), which the curator's prompt holds in condensed form;
-- [`docs/notes.md`](docs/notes.md): the publication and description notes;
-- [`docs/database.md`](docs/database.md): the tables, the states of a publication, versioning, UniProt releases, invariants;
-- [`docs/derived-datasets.md`](docs/derived-datasets.md): what is exported from Drakkar;
+- [`docs/database.md`](docs/database.md): the tables, the states of a publication, the publication and description notes, versioning, UniProt releases, invariants;
+- [`docs/datasets.md`](docs/datasets.md): what is exported from Drakkar;
 - [`docs/tools.md`](docs/tools.md): the file formats and every tool.
 
 ## The idea
@@ -72,7 +71,7 @@ Batches are independent: each takes its own publications, works in its own direc
 
 ## What is tracked
 
-A publication in a run carries its state, its note and the date of the agent's last pass ([`docs/database.md`](docs/database.md#states) and [`docs/notes.md`](docs/notes.md)): `selected` without a date waits for the agent, `curated` is done, `selected` with a date waits for a manual pass in a special run. Each pass and each move puts its note at the top of the publication's note, so that note keeps their whole history; each description version has its own note. Together, they make every decision traceable without the conversation that made it.
+A publication in a run carries its state, its note and the date of the agent's last pass (`docs/database.md`, [states](docs/database.md#states) and [notes](docs/database.md#notes)): `selected` without a date waits for the agent, `curated` is done, `selected` with a date waits for a manual pass in a special run. Each pass and each move puts its note at the top of the publication's note, so that note keeps their whole history; each description version has its own note. Together, they make every decision traceable without the conversation that made it.
 
 ## Running it
 
@@ -100,7 +99,7 @@ uv run mdformat --wrap no --number --compact-tables docs/ prompts/ generic/ AGEN
 
 ```
 AGENTS.md            instructions for the agent
-docs/                rules, notes, database, tools, derived datasets
+docs/                rules, database, tools, derived datasets
   history/           the move from manual curation to the agent's curation (closed)
 prompts/skills/      curate (a batch), export (the derived datasets, the generic viral proteins first)
 prompts/agents/      curator.md (one publication)

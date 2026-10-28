@@ -16,7 +16,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Curation pass | Reading the relevant files of a selected publication (its full text and supplementary files) and recording its descriptions. Ends with the state `curated` when Claude could explore all of them and extracted all the descriptions; with a relevant file missing, `selected` with a date (`database.md` §1, states). Claude's last pass is dated by `associations.ai_pass_at`. |
 | Manual pass | The curation of a publication Claude could not curate fully (`selected` with a pass date), in a special run: by hand, or by Claude from a curator file, an Excel file describing its interactions. |
 | Batch | An orchestrated curation of at most 20 publications, by the `curate` skill: one subagent each, merged into one set of files and committed together after the user's go. Never "run". |
-| Note | The free text of an association (`associations.annotation`), the publication note: decisions about the publication (`notes.md`). It never holds maintenance information. |
+| Note | The free text of an association (`associations.annotation`), the publication note: decisions about the publication (`database.md` §1, notes). It never holds maintenance information. |
 
 ## Proteins
 
@@ -45,7 +45,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Human interactor | Always the full protein: coordinates 1 to the length. Named by its gene name (`name1`; in hh, `name2` too). |
 | Viral interactor | A full viral protein or a mature protein (`protein2_id`, `start2`, `stop2` in vh). Named by its generic name (`name2`). |
 | Generic name | The standard name of a viral interactor (e.g. `NS1`), independent of how UniProt or the publication names it. One viral interactor has one generic name, and in one protein a generic name names one viral interactor: (accession, start, stop) ↔ (accession, generic name). |
-| Generic viral protein | A viral protein of the derived datasets: one node of an interaction graph, one name in a species, grouping the generic names of that species that make sense as a single viral protein (`derived-datasets.md`). |
+| Generic viral protein | A viral protein of the derived datasets: one node of an interaction graph, one name in a species, grouping the generic names of that species that make sense as a single viral protein (`datasets.md`). |
 | Method | A PSI-MI interaction detection method (`methods`, e.g. `MI:0007`). |
 | Description | One row of evidence: a publication × a method × a human interactor × a viral interactor (hh: two human interactors), with its mappings. This combination, (PMID, PSI-MI ID, interactor 1, interactor 2), is recorded once. Two mature proteins of the same cleaved protein are two interactors, so two descriptions. |
 | Interaction | A human interactor × a viral interactor, whatever the publication and the method. One interaction can have many descriptions: that is the point of curation. |
@@ -58,7 +58,7 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Live | The version of a description that is in use (`deleted_at` null). At most one per stable ID. |
 | Revision | Writing a new version of a description: the live version is deleted and the new one created at the same instant. |
 | Deleted version | A version with `deleted_at` set. It never counts: not in the datasets, not in the checks of live data. |
-| Description note | The free text of a description version (`descriptions.annotation`): Claude's decisions on that version (`notes.md`). |
+| Description note | The free text of a description version (`descriptions.annotation`): Claude's decisions on that version (`database.md` §1, notes). |
 | Removed description | A stable ID whose last version is deleted, with no successor. Nothing is ever physically deleted. |
 | Obsolete interactor | An interactor that points to an obsolete snapshot. Interactors go obsolete, not descriptions. |
 | Obsolete description | A live description with at least one obsolete interactor. Not the same as deleted: an obsolete description is live and counts (its mappings feed the mappings dataset when its human target is up to date). |
@@ -73,4 +73,4 @@ One meaning per word, used everywhere: docs, code, reports and conversations. Wh
 | Upgrade job | Loading a new UniProt release and moving the obsolete interactors to current snapshots. |
 | Versioning pass | The part of the upgrade job that moves the obsolete interactors of live descriptions to current snapshots, protein by protein. |
 | Put aside | An obsolete interactor left on its old snapshot by a versioning pass because it needs a curation decision, with its reason. |
-| Derived dataset | A dataset exported from Drakkar for other applications, built from live descriptions only (`derived-datasets.md`). |
+| Derived dataset | A dataset exported from Drakkar for other applications, built from live descriptions only (`datasets.md`). |

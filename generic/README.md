@@ -1,6 +1,6 @@
 # Generic viral proteins
 
-The species and the generic viral proteins of the vh descriptions dataset: one virus is one species, one viral protein is one node of the interaction graph ([`docs/derived-datasets.md`](../docs/derived-datasets.md#generic-viral-proteins)).
+The species and the generic viral proteins of the vh descriptions dataset: one virus is one species, one viral protein is one node of the interaction graph ([`docs/datasets.md`](../docs/datasets.md#generic-viral-proteins)).
 
 | File | What it holds |
 | -- | -- |

@@ -4,7 +4,7 @@ Descriptions and publication states are written only through these tools, from f
 
 ## Files
 
-JSON Lines: one JSON object per line, with every key of its format and no other, its values in JSON types. No header: an empty file has no row. Every row names its publication by its PMID: a file holds one publication or many, and files concatenate with `cat`. In a value, JSON escapes only `"` (`\"`), `\` (`\\`) and line breaks (`\n`). A line with a missing or unknown key, or a value of the wrong type, is refused with its file and line. Notes follow `notes.md`.
+JSON Lines: one JSON object per line, with every key of its format and no other, its values in JSON types. No header: an empty file has no row. Every row names its publication by its PMID: a file holds one publication or many, and files concatenate with `cat`. In a value, JSON escapes only `"` (`\"`), `\` (`\\`) and line breaks (`\n`). A line with a missing or unknown key, or a value of the wrong type, is refused with its file and line. Notes follow `database.md` §1, notes.
 
 **Descriptions to add** (`*.jsonl`), one line per new description:
 
@@ -88,7 +88,7 @@ A strain UniProt lacks is read at NCBI (GenBank, RefSeq), for the mappings taken
 
 ## Generic viral proteins
 
-The generic viral proteins of the vh descriptions dataset (`derived-datasets.md`) are three files of `generic/`, versioned in git, tab-separated under a header line:
+The generic viral proteins of the vh descriptions dataset (`datasets.md`) are three files of `generic/`, versioned in git, tab-separated under a header line:
 
 | File | Columns |
 | -- | -- |
@@ -102,7 +102,7 @@ The species of a viral interactor is given by the deepest taxon at or above its 
 
 ## Derived datasets
 
-The derived datasets (`derived-datasets.md`) are five, each written as a `.tsv` file, tab-separated under a header line, and an `.xlsx` file, the same lines; each name ends with `run` and the name of the last vh run exported by ID, special runs aside, each character other than a letter, a digit or `-` made a `-` (`descriptions_vh_run87.tsv`):
+The derived datasets (`datasets.md`) are five, each written as a `.tsv` file, tab-separated under a header line, and an `.xlsx` file, the same lines; each name ends with `run` and the name of the last vh run exported by ID, special runs aside, each character other than a letter, a digit or `-` made a `-` (`descriptions_vh_run87.tsv`):
 
 | Dataset | Columns |
 | -- | -- |

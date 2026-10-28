@@ -1,4 +1,4 @@
-"""The derived datasets (`docs/derived-datasets.md`), exported from Drakkar (read-only on the
+"""The derived datasets (`docs/datasets.md`), exported from Drakkar (read-only on the
 database).
 
 uv run drakkar-export <dir> [--run <id>] [--special-run <id>]
