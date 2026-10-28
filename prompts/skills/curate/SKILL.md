@@ -21,6 +21,6 @@ You run a curation batch. A `curator` agent curates each publication from its fu
 
 5. **Dry run**: `uv run drakkar-batch <dir>` applies and checks everything in one transaction, then rolls it back. Report its refused rows and errors as they are, without fixing them.
 
-6. **Reply**: what each batch file holds, in descriptions and publications; the refused rows and errors; the publications without the article or with a relevant file missing, with why; from the agents' replies, the `best-effort` values, the supplementary files downloaded or not, and the tool errors.
+6. **Reply**: what each batch file holds, in descriptions and publications; the refused rows and errors; the publications without the article or with a relevant file missing, with why; from the notes, the `best-effort` values and the supplementary files downloaded or not; from the agents' replies, the tool errors.
 
 7. **Commit**, after the go: `uv run drakkar-batch <dir> --commit` writes the new descriptions, the publication states and notes.

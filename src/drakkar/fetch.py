@@ -914,7 +914,7 @@ def download(url: str, out: Path, get: Get = http_get) -> list[str]:
     `out`), or why it could not be had."""
     r = get(url)
     if r.status != 200:
-        return [f"{url}: {_outcome(r)}"]
+        return [_outcome(r)]
     name = _typed(_url_name(r.url or url) or "file", r.content_type)
     lines: list[str] = []
     for file, _, content in unpacked(name, r.body, r.url or url):
@@ -930,11 +930,12 @@ def download(url: str, out: Path, get: Get = http_get) -> list[str]:
 
 
 def download_main() -> None:
-    parser = argparse.ArgumentParser(description="Download a file and convert it to text.")
-    parser.add_argument("url")
+    parser = argparse.ArgumentParser(description="Download files and convert them to text.")
     parser.add_argument("dir", type=Path)
+    parser.add_argument("urls", nargs="+")
     args = parser.parse_args()
-    print("\n".join(download(args.url, args.dir)))
+    lines = [f"{url}\t{line}" for url in args.urls for line in download(url, args.dir)]
+    print("\n".join(["#url\tmanifest entry, or why", *lines]))
 
 
 def main() -> None:

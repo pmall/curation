@@ -2,12 +2,12 @@
 strain, whose sequence gives the mappings (`docs/curation-rules.md` §3).
 
 uv run drakkar-genbank search <query>... [--limit <n>]
-    the NCBI protein records of each query (NCBI search syntax, e.g. `JFH-1 AND polyprotein`),
-    or of a nucleotide accession (a genome): accession, title, length, taxon
+    the GenBank and RefSeq protein records of each query (NCBI search syntax, e.g. `JFH-1 AND
+    polyprotein`), or of a genome's accession, the proteins it codes for: accession, title,
+    length, taxon
 uv run drakkar-genbank seq <accession>[:<start>-<stop>]...
     a protein record: its accession and version, title, length and sequence, or the subsequence
-    between those coordinates (1-based, inclusive); a nucleotide record (a genome): its coding
-    sequences, one line each, with the protein accession that `seq` reads
+    between those coordinates (1-based, inclusive)
 
 Read-only, no database. One request at a time, at the pace NCBI allows (`NCBI_API_KEY` in the
 project's `.env` raises it).
@@ -28,6 +28,9 @@ from drakkar.read import DEFAULT, LIMIT, Page
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 ESEARCH = f"{EUTILS}/esearch.fcgi"
+# The records a search keeps: GenBank's (with EMBL's and DDBJ's) and RefSeq's, not NCBI's copies
+# of Swiss-Prot or PDB.
+SOURCES = "srcdb_genbank[PROP] OR srcdb_embl[PROP] OR srcdb_ddbj[PROP] OR srcdb_refseq[PROP]"
 ESUMMARY = f"{EUTILS}/esummary.fcgi"
 ELINK = f"{EUTILS}/elink.fcgi"
 ACCESSION = re.compile(r"[A-Z]+_?\d+(?:\.\d+)?")  # AF177036, NC_045512.2
@@ -68,25 +71,9 @@ def _fasta(text: str) -> list[tuple[str, str]]:
     return records
 
 
-def _cds(header: str) -> tuple[str, str]:
-    """(protein accession, title) of a coding sequence of `fasta_cds_aa`, whose header is
-    `lcl|AB047639.1_prot_BAB32872.1_1 [gene=…] [protein=…] [protein_id=…] [location=…]`."""
-    fields = dict(re.findall(r"\[(\w+)=([^\]]*)\]", header))
-    title = " ".join(
-        part
-        for part in (
-            f"CDS {fields.get('location', '?')}:",
-            fields.get("protein", ""),
-            f"(gene {fields['gene']})" if "gene" in fields else "",
-        )
-        if part
-    )
-    return fields.get("protein_id", "-"), title
-
-
 def seq(eutils: Eutils, locations: list[str]) -> str:
-    """The sequence of each protein record, or between its coordinates; the coding sequences of
-    each nucleotide record."""
+    """The sequence of each protein record, or between its coordinates. A genome's accession is no
+    protein record: `search` lists its proteins."""
     lines = ["#location\taccession\ttitle\tlength\tsequence"]
     for text in locations:
         match = LOCATION.fullmatch(text)
@@ -102,28 +89,17 @@ def seq(eutils: Eutils, locations: list[str]) -> str:
             if start is not None and stop is not None:
                 first, last = int(start), int(stop)
                 if not 1 <= first <= last <= len(sequence):
-                    lines.append(f"{text}\t{first}-{last} is outside 1-{len(sequence)}")
+                    lines.append(f"{text}\t{first}-{last} is not a stretch of 1-{len(sequence)}")
                     continue
                 sequence = sequence[first - 1 : last]
             lines.append(f"{text}\t{found}\t{_title(title)}\t{len(sequence)}\t{sequence}")
-            continue
-        status, body = eutils(
-            EFETCH, db="nuccore", id=accession, rettype="fasta_cds_aa", retmode="text"
-        )
-        coding = _fasta(body) if status == 200 else []
-        if not coding:
-            lines.append(f"{text}\tno protein or nucleotide record at NCBI")
-        elif start is not None:
-            lines.append(f"{text}\ta nucleotide record: coordinates are read on a protein")
         else:
-            for header, sequence in coding:
-                protein, title = _cds(header)
-                lines.append(f"{text}\t{protein}\t{title}\t{len(sequence)}\t-")
+            lines.append(f"{text}\tno protein record at NCBI (a genome: search lists its proteins)")
     return "\n".join(lines)
 
 
 def _summaries(eutils: Eutils, ids: list[str]) -> list[str]:
-    """A line per protein record: accession and version, title, length, taxon."""
+    """A line per protein record: accession and version, title, length, taxon (`<ID> <name>`)."""
     if not ids:
         return []
     status, body = eutils(ESUMMARY, db="protein", id=",".join(ids), retmode="json")
@@ -133,7 +109,7 @@ def _summaries(eutils: Eutils, ids: list[str]) -> list[str]:
         s = cast(dict[str, Any], summaries.get(uid, {}))
         rows.append(
             f"{s.get('accessionversion', uid)}\t{_title(s.get('title', '?'))}\t"
-            f"{s.get('slen', '?')}\t{s.get('taxid', '?')}"
+            f"{s.get('slen', '?')}\t{s.get('taxid', '?')} {s.get('organism', '?')}"
         )
     return rows
 
@@ -160,12 +136,13 @@ def _coded(eutils: Eutils, accession: str) -> list[str]:
 
 
 def search(eutils: Eutils, queries: list[str], page: Page = DEFAULT) -> str:
-    """The NCBI protein records of each query, in NCBI's order: a page of them, and how many. A
-    nucleotide accession, which the protein search does not find, gives the protein records it
-    codes for."""
+    """The GenBank and RefSeq protein records of each query, in NCBI's order: a page of them, and
+    how many. A nucleotide accession, which the protein search does not find, gives the protein
+    records it codes for."""
     lines = ["#query\taccession\ttitle\tlength\ttaxon"]
     for query in queries:
-        status, body = eutils(ESEARCH, db="protein", term=query, retmax=page.limit, retmode="json")
+        term = f"({query}) AND ({SOURCES})"
+        status, body = eutils(ESEARCH, db="protein", term=term, retmax=page.limit, retmode="json")
         if status != 200:
             lines.append(f"{query}\tNCBI search failed (HTTP {status})")
             continue
@@ -182,10 +159,10 @@ def search(eutils: Eutils, queries: list[str], page: Page = DEFAULT) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Protein sequences from NCBI.")
     commands = parser.add_subparsers(dest="command", required=True)
-    s = commands.add_parser("search", help="the NCBI protein records of each query")
+    s = commands.add_parser("search", help="the GenBank and RefSeq protein records of each query")
     s.add_argument("queries", nargs="+")
     s.add_argument("--limit", type=int, default=LIMIT, help=f"records per query ({LIMIT})")
-    q = commands.add_parser("seq", help="protein sequences, or a genome's coding sequences")
+    q = commands.add_parser("seq", help="protein sequences, or subsequences between coordinates")
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
     args = parser.parse_args()
     eutils = Eutils()

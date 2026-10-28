@@ -657,5 +657,5 @@ def test_download_names_the_type_from_the_response(tmp_path: Path):
 
 def test_download_failure(tmp_path: Path):
     url = "https://journal.org/suppl/s1.xlsx"
-    assert download(url, tmp_path, Server({})) == [f"{url}: HTTP 404"]
+    assert download(url, tmp_path, Server({})) == ["HTTP 404"]  # its line starts with the URL
     assert not tmp_path.exists() or not any(tmp_path.iterdir())

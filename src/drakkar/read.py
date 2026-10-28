@@ -11,20 +11,20 @@ uv run drakkar-read closest <sequence>... --taxon <ID>
 uv run drakkar-read seq <accession>[:<start>-<stop>]...
                                                   sequences and subsequences
 uv run drakkar-read names <taxon ID>...           generic names used under each taxon
-uv run drakkar-read sql <query> --limit <n>       free read-only SQL, refused beyond n rows
+uv run drakkar-read sql <query>                   free read-only SQL
 
 Each takes many inputs. `entry` prints a block per entry; the others print tab-separated lines
 under a `#` header, each starting with the input it answers, the best first. `--limit <n>`
-bounds the lines per input (20); a list that is cut ends with how many there are. `sql` is never
-cut: its `--limit` is required, and a query returning more rows is refused. An accession is
-taken as publications write it (`written_accession`, `written_accessions`) and names its
-current entries (`current_entries`). A taxon is given by its NCBI ID, and written `<ID> <name>`;
-a lineage `<ID> <name> < …` up to the family; a stretch of a protein
-`<accession>:<start>-<stop>`, then `obsolete` on an obsolete snapshot. An input that cannot be
-read gets its line, with why.
+bounds the lines per input (20), except in `names`, never cut; a list that is cut ends with how
+many there are. `sql` prints at most `SQL_BYTES` of output: a query bounds its own rows and
+columns. An accession is taken as publications write it (`written_accession`,
+`written_accessions`) and names its current entries (`current_entries`). A taxon is given by its
+NCBI ID, and written `<ID> <name>`; a lineage `<ID> <name> < …` up to the family; a stretch of a
+protein `<accession>:<start>-<stop>`. An input that cannot be read gets its line, with why.
 """
 
 import argparse
+import bisect
 import json
 import re
 import sys
@@ -40,27 +40,28 @@ from drakkar.check import AMINO_ACIDS
 from drakkar.db import connect
 
 LIMIT = 20  # lines per input by default
-CELL = 200  # characters shown of an `sql` cell
+SQL_BYTES = 10_000  # output of a free query, a guard of the context
+SQL_BATCH = 500  # rows fetched at a time
 # The database search of `closest`: Smith-Waterman on every sequence, BLAST's protein scoring.
 # Its alphabet lacks U, O and J, aligned as X (`align.py`).
 SEARCH: Any = pyopal.Aligner("BLOSUM62", gap_open=11, gap_extend=1)  # pyopal is not typed
 # The features `entry` prints, by their UniProt type: the parts of the protein a mature
 # protein's coordinates can come from (`curation-rules.md` §4, tier `annotation`), and the
-# regions of interest.
+# domains, zinc fingers and regions of interest a construct can be named by.
 FEATURES = {
     "chain": "chain",
     "peptide": "peptide",
     "propeptide": "propeptide",
+    "domain": "domain",
+    "zinc finger region": "zinc finger",
     "region of interest": "region",
 }
 # An accession as publications write it: UniProt's pattern of an entry's accession, then an
-# isoform's number (`P04637-2`) or a sequence version (`P04637.2`); in a UniProt ID, between the
-# bars (`sp|P04637|P53_HUMAN`).
+# isoform's number (`P04637-2`) or a sequence version (`P04637.2`).
 ACCESSION = re.compile(
     r"([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(-\d+)?(?:\.\d+)?"
 )
-UNIPROT_ID = re.compile(r"(?:sp|tr)\|([^|]+)\|[^|]*", re.IGNORECASE)
-LOCATION = re.compile(r"([A-Z0-9]+)(-\d+)?(?::(\d+)-(\d+))?")  # P26662-2:810-1026
+LOCATION = re.compile(r"(.+?)(?::(\d+)-(\d+))?")  # an accession as written, then `:810-1026`
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ class Page:
 
 
 DEFAULT = Page()
+EVERY = Page(sys.maxsize)  # a list never cut
 
 
 # --- The taxonomy ------------------------------------------------------------------------------
@@ -171,14 +173,18 @@ def _like(text: str) -> str:
 
 def _rank(text: str, names: list[str]) -> int:
     """How closely a text matches names, case aside: 0 a name is the text, 1 a name starts with
-    it, 2 a name contains it, 3 none."""
+    it as a whole word, 2 a name holds it as a whole word, 3 a name contains it inside a word, 4
+    none."""
     wanted = text.casefold()
     folded = [n.casefold() for n in names]
     if wanted in folded:
         return 0
-    if any(n.startswith(wanted) for n in folded):
+    word = re.compile(rf"(?<!\w){re.escape(wanted)}(?!\w)")
+    if any(word.match(n) for n in folded):
         return 1
-    return 2 if any(wanted in n for n in folded) else 3
+    if any(word.search(n) for n in folded):
+        return 2
+    return 3 if any(wanted in n for n in folded) else 4
 
 
 def _bare(text: str) -> str:
@@ -186,21 +192,25 @@ def _bare(text: str) -> str:
     return re.sub(r"[\W_]+", "", text.casefold())
 
 
+UNMATCHED = sys.maxsize  # the rank of a term that matches no word of the text
+
+
 def _term_rank(text: str, names: list[str]) -> int:
     """How closely a text matches the names of a term, case and punctuation aside: 0 a name is
-    the text, 1 a name starts with it, 2 a name contains it, 3 a name contains each of its
-    words, 4 none."""
+    the text, 1 a name starts with it, 2 a name contains it, then 3 plus the number of its words
+    the best name lacks (3 when it holds them all), `UNMATCHED` when no name holds any."""
     wanted, words = _bare(text), [w for w in map(_bare, text.split()) if w]
     bare = [_bare(n) for n in names]
     if not wanted:
-        return 4
+        return UNMATCHED
     if wanted in bare:
         return 0
     if any(n.startswith(wanted) for n in bare):
         return 1
     if any(wanted in n for n in bare):
         return 2
-    return 3 if any(all(w in n for w in words) for n in bare) else 4
+    held = max(sum(w in n for w in words) for n in bare) if bare else 0
+    return 3 + len(words) - held if held else UNMATCHED
 
 
 def database(reviewed: bool) -> str:
@@ -212,12 +222,8 @@ def database(reviewed: bool) -> str:
 
 def written_accession(text: str) -> tuple[str, str] | None:
     """(entry accession, isoform accession) of an accession as publications write it: `P04637`,
-    `p04637`, `P04637-2` (the isoform), `P04637.2`, `sp|P04637|P53_HUMAN`; None for any other
-    text."""
-    text = text.strip()
-    if match := UNIPROT_ID.fullmatch(text):
-        text = match.group(1)
-    match = ACCESSION.fullmatch(text.upper())
+    `p04637`, `P04637-2` (the isoform), `P04637.2`; None for any other text."""
+    match = ACCESSION.fullmatch(text.strip().upper())
     if match is None:
         return None
     accession, isoform = match.groups()
@@ -247,8 +253,9 @@ def current_entries(cur: Any, accession: str) -> list[str]:
 
 
 def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
-    """The PSI-MI terms whose name or a synonym holds each word of the text, case and punctuation
-    aside: the closest names first, then the detection methods, then the most used."""
+    """The PSI-MI terms whose name or a synonym holds a word of the text, case and punctuation
+    aside: the closest names first (the most words held), then the detection methods, then the
+    most used."""
     cur.execute(
         """
         WITH uses AS (
@@ -263,12 +270,12 @@ def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
     terms = cur.fetchall()
     lines = ["#text\tpsimi_id\tname (synonym matched)\tis_detection\tlive_descriptions"]
     for text in texts:
-        found = [m for m in terms if _term_rank(text, [m[1], *m[2]]) < 4]
+        found = [m for m in terms if _term_rank(text, [m[1], *m[2]]) != UNMATCHED]
         found.sort(key=lambda m: (_term_rank(text, [m[1], *m[2]]), not m[3], -m[4], m[0]))
         shown: list[str] = []
         for psimi_id, name, synonyms, detection, count in found:
-            also = [s for s in synonyms if _term_rank(text, [s]) < 4]
-            if also and _term_rank(text, [name]) == 4:
+            also = [s for s in synonyms if _term_rank(text, [s]) != UNMATCHED]
+            if also and _term_rank(text, [name]) == UNMATCHED:
                 name = f"{name} ({also[0]})"
             shown.append(f"{psimi_id}\t{name}\t{'yes' if detection else 'no'}\t{count}")
         lines += page.lines(text, shown)
@@ -276,15 +283,39 @@ def methods(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
 
 
 def taxa(cur: Any, texts: list[str], page: Page = DEFAULT) -> str:
-    """The taxa one of whose names contains each text, case aside, the closest names first: the
-    taxon (with the name matched), its rank, and the taxa above it up to its family."""
+    """The taxa one of whose names contains each text, case aside, and that hold a current entry
+    (theirs or under them), the closest names first: the taxon (with the name matched), its rank,
+    and the taxa above it up to its family. A taxon that holds none (a retired one, a vector) would
+    scope `search`, `closest` and `names` to nothing."""
+    cur.execute(
+        """
+        SELECT DISTINCT t.left_value
+        FROM (
+            SELECT DISTINCT p.ncbi_taxon_id
+            FROM proteins_versions AS v
+            JOIN proteins AS p ON p.accession = v.accession AND p.version = v.version
+        ) AS held
+        JOIN taxon AS t ON t.ncbi_taxon_id = held.ncbi_taxon_id
+        """
+    )
+    held = sorted(row[0] for row in cur.fetchall())  # nested set: a taxon holds its subtree
+
+    def holds(left: int, right: int) -> bool:
+        i = bisect.bisect_left(held, left)
+        return i < len(held) and held[i] <= right
+
     found: dict[str, list[tuple[int, list[str]]]] = {}
     for text in texts:
         cur.execute(
-            "SELECT taxon_id, search FROM taxon WHERE search ILIKE %s ORDER BY ncbi_taxon_id",
+            "SELECT taxon_id, search, left_value, right_value FROM taxon WHERE search ILIKE %s "
+            "ORDER BY ncbi_taxon_id",
             (_like(text),),
         )
-        ranked = [(taxon_id, search.split(" | ")) for taxon_id, search in cur.fetchall()]
+        ranked = [
+            (taxon_id, search.split(" | "))
+            for taxon_id, search, left, right in cur.fetchall()
+            if holds(left, right)
+        ]
         ranked.sort(key=lambda r: _rank(text, r[1]))  # stable: NCBI ID order among equals
         found[text] = ranked
     shown = {t for rows in found.values() for t, _ in page.cut(rows)}
@@ -309,20 +340,6 @@ def entries(cur: Any, texts: list[str]) -> str:
     )
 
 
-def _snapshots(cur: Any, accession: str) -> list[tuple[Any, ...]]:
-    cur.execute(
-        """
-        SELECT p.id, p.version, p.type, p.name, p.description, p.ncbi_taxon_id,
-               p.sequences::text, v.accession IS NOT NULL
-        FROM proteins AS p
-        LEFT JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
-        WHERE p.accession = %s ORDER BY p.id
-        """,
-        (accession,),
-    )
-    return cur.fetchall()
-
-
 def entry(cur: Any, text: str) -> str:
     """The block of each current entry an accession names, as publications write it
     (`current_entries`; an isoform's names its entry); never an obsolete one."""
@@ -342,14 +359,23 @@ def entry(cur: Any, text: str) -> str:
             if isoform != accession
             else ""
         )
-        blocks.append(note + _entry(cur, current, _snapshots(cur, current)))
+        blocks.append(note + _entry(cur, current))
     return "\n\n".join(blocks)
 
 
-def _entry(cur: Any, accession: str, snapshots: list[tuple[Any, ...]]) -> str:
-    """A current entry's block, from its snapshots."""
-    latest = next(s for s in snapshots if s[7])
-    id_, version, type_, gene, description, taxon, sequences, _ = latest
+def _entry(cur: Any, accession: str) -> str:
+    """A current entry's block, from its current snapshot."""
+    cur.execute(
+        """
+        SELECT p.id, p.type, p.description, p.ncbi_taxon_id, p.sequences::text, v.names,
+               v.features::text
+        FROM proteins_versions AS v
+        JOIN proteins AS p ON p.accession = v.accession AND p.version = v.version
+        WHERE v.accession = %s
+        """,
+        (accession,),
+    )
+    id_, type_, description, taxon, sequences, written, features = cur.fetchone()
     isoforms = cast(dict[str, str], json.loads(sequences))
     cur.execute("SELECT taxon_id FROM taxon WHERE ncbi_taxon_id = %s", (taxon,))
     row = cur.fetchone()
@@ -361,95 +387,76 @@ def _entry(cur: Any, accession: str, snapshots: list[tuple[Any, ...]]) -> str:
     lines = [
         f"# {accession}: {description}",
         "",
-        f"{'human' if type_ == 'h' else 'viral'}, taxon {lineage}"
-        + (f", gene name {gene}" if type_ == "h" else ""),
-        f"Snapshot {id_} ({version}), current; length {len(isoforms.get(accession, ''))}",
+        f"{'human' if type_ == 'h' else 'viral'}, taxon {lineage}",
     ]
-    others = [f"{s[0]} ({s[1]})" for s in snapshots if s is not latest]
-    if others:
-        lines.append(f"Other snapshots (obsolete): {', '.join(others)}")
+    names = [n for n in cast(list[str], written) if n and n != "N/A"]
+    if names:
+        lines.append(f"Gene names: {', '.join(names)}")
+    lines.append(f"Length {len(isoforms.get(accession, ''))}")
     if len(isoforms) > 1:
         lines.append(
             "Isoforms: " + ", ".join(f"{k} ({len(v)})" for k, v in sorted(isoforms.items()))
         )
-    cur.execute(
-        "SELECT names, features::text FROM proteins_versions WHERE accession = %s "
-        "ORDER BY current_version DESC LIMIT 1",
-        (accession,),
-    )
-    row = cur.fetchone()
-    if row:
-        names, features = row
-        names = [n for n in names if n and n != "N/A"]
-        if names:
-            lines.append(f"Names: {', '.join(names)}")
-        parts = [f for f in json.loads(features) if f.get("type") in FEATURES]
-        if parts:
-            lines += ["", "Chains, peptides and regions:"]
-            lines += [
-                f"- {f['start']}-{f['stop']} {FEATURES[f['type']]}: {f.get('description', '')}"
-                for f in sorted(parts, key=lambda f: (f["start"], -f["stop"]))
-            ]
+    parts = [f for f in json.loads(features) if f.get("type") in FEATURES]
+    if parts:
+        lines += ["", "Chains, peptides, domains and regions:"]
+        lines += [
+            f"- {f['start']}-{f['stop']} {FEATURES[f['type']]}: {f.get('description', '')}"
+            for f in sorted(parts, key=lambda f: (f["start"], -f["stop"]))
+        ]
     if type_ == "v":
-        lines += _generic_names(cur, [s[0] for s in snapshots], id_)
+        lines += _generic_names(cur, id_)
     return "\n".join(lines)
 
 
-def _generic_names(cur: Any, snapshot_ids: list[int], latest: int) -> list[str]:
-    """The generic names of the live descriptions of an entry's snapshots, each with its span
-    and its live descriptions, by snapshot: one span per name and one name per span on each
-    (`curation-rules.md` §1, names; invariants D6 and D10)."""
+def _generic_names(cur: Any, snapshot: int) -> list[str]:
+    """The generic names of the live descriptions of an entry's current snapshot, each with its
+    span and its live descriptions: one span per name and one name per span (`curation-rules.md`
+    §1, names; invariants D6 and D10)."""
     cur.execute(
         """
-        SELECT protein2_id, name2, start2, stop2, count(*) AS descriptions
+        SELECT name2, start2, stop2, count(*) AS descriptions
         FROM descriptions
-        WHERE protein2_id = ANY(%s) AND deleted_at IS NULL
-        GROUP BY protein2_id, name2, start2, stop2
-        ORDER BY protein2_id, start2, stop2, name2
+        WHERE protein2_id = %s AND deleted_at IS NULL
+        GROUP BY name2, start2, stop2
+        ORDER BY start2, stop2, name2
         """,
-        (snapshot_ids,),
+        (snapshot,),
     )
-    by_snapshot: dict[int, list[str]] = defaultdict(list)
-    for snapshot, name2, start, stop, count in cur.fetchall():
-        by_snapshot[snapshot].append(f"- {start}-{stop} {name2} ({count})")
-    if not by_snapshot:
+    names = [f"- {start}-{stop} {name2} ({count})" for name2, start, stop, count in cur.fetchall()]
+    if not names:
         return ["", "Generic names (live descriptions): none"]
-    lines: list[str] = []
-    for snapshot in sorted(by_snapshot, key=lambda s: (s != latest, s)):
-        which = "" if snapshot == latest else f", on obsolete snapshot {snapshot}"
-        lines += ["", f"Generic names (live descriptions){which}:", *by_snapshot[snapshot]]
-    return lines
+    return ["", "Generic names (live descriptions):", *names]
 
 
 # An entry as `search` and `closest` show it, and the columns of its line (`_described`).
 ENTRY = """
     SELECT p.accession, v.reviewed, p.name, p.description, p.ncbi_taxon_id, v.names,
-           length(p.sequences->>p.accession), v.secondary_accessions
+           length(p.sequences->>p.accession)
     FROM proteins_versions AS v
     JOIN proteins AS p ON p.accession = v.accession AND p.version = v.version
 """
-DESCRIBED = "accession\tother_accessions\tdb\tgene\tprotein\ttaxon\tlength"
+DESCRIBED = "accession\tdb\tgene\tprotein\ttaxon\tlength"
 
 
 def _described(row: tuple[Any, ...], names: dict[int, str]) -> str:
-    """An entry's line: the accession to write, its other accessions (its old ones, `-` when
-    none), Swiss-Prot or TrEMBL, gene name, protein name, taxon, length."""
-    accession, is_reviewed, gene, description, taxon_id, _, length, others = row[:8]
+    """An entry's line: the accession to write, Swiss-Prot or TrEMBL, gene name, protein name,
+    taxon, length."""
+    accession, is_reviewed, gene, description, taxon_id, _, length = row[:7]
     taxon_name = names.get(taxon_id, "not in the NCBI taxonomy")
     return (
-        f"{accession}\t{','.join(others) or '-'}\t{database(is_reviewed)}\t{gene}\t"
-        f"{description}\t{taxon_id} {taxon_name}\t{length}"
+        f"{accession}\t{database(is_reviewed)}\t{gene}\t{description}\t"
+        f"{taxon_id} {taxon_name}\t{length}"
     )
 
 
 def search(cur: Any, texts: list[str], taxon: int | None = None, page: Page = DEFAULT) -> str:
-    """The current entries each text names, under the taxon when given, Swiss-Prot first, each
-    with its other accessions (its old ones). An accession as publications write it (an old
-    one, an isoform's, `sp|P04637|P53_HUMAN`; a group `P09913; O14879` one by one) gives its
-    current entries (`current_entries`), or, when it names none, the entries with a gene name
-    that is the text (`B3GAT1`). Any other text gives the entries whose `search` text
-    (accession, gene names, taxon, protein name) contains it, case aside, the closest names
-    first."""
+    """The current entries each text names, under the taxon when given, Swiss-Prot first. An
+    accession as publications write it (an old one, an isoform's, a version; a group
+    `P09913; O14879` one by one) gives its current entries (`current_entries`), or, when it names
+    none, the entries with a gene name that is the text (`B3GAT1`). Any other text gives the
+    entries whose `search` text (accession, gene names, taxon, protein name) contains it, case
+    aside, the closest names first."""
     taxa = None if taxon is None else subtree(cur, taxon)
     under = "(%(taxa)s::int[] IS NULL OR p.ncbi_taxon_id = ANY(%(taxa)s))"
     found: dict[str, list[tuple[Any, ...]]] = {}
@@ -490,7 +497,7 @@ def spaced(text: str) -> str | None:
     return None
 
 
-def _queries(cur: Any, texts: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+def _queries(texts: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     """The sequences to search, by their label, and the inputs that are none, with why."""
     queries: dict[str, str] = {}
     unread: dict[str, str] = {}
@@ -498,14 +505,11 @@ def _queries(cur: Any, texts: list[str]) -> tuple[dict[str, str], dict[str, str]
         if why := spaced(text):
             unread[label_of(text)] = why
         elif any(c.isdigit() for c in text):  # an accession, never a sequence
-            try:
-                queries[text] = sequence_of(cur, text)
-            except ValueError as e:
-                unread[text] = str(e)
+            unread[label_of(text)] = "an accession: closest takes sequences"
         elif AMINO_ACIDS.fullmatch(text.upper()):
-            queries[text if len(text) <= 20 else f"{text[:20]}…({len(text)} aa)"] = text.upper()
+            queries[label_of(text)] = text.upper()
         else:
-            unread[label_of(text)] = "neither an accession nor an amino acid sequence"
+            unread[label_of(text)] = "not an amino acid sequence"
     return queries, unread
 
 
@@ -530,11 +534,11 @@ def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) ->
     the identity, the coverage and the region aligned: every isoform is aligned
     (Smith-Waterman), each entry ranked by the score of its best isoform, then Swiss-Prot
     first."""
-    queries, unread = _queries(cur, sequences)
+    queries, unread = _queries(sequences)
     cur.execute(
         """
         SELECT p.accession, v.reviewed, p.name, p.description, p.ncbi_taxon_id, v.names,
-               length(p.sequences->>p.accession), v.secondary_accessions, p.sequences::text
+               length(p.sequences->>p.accession), p.sequences::text
         FROM proteins_versions AS v
         JOIN proteins AS p ON p.accession = v.accession AND v.version = p.version
         WHERE p.ncbi_taxon_id = ANY(%s)
@@ -545,9 +549,9 @@ def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) ->
     entries: list[tuple[Any, ...]] = []
     isoforms: list[tuple[int, str, str]] = []  # entry index, isoform accession, sequence
     for row in cur.fetchall():
-        for isoform, sequence in sorted(cast(dict[str, str], json.loads(row[8])).items()):
+        for isoform, sequence in sorted(cast(dict[str, str], json.loads(row[7])).items()):
             isoforms.append((len(entries), isoform, sequence.translate(UNSCORED)))
-        entries.append(row[:8])
+        entries.append(row[:7])
     targets = pyopal.Database([s for _, _, s in isoforms], alphabet=SEARCH.alphabet)
     names = taxon_names(cur, {e[4] for e in entries})
     lines = [f"#sequence\t{DESCRIBED}\tidentity\tcoverage\tregion"]
@@ -582,15 +586,30 @@ def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) ->
     return "\n".join(lines)
 
 
-def location(text: str) -> tuple[str, str, int | None, int | None]:
-    """(entry accession, isoform accession, start, stop) of `P26662[-2][:810-1026]`."""
-    match = LOCATION.fullmatch(text)
-    if match is None:
+def location(cur: Any, text: str) -> tuple[str, str, int | None, int | None]:
+    """(entry accession, isoform accession, start, stop) of `<accession>[:<start>-<stop>]`, the
+    accession as publications write it (`written_accession`), on its current entry
+    (`current_entries`); ValueError."""
+    match = LOCATION.fullmatch(text.strip())
+    written = written_accession(match.group(1)) if match else None
+    if match is None or written is None:
         raise ValueError("not <accession>[:<start>-<stop>]")
-    accession, isoform, start, stop = match.groups()
+    accession, isoform = written
+    named = current_entries(cur, accession)
+    if not named:
+        raise ValueError(f"no current entry has {accession}, current or old")
+    if len(named) > 1:
+        raise ValueError(f"{accession} is a secondary accession of {', '.join(named)}: give one")
+    if named[0] != accession:
+        if isoform != accession:
+            raise ValueError(
+                f"{accession} is a secondary accession of {named[0]}: give its isoform"
+            )
+        accession = isoform = named[0]
+    start, stop = match.group(2), match.group(3)
     return (
         accession,
-        accession + (isoform or ""),
+        isoform,
         None if start is None else int(start),
         None if stop is None else int(stop),
     )
@@ -598,7 +617,7 @@ def location(text: str) -> tuple[str, str, int | None, int | None]:
 
 def sequence_of(cur: Any, text: str) -> str:
     """The sequence of `<accession>[:<start>-<stop>]` on its current snapshot; ValueError."""
-    accession, isoform, start, stop = location(text)
+    accession, isoform, start, stop = location(cur, text)
     cur.execute(
         """
         SELECT p.sequences->>%s FROM proteins AS p
@@ -616,7 +635,7 @@ def sequence_of(cur: Any, text: str) -> str:
     if start is None or stop is None:
         return sequence
     if not 1 <= start <= stop <= len(sequence):
-        raise ValueError(f"{start}-{stop} is outside 1-{len(sequence)}")
+        raise ValueError(f"{start}-{stop} is not a stretch of 1-{len(sequence)}")
     return sequence[start - 1 : stop]
 
 
@@ -631,54 +650,47 @@ def seq(cur: Any, locations: list[str]) -> str:
     return "\n".join(lines)
 
 
-def names(cur: Any, taxa: list[int], page: Page = DEFAULT) -> str:
-    """The generic names of the viral interactors of live descriptions under each taxon: the most
-    used first, each with its live descriptions and its three most used interactors, on any
-    snapshot (an obsolete one marked: its generic name stays reusable, its entry does not)."""
+def names(cur: Any, taxa: list[int]) -> str:
+    """The generic names of the viral interactors of live descriptions under each taxon, on current
+    snapshots: the most used first, each with its live descriptions and its three most used
+    interactors; never cut."""
     lines = ["#taxon\tgeneric_name\tlive_descriptions\tinteractors (live descriptions)"]
     for taxon in taxa:
         cur.execute(
             """
-            SELECT d.name2, p.accession, d.start2, d.stop2, v.accession IS NULL AS obsolete,
-                   count(*) AS descriptions
+            SELECT d.name2, p.accession, d.start2, d.stop2, count(*) AS descriptions
             FROM descriptions AS d
             JOIN proteins AS p ON p.id = d.protein2_id
-            LEFT JOIN proteins_versions AS v
-              ON v.accession = p.accession AND v.version = p.version
+            JOIN proteins_versions AS v ON v.accession = p.accession AND v.version = p.version
             WHERE d.deleted_at IS NULL AND p.type = 'v' AND p.ncbi_taxon_id = ANY(%s)
-            GROUP BY d.name2, p.accession, d.start2, d.stop2, obsolete
+            GROUP BY d.name2, p.accession, d.start2, d.stop2
             ORDER BY descriptions DESC, d.name2, p.accession, d.start2
             """,
             (subtree(cur, taxon),),
         )
         interactors: dict[str, list[str]] = defaultdict(list)
         totals: dict[str, int] = defaultdict(int)
-        for name2, accession, start, stop, obsolete, count in cur.fetchall():
-            stretch = f"{accession}:{start}-{stop}" + (" obsolete" if obsolete else "")
-            interactors[name2].append(f"{stretch} ({count})")
+        for name2, accession, start, stop, count in cur.fetchall():
+            interactors[name2].append(f"{accession}:{start}-{stop} ({count})")
             totals[name2] += count
         shown = [
             f"{name}\t{totals[name]}\t{', '.join(interactors[name][:3])}"
             + (f", {len(interactors[name]) - 3} more" if len(interactors[name]) > 3 else "")
             for name in sorted(interactors, key=lambda n: (-totals[n], n))
         ]
-        lines += page.lines(str(taxon), shown)
+        lines += EVERY.lines(str(taxon), shown)
     return "\n".join(lines)
 
 
-def _cell(value: Any) -> str:
-    text = "" if value is None else str(value)
-    return text if len(text) <= CELL else f"{text[:CELL]}…({len(text)} chars)"
-
-
-def sql(cur: Any, query: str, limit: int) -> str:
-    """The rows of a free query, tab-separated under a `#` header of column names, each cell cut
-    at `CELL` characters; refused when it returns more than `limit` rows, so that no result is
-    ever cut. A query is run through a cursor that fetches on the server; a statement no cursor
-    takes (EXPLAIN, SHOW) is run as is."""
+def sql(cur: Any, query: str) -> str:
+    """The rows of a free query, whole, tab-separated under a `#` header of column names. The
+    query bounds its own rows and columns; `SQL_BYTES` only guards the context: the rows that would
+    pass it are left out, and a line says so. A query is run through a cursor that fetches on the
+    server, a batch at a time; a statement no cursor takes (EXPLAIN, SHOW) is run as is."""
     query = query.strip().rstrip(";")
     try:
         cur.execute("SAVEPOINT lookup")
+        server = True
         try:
             cur.execute(f"DECLARE lookup NO SCROLL CURSOR FOR {query}")
         except psycopg.Error:
@@ -686,18 +698,29 @@ def sql(cur: Any, query: str, limit: int) -> str:
             cur.execute(query)
             if cur.description is None:
                 return ""
-            columns = [c.name for c in cur.description]
-            rows = cur.fetchmany(limit + 1)
-        else:
-            cur.execute(f"FETCH {limit + 1} FROM lookup")
-            columns = [c.name for c in cur.description]
-            rows = cur.fetchall()
+            server = False
+
+        def fetch() -> list[Any]:
+            if not server:
+                return cur.fetchmany(SQL_BATCH)
+            cur.execute(f"FETCH {SQL_BATCH} FROM lookup")
+            return cur.fetchall()
+
+        rows = fetch()
+        lines = ["#" + "\t".join(c.name for c in cur.description)]
+        size = len(lines[0].encode())
+        while rows:
+            for row in rows:
+                line = "\t".join("" if v is None else str(v) for v in row)
+                size += 1 + len(line.encode())
+                if size > SQL_BYTES:
+                    lines.append(f"… cut at {SQL_BYTES // 1000} kB: select fewer columns or rows")
+                    return "\n".join(lines)
+                lines.append(line)
+            rows = fetch()
     except psycopg.Error as e:
-        sys.exit(f"sql: {e}".strip())
-    if len(rows) > limit:
-        sys.exit(f"sql: more than {limit} rows, none printed: narrow the query or raise --limit")
-    shown = ["\t".join(_cell(v) for v in row) for row in rows]
-    return "\n".join(["#" + "\t".join(columns), *shown])
+        return str(e).strip()
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -715,15 +738,14 @@ def main() -> None:
     s.add_argument("texts", nargs="+")
     s.add_argument("--taxon", type=int, help="NCBI taxon ID: only the entries under it")
     c = commands.add_parser("closest", parents=[limit], help="entries closest to sequences")
-    c.add_argument("sequences", nargs="+", help="a sequence, or <accession>[:<start>-<stop>]")
+    c.add_argument("sequences", nargs="+", help="amino acid sequences")
     c.add_argument("--taxon", type=int, required=True, help="NCBI taxon ID: its whole subtree")
     q = commands.add_parser("seq", help="sequences, or subsequences between coordinates")
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
-    n = commands.add_parser("names", parents=[limit], help="generic names used under each taxon")
+    n = commands.add_parser("names", help="generic names used under each taxon")
     n.add_argument("taxa", nargs="+", type=int, help="NCBI taxon ID: its whole subtree")
-    x = commands.add_parser("sql", help="free read-only SQL")
+    x = commands.add_parser("sql", help="free read-only SQL, its own LIMIT")
     x.add_argument("query")
-    x.add_argument("--limit", type=int, required=True, help="rows: refused beyond")
     args = parser.parse_args()
     with connect(readonly=True) as conn, conn.cursor() as cur:
         cur.execute("SET statement_timeout = '30s'")
@@ -732,7 +754,9 @@ def main() -> None:
         elif args.command == "seq":
             print(seq(cur, args.locations))
         elif args.command == "sql":
-            print(sql(cur, args.query, args.limit))
+            print(sql(cur, args.query))
+        elif args.command == "names":
+            print(names(cur, args.taxa))
         else:
             page = Page(args.limit)
             if args.command == "methods":
@@ -741,7 +765,5 @@ def main() -> None:
                 print(taxa(cur, args.texts, page))
             elif args.command == "search":
                 print(search(cur, args.texts, args.taxon, page))
-            elif args.command == "closest":
-                print(closest(cur, args.sequences, args.taxon, page))
             else:
-                print(names(cur, args.taxa, page))
+                print(closest(cur, args.sequences, args.taxon, page))
