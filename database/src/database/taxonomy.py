@@ -1,4 +1,4 @@
-"""Load or update the NCBI taxonomy (`taxon`, `taxon_name`) from `_data/<release>/taxonomy/`.
+"""Load or update the NCBI taxonomy (`taxon`, `taxon_name`) from `<workdir>/<release>/taxonomy/`.
 
 The taxonomy is scoped by UniProt release: the dump loaded with a release is kept next to it.
 
@@ -247,7 +247,7 @@ def load(release_directory: Path, *, commit: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load or update the NCBI taxonomy.")
     parser.add_argument(
-        "release_directory", type=Path, help="e.g. _data/2026_03, with the taxdump in taxonomy/"
+        "release_directory", type=Path, help="e.g. <workdir>/2026_03, with the taxdump in taxonomy/"
     )
     parser.add_argument("--commit", action="store_true", help="commit at the end")
     args = parser.parse_args()

@@ -660,6 +660,6 @@ def run(output: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check the Drakkar invariants, read-only.")
-    parser.add_argument("output", type=Path, help="e.g. _data/2026_03/reports/check")
+    parser.add_argument("output", type=Path, help="e.g. <workdir>/2026_03/reports/check")
     args = parser.parse_args()
     sys.exit(run(args.output))

@@ -6,7 +6,7 @@ Python port of the legacy Perl import, drakkar-uniprot (`bin/proteins`, `bin/met
 - `uniprot_sprot_human.xml.gz` (human, Swiss-Prot), `uniprot_sprot_viruses.xml.gz` and
   `uniprot_trembl_viruses.xml.gz` (all viruses), `uniprot_sprot_varsplic.fasta.gz` (isoforms).
 
-Files are scoped by release: `_data/<release>/` holds `taxonomy/` (the NCBI taxdump loaded with
+Files are scoped by release: `<workdir>/<release>/` holds `taxonomy/` (the NCBI taxdump loaded with
 this release), `uniprot/` (the FTP files) and `reports/`.
 
 Two steps:
@@ -464,10 +464,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Upgrade the proteins to a new UniProt release.")
     commands = parser.add_subparsers(dest="command", required=True)
     parse_parser = commands.add_parser("parse", help="convert the XML files into TSV files")
-    parse_parser.add_argument("release_directory", type=Path, help="e.g. _data/2026_03")
+    parse_parser.add_argument("release_directory", type=Path, help="e.g. <workdir>/2026_03")
     upgrade_parser = commands.add_parser("upgrade", help="import the TSV files")
     upgrade_parser.add_argument(
-        "release_directory", type=Path, help="e.g. _data/2026_03 (its name is the release)"
+        "release_directory", type=Path, help="e.g. <workdir>/2026_03 (its name is the release)"
     )
     upgrade_parser.add_argument("--commit", action="store_true", help="commit at the end")
     args = parser.parse_args()

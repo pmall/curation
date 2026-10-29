@@ -58,7 +58,7 @@ An agent curates, a skill runs it:
 - The [`curator`](curation/agents/curator.md) agent curates one publication from its full text, in its publication directory, into its descriptions and its publication note. Its prompt is the whole curation: it holds the curation rules in condensed form; [`curation-rules.md`](curation/docs/curation-rules.md) explains them.
 - The [`curate`](curation/skills/curate/SKILL.md) skill curates a batch of publications, one or many, each by a curator agent, then merges the results, dry-runs them and writes them after the user's go. A single publication is a batch of one.
 
-A batch's work directory, by default `_data/sessions/run<run>/batch<n>/` (`_data/sessions/batch<n>/` when its publications come from several runs), holds one directory per publication and the merged files.
+A batch's directory, by default `<workdir>/run<run>/batch<n>/` (`<workdir>/batch<n>/` when its publications come from several runs), holds one directory per publication and the merged files.
 
 ```
 orchestrator (curate skill)
@@ -92,7 +92,7 @@ uv sync                 # both packages
 cp .env.example .env    # database connection, the address Unpaywall asks for, the NCBI API key
 ```
 
-In Claude Code, run from the repository, `/curate` starts a batch on the publications its prompt asks for, one PMID or several, in the work directory the prompt names or the default one. The agent ends with its report and waits for the go. `/export` exports the derived datasets.
+In Claude Code, run from the repository, `/curate` starts a batch on the publications its prompt asks for, one PMID or several, in the batch directory the prompt names or the default one. The agent ends with its report and waits for the go. `/export` exports the derived datasets.
 
 [`.claude/skills/`](.claude/skills/) and [`.claude/agents/`](.claude/agents/) link the skills and the agent of both packages. Every skill is started by the user only: Claude never starts one on its own.
 
@@ -126,5 +126,4 @@ curation/            the curation, a client of the Drakkar database
   tests/             their tests and samples
   agents/            curator.md (one publication curated)
   skills/            curate (a batch of publications, one or many)
-_data/               releases, reports, batch directories (not versioned)
 ```

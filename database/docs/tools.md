@@ -66,11 +66,11 @@ Reading, `database-read`, read-only, on the current snapshots. Each command take
 
 ## Releases
 
-A UniProt release is loaded in three commands, each in one transaction (without `--commit`, a dry run that rolls back), on a directory `_data/<release>/` named after the release: `taxonomy/` (the NCBI taxdump loaded with this release), `uniprot/` (the FTP files and their parsed TSV) and `reports/`. Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` and `uniprot_sprot_varsplic.fasta.gz` (isoforms). What a release does to the snapshots: `database.md` §3.
+A UniProt release is loaded in three commands, each in one transaction (without `--commit`, a dry run that rolls back), on a directory `<workdir>/<release>/` named after the release: `taxonomy/` (the NCBI taxdump loaded with this release), `uniprot/` (the FTP files and their parsed TSV) and `reports/`. Sources: NCBI `taxdump.tar.gz`; UniProt FTP `uniprot_sprot_human.xml.gz`, `uniprot_sprot_viruses.xml.gz`, `uniprot_trembl_viruses.xml.gz` and `uniprot_sprot_varsplic.fasta.gz` (isoforms). What a release does to the snapshots: `database.md` §3.
 
-- `uv run database-taxonomy _data/<release> [--commit]`: the NCBI taxonomy, first; merged taxa are resolved with `merged.dmp`.
-- `uv run database-uniprot parse _data/<release>`: the UniProt XML to TSV (cached).
-- `uv run database-uniprot upgrade _data/<release> [--commit]`: the import; it writes `reports/uniprot_upgrade.md` (with the entries whose taxon is missing from the taxonomy) and `reports/obsolete_vh_descriptions.tsv`.
+- `uv run database-taxonomy <workdir>/<release> [--commit]`: the NCBI taxonomy, first; merged taxa are resolved with `merged.dmp`.
+- `uv run database-uniprot parse <workdir>/<release>`: the UniProt XML to TSV (cached).
+- `uv run database-uniprot upgrade <workdir>/<release> [--commit]`: the import; it writes `reports/uniprot_upgrade.md` (with the entries whose taxon is missing from the taxonomy) and `reports/obsolete_vh_descriptions.tsv`.
 
 ## Mapping
 

@@ -1,14 +1,14 @@
 ---
 name: curate
 disable-model-invocation: true
-description: "Curation batch: publications, one or many, each curated by a curator agent, merged into batch files written after the user's go. Use when the user asks to curate publications; the prompt names them (one PMID, several, or a run's selected publications) and may name the work directory."
+description: "Curation batch: publications, one or many, each curated by a curator agent, merged into batch files written after the user's go. Use when the user asks to curate publications; the prompt names them (one PMID, several, or a run's selected publications) and may name the batch directory."
 ---
 
 # Curation batch
 
 You run a curation batch, of one publication or many. A `curator` agent curates each publication from its full text; you merge the results, dry-run them, report, and write them after the user's go. Read no publication and no doc: this skill is the whole process.
 
-1. **Work directory**: the prompt's; otherwise `_data/sessions/run<run>/batch<n>/` when the publications are of one run (its name, not its `id`), `_data/sessions/batch<n>/` when they are of several; one directory per publication, `<dir>/<pmid>/`.
+1. **Batch directory**: the prompt's; otherwise `<workdir>/run<run>/batch<n>/` when the publications are of one run (its name, not its `id`), `<workdir>/batch<n>/` when they are of several; one directory per publication, `<dir>/<pmid>/`.
 
    Record the batch's author first, as the model and the effort may change during the session: `mkdir -p <dir> && echo "<model> (effort $CLAUDE_EFFORT, $AI_AGENT)" > <dir>/author.txt`, with your model ID as your system prompt gives it, `$CLAUDE_EFFORT` your effort and `$AI_AGENT` the Claude Code running you; the curators run on the same model and effort (`claude-opus-5-5 (effort high, claude-code_2-1-312_agent)`).
 
