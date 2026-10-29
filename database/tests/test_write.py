@@ -257,6 +257,13 @@ def test_publication_note_is_taken_as_written(conn):
     assert note_of(conn, SELECTED) == f"[{today(conn)}] co-IP of NS1 with TRIM25"
 
 
+def test_publication_note_names_its_author(conn):
+    """The author, when given, goes after the date of the note."""
+    update = PublicationUpdate(SELECTED, "curated", "CURATED: co-IP of NS1 with TRIM25")
+    assert update_publications(conn, [update], author=" pmall ", commit=True).committed
+    assert note_of(conn, SELECTED) == f"[{today(conn)}, pmall] CURATED: co-IP of NS1 with TRIM25"
+
+
 def today(conn) -> str:
     result = conn.execute("SELECT current_date::text").fetchone()[0]
     conn.rollback()

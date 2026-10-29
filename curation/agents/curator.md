@@ -1,6 +1,7 @@
 ---
 name: curator
 description: Curates one publication from its full text, in its publication directory, into its descriptions and its publication note. Run by the curate skill, one per publication.
+model: inherit
 tools: Bash, Read, WebSearch
 omitClaudeMd: true
 ---

@@ -186,6 +186,18 @@ def test_batch_command_writes_descriptions_and_a_publication(dbname, tmp_path: P
     assert done.returncode == 0 and "2 rows, 2 applied: committed" in done.stdout, done.stdout
 
 
+def test_publications_command_names_the_author(conn, tmp_path: Path):
+    path = tmp_path / "publications.jsonl"
+    row = {"pmid": SELECTED, "state": "curated", "note": "CURATED: co-IP of P with NEDD4"}
+    path.write_text(json.dumps(row) + "\n")
+    done = run("database-publications", str(path), "--author", "pmall", "--commit")
+    assert done.returncode == 0 and "committed" in done.stdout, done.stdout + done.stderr
+    query = "SELECT annotation, current_date::text FROM associations WHERE pmid = %s"
+    note, today = conn.execute(query, (SELECTED,)).fetchone()
+    conn.rollback()
+    assert note.startswith(f"[{today}, pmall] CURATED: co-IP of P with NEDD4")
+
+
 def test_batch_command_writes_the_files_of_a_diff(conn, tmp_path: Path):
     """The files of a diff: two renames and an addition that relies on them (no delete file),
     read in place of the descriptions.jsonl beside them, which would add it a second time."""

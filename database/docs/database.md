@@ -36,7 +36,7 @@ A run is **complete** when every publication is `discarded` or `curated`. The AI
 
 The notes only serve the curation to explain and justify its choices later, to an external reviewer or in a report: free text.
 
-- **Publication note**, `associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, its first word the state, which the write puts after the date (`[2026-10-06] CURATED …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
+- **Publication note**, `associations.annotation`: the notes of the publication, the newest first, each followed by a line `---` and the previous ones. A curation pass writes its note, its first word the state, which the write puts after the date and, when the write names one, its author (`[2026-10-06] CURATED …`, `[2026-10-06, pmall] CURATED …`); a move to a special run writes the note `Moved from run <name>`, dated the same way.
 - **Description note**, `descriptions.annotation`, one note per version. A version made by a curation holds the curation's note. A version made otherwise, and what was decided on a version later without a new version (an interactor not moved, an in-place correction, a removal), are each a line `ACTION: summary` followed by `- ` detail lines. The history of a description is its notes read version by version.
 
 | Action | Why | Example summary |
@@ -67,7 +67,7 @@ Y2H, see table S2
   - A revision is version + 1 of the live version it was decided on (refused if the live version changed since), same publication, the old row deleted at the same instant. It keeps the snapshots of the description, even obsolete ones, except on a side whose accession changes. A revision that changes nothing is refused, unless it changes only skipped mappings (below): it is then skipped.
   - A removal deletes the live version without successor and adds its `REMOVED` line to its note. A merged duplicate names its survivor, which has the same publication, method and interactors (those the removed description was decided to have, when given) and holds all its mapping sequences.
   - Derived, never given: human names and full-length coordinates, and mapping occurrences (identity as defined in `glossary.md`; a mapping whose best identity is below 90 % is skipped, the rest of its description written). The occurrences follow fixed rules: exact matches first, on every isoform that has one; otherwise a BLOSUM62 alignment with gaps −10/−2 (an arbitrary choice: a mapping is right by its sequence, not by this alignment), and the isoforms with the best score keep every placement of their optimal alignments, each with the highest identity among its alignments; on each isoform, overlapping placements form one cluster, chains included, which keeps its first placement (smallest start, then smallest stop). U, O and J, not in BLOSUM62, are aligned as X.
-  - A publication update sets the state (`selected` or `curated`) and `ai_pass_at`, and puts the note of the pass first in the publication's note, after its date (§1, notes).
+  - A publication update sets the state (`selected` or `curated`) and `ai_pass_at`, and puts the note of the pass first in the publication's note, after its date and its author, if any (§1, notes).
   - Moving an interactor to the current snapshot of the same accession is the versioning pass, not a revision.
 
 ## 3. UniProt versioning

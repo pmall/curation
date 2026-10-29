@@ -16,7 +16,7 @@ names) is left to the full check, on the result of the whole list: a rename carr
 descriptions passes through inconsistent states and is valid at the end.
 
 A description note carries no date (its version has `created_at`); a publication note keeps the
-notes of its passes, the newest first.
+notes of its passes, the newest first, each after its date and, when given, its author.
 """
 
 import json
@@ -562,30 +562,40 @@ def _removal(revision: Revision) -> bool:
 NEW_NOTE = "concat_ws(E'\\n---\\n', nullif(%s::text, ''), nullif(annotation, ''))"
 
 
-def _publication(cur: Any, update: PublicationUpdate) -> str:
+def _publication(cur: Any, update: PublicationUpdate, author: str = "") -> str:
     association = _writable(vh_association(cur, update.pmid))
     if update.state not in ("selected", "curated"):
         raise InvalidRow(f"state {update.state!r} is not selected or curated")
     cur.execute(
         f"UPDATE associations SET state = %s, annotation = {NEW_NOTE}, ai_pass_at = now(), "
         "updated_at = now() WHERE id = %s",
-        (update.state, _dated(cur, update.note), association.id),
+        (update.state, _dated(cur, update.note, author), association.id),
     )
     return str(update.pmid)
 
 
-def _dated(cur: Any, note: str) -> str:
-    """A publication note as written, after the date of the write: `[2026-10-22] CURATED …`."""
+def _dated(cur: Any, note: str, author: str = "") -> str:
+    """A publication note as written, after the date of the write and its author, if any:
+    `[2026-10-22] CURATED …`, `[2026-10-22, pmall] CURATED …`."""
     cur.execute("SELECT current_date::text")
-    return f"[{cur.fetchone()[0]}] {note.strip()}"
+    header = ", ".join(part for part in (cur.fetchone()[0], author.strip()) if part)
+    return f"[{header}] {note.strip()}"
 
 
 def update_publications(
-    conn: psycopg.Connection, updates: Sequence[PublicationUpdate], *, commit: bool = False
+    conn: psycopg.Connection,
+    updates: Sequence[PublicationUpdate],
+    *,
+    author: str = "",
+    commit: bool = False,
 ) -> Outcome:
     """Set the state of publications of vh runs at the end of a pass (`ai_pass_at`), the note of
-    the pass, after its date, first in their notes."""
-    return _write(conn, commit, lambda cur: _apply_rows(cur, updates, _publication))
+    the pass, after its date and its author (optional), first in their notes."""
+
+    def publication(cur: Any, update: PublicationUpdate) -> str:
+        return _publication(cur, update, author)
+
+    return _write(conn, commit, lambda cur: _apply_rows(cur, updates, publication))
 
 
 # --- A batch ------------------------------------------------------------------------------------
@@ -597,21 +607,26 @@ def write_batch(
     additions: Sequence[NewDescription],
     updates: Sequence[PublicationUpdate],
     *,
+    author: str = "",
     commit: bool = False,
 ) -> Outcome:
     """Write a batch in one transaction, in this order: the revisions and removals, the new
-    descriptions, the publication updates. Every invariant is checked once, on the result, so
-    a row can rely on an earlier one (an addition on a rename).
+    descriptions, the publication updates, their notes after their date and their author
+    (optional). Every invariant is checked once, on the result, so a row can rely on an earlier
+    one (an addition on a rename).
 
     Rows are numbered across the three lists, in that order.
     """
     _once(revisions)
 
+    def publication(cur: Any, update: PublicationUpdate) -> str:
+        return _publication(cur, update, author)
+
     def apply(cur: Any) -> Applied:
         stages = [
             _apply_rows(cur, revisions, _revise, order=_removal),
             _apply_rows(cur, additions, _add, len(revisions) + 1),
-            _apply_rows(cur, updates, _publication, len(revisions) + len(additions) + 1),
+            _apply_rows(cur, updates, publication, len(revisions) + len(additions) + 1),
         ]
         return [w for s in stages for w in s[0]], [p for s in stages for p in s[1]]
 

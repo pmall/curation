@@ -15,7 +15,7 @@ You run a curation batch, of one publication or many. A `curator` agent curates 
    - `Full text: not downloaded` (free, but no copy could be downloaded): fetch once more, as the failure may pass. Still none: leave the publication out of the batch; a later batch fetches it again.
    - `Full text: closed`, or the article not converted: no curator; write its note in `<dir>/<pmid>/curation.txt`: `SELECTED`, then why there is no full text.
 
-3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, on the default model, sent only `dir: <dir>/<pmid>`, `pmid: <pmid>`. It writes `descriptions.jsonl` and `curation.txt`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
+3. **Curate**: one `curator` agent per publication with a manifest, a few at a time, sent only `dir: <dir>/<pmid>`, `pmid: <pmid>`. It writes `descriptions.jsonl` and `curation.txt`. Without them, run it once more; still without them, report the publication as not curated and leave it out.
 
 4. **Merge**: `cat <dir>/*/descriptions.jsonl > <dir>/descriptions.jsonl`, then `uv run curation-notes <dir>`, which writes `<dir>/publications.jsonl` from the notes, each `<dir>/<pmid>/curation.txt`, the state from its first word. The write dates the note.
 
@@ -23,4 +23,4 @@ You run a curation batch, of one publication or many. A `curator` agent curates 
 
 6. **Reply**: what each batch file holds, in descriptions and publications; the refused rows and errors; the publications without the article or with a relevant file missing, with why; from the notes, the `best-effort` values and the supplementary files downloaded or not; from the agents' replies, the tool errors.
 
-7. **Commit**, after the go: `uv run database-batch <dir> --commit` writes the new descriptions, the publication states and notes.
+7. **Commit**, after the go: `uv run database-batch <dir> --author "<model> (effort $CLAUDE_EFFORT, $AI_AGENT)" --commit` writes the new descriptions, the publication states and notes, each note after its date and its author: your model ID, as your system prompt gives it, `$CLAUDE_EFFORT`, your effort, and `$AI_AGENT`, the Claude Code running you; the curators run on the same model and effort (`[2026-10-29, claude-opus-5-5 (effort high, claude-code_2-1-312_agent)] CURATED …`).

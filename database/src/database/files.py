@@ -6,11 +6,12 @@ concatenate.
 
     uv run database-add <file>... [--commit]
     uv run database-revise <file>... [--commit]
-    uv run database-publications <file>... [--commit]
+    uv run database-publications <file>... [--author <name>] [--commit]
     uv run database-diff <pmid> <file>
-    uv run database-batch <dir> [--commit]
+    uv run database-batch <dir> [--author <name>] [--commit]
 
-Without `--commit`, a dry run: everything is applied and checked, then rolled back. The diff is
+Without `--commit`, a dry run: everything is applied and checked, then rolled back. `--author`
+names the author of the publication notes, written after their date. The diff is
 read-only: it writes the add, revise and delete files of a curated publication beside its file.
 The batch writes the files of a directory in one transaction.
 """
@@ -272,19 +273,30 @@ def report(outcome: Outcome, wheres: Sequence[str]) -> str:
     return "\n".join(lines)
 
 
+def _author_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--author", default="", help="the author of the publication notes, after their date"
+    )
+
+
 def _command(
     description: str,
     read: Callable[[Sequence[Path]], list[tuple[str, Any]]],
     write: Callable[..., Outcome],
+    author: bool = False,
 ) -> None:
+    """A write command on files; with `author`, it takes `--author` for the publication notes."""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("files", type=Path, nargs="*", help="files of the format of docs/tools.md")
+    if author:
+        _author_option(parser)
     parser.add_argument("--commit", action="store_true", help="commit if everything passes")
     args = parser.parse_args()
+    options = {"author": args.author} if author else {}
     try:
         rows = read(cast(list[Path], args.files))
         with connect() as conn:
-            outcome = write(conn, [item for _, item in rows], commit=args.commit)
+            outcome = write(conn, [item for _, item in rows], commit=args.commit, **options)
     except ValueError as e:  # a file error, or a stable ID given twice
         sys.exit(str(e))
     print(report(outcome, [where for where, _ in rows]))
@@ -300,7 +312,9 @@ def revise_main() -> None:
 
 
 def publications_main() -> None:
-    _command("Set the state and note of publications.", read_publications, update_publications)
+    _command(
+        "Set the state and note of publications.", read_publications, update_publications, True
+    )
 
 
 def batch_main() -> None:
@@ -309,6 +323,7 @@ def batch_main() -> None:
         "and publications."
     )
     parser.add_argument("dir", type=Path, help="the directory of the files")
+    _author_option(parser)
     parser.add_argument("--commit", action="store_true", help="commit if everything passes")
     args = parser.parse_args()
     directory = cast(Path, args.dir)
@@ -326,6 +341,7 @@ def batch_main() -> None:
                 [item for _, item in revision_rows],
                 [item for _, item in addition_rows],
                 [item for _, item in publication_rows],
+                author=args.author,
                 commit=args.commit,
             )
     except ValueError as e:  # a file error, or a stable ID given twice
