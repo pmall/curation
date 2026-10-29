@@ -929,11 +929,16 @@ def download(out: Path, url: str, get: Get = http_get) -> list[str]:
     return lines
 
 
+def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    """The arguments of a command; an option it does not define is ignored, never refused."""
+    return parser.parse_known_args()[0]
+
+
 def download_main() -> None:
     parser = argparse.ArgumentParser(description="Download files and convert them to text.")
     parser.add_argument("dir", type=Path)
     parser.add_argument("urls", nargs="+")
-    args = parser.parse_args()
+    args = parse_args(parser)
     lines = [f"{url}\t{line}" for url in args.urls for line in download(args.dir, url)]
     print("\n".join(["#url\tmanifest entry, or why", *lines]))
 

@@ -13,7 +13,7 @@ from typing import Any
 
 from database.align import MIN_IDENTITY, best_identity, map_sequence, read_written
 from database.check import AMINO_ACIDS
-from database.db import connect
+from database.db import connect, parse_args
 from database.read import label_of, location, spaced
 from database.write import InvalidRow, snapshot_of
 
@@ -82,7 +82,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Check mapping sequences on an entry.")
     parser.add_argument("interactor", help="<accession>[:<start>-<stop>]")
     parser.add_argument("sequences", nargs="+", help="extra end residues in lowercase")
-    args = parser.parse_args()
+    args = parse_args(parser)
     with connect(readonly=True) as conn, conn.cursor() as cur:
         cur.execute("SET statement_timeout = '30s'")
         print(mapping(cur, args.interactor, args.sequences))

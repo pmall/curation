@@ -24,7 +24,7 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 
-from curation.fetch import EFETCH, Get, http_get
+from curation.fetch import EFETCH, Get, http_get, parse_args
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 ESEARCH = f"{EUTILS}/esearch.fcgi"
@@ -190,7 +190,7 @@ def main() -> None:
     s.add_argument("--limit", type=int, default=LIMIT, help=f"records per query ({LIMIT})")
     q = commands.add_parser("seq", help="protein sequences, or subsequences between coordinates")
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
-    args = parser.parse_args()
+    args = parse_args(parser)
     eutils = Eutils()
     if args.command == "search":
         print(search(eutils, args.queries, Page(args.limit)))

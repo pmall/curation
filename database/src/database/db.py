@@ -1,5 +1,6 @@
 """Database connection, configured from the project's `.env` file."""
 
+import argparse
 import os
 
 import psycopg
@@ -18,3 +19,8 @@ def connect(*, readonly: bool = False, dbname: str | None = None) -> psycopg.Con
         password=os.environ.get("POSTGRES_PASSWORD"),
         options=options,
     )
+
+
+def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    """The arguments of a command; an option it does not define is ignored, never refused."""
+    return parser.parse_known_args()[0]

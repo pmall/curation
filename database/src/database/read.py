@@ -37,7 +37,7 @@ import pyopal
 
 from database.align import UNSCORED
 from database.check import AMINO_ACIDS
-from database.db import connect
+from database.db import connect, parse_args
 
 LIMIT = 20  # lines per input by default
 SQL_BYTES = 10_000  # output of a free query, a guard of the context
@@ -746,7 +746,7 @@ def main() -> None:
     n.add_argument("taxa", nargs="+", type=int, help="NCBI taxon ID: its whole subtree")
     x = commands.add_parser("sql", help="free read-only SQL, its own LIMIT")
     x.add_argument("query")
-    args = parser.parse_args()
+    args = parse_args(parser)
     with connect(readonly=True) as conn, conn.cursor() as cur:
         cur.execute("SET statement_timeout = '30s'")
         if args.command == "entry":

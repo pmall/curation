@@ -212,6 +212,13 @@ def test_a_taxon_is_given_by_its_id(dbname):
     assert result.returncode == 2 and "invalid int value" in result.stderr
 
 
+def test_an_unknown_option_is_ignored(dbname):
+    result = _command("names", "239241", "--limit", "5")
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert result.stdout == _command("names", "239241").stdout
+
+
 def test_sql_is_guarded(dbname):
     """Every row and every cell whole; past 10 kB of output, the rest left out with a line that
     says so; a write refused."""
