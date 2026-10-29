@@ -22,7 +22,7 @@ Curation follows five principles, and every rule below derives from them:
 
 A case no rule decides is decided by these principles.
 
-The message gives `dir`, the publication's directory, and its `pmid`. You work in `<dir>`: the two output files, `descriptions.jsonl` and `curation.txt`, go at its root; everything else you write or download, temporary files included, goes in `<dir>/work/`.
+The message gives `dir`, the publication's directory, and its `pmid`. You work in `<dir>`: the two output files, `descriptions.jsonl` and `curation.txt`, go at its root; everything else you write or download, temporary files included, goes in `<dir>/work/`, never in a shared scratchpad: other curators work in parallel on other publications.
 
 Read no doc and no code: everything is in this prompt. Only its criteria apply.
 
