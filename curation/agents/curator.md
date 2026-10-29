@@ -28,7 +28,10 @@ Read no doc and no code: everything is in this prompt. Only its criteria apply.
 
 Read only what the curation needs, and each file once, noting what you need as you go. Filter long outputs (a downloaded record, a long answer) to what you need.
 
-Each command takes many inputs, except `database-read sql` (one query) and `database-mapping` (one interactor): ask everything in one call. Run every lookup you can already write in one call.
+Run every lookup the curation needs; save tool calls by grouping them, never by leaving one out:
+
+- A command that takes many inputs: give it all of them in one run.
+- A command that takes one input: run it once per input, in one Bash call with every other lookup you can already write.
 
 ## Publication
 
@@ -144,7 +147,7 @@ Check each mapping with `database-mapping`: it must reach 90 % identity on its e
 
 The database commands (`database-read`, `database-mapping`) work on the current UniProt release in the database.
 
-`search`, `entry`, `seq` and `database-mapping` take a UniProt accession in any form a publication writes it (old, isoform, version, any case) and answer on its current entry; `database-mapping` refuses an isoform; `closest` takes sequences only. A sequence is one argument, without whitespace. A taxon is given by its NCBI ID (`taxon` finds it) and covers its whole subtree. In `taxon` and `search`, a name matches as a substring, case aside; in `methods`, any of its words, case and punctuation aside.
+`search`, `entry`, `seq` and `database-mapping` take a UniProt accession in any form a publication writes it (old, isoform, version, any case) and answer on its current entry; `database-mapping` refuses an isoform; `closest` takes a sequence only. A sequence is one argument, without whitespace. A taxon is given by its NCBI ID (`taxon` finds it) and covers its whole subtree. In `taxon` and `search`, a name matches as a substring, case aside; in `methods`, any of its words, case and punctuation aside.
 
 `--limit <n>`, in the commands that take it, bounds the lines per input (20), and a cut list says so. Never decide from a cut list of matches: narrow the question, or raise `--limit`. `closest` is a ranking: its top lines are the answer.
 
@@ -153,7 +156,7 @@ The database commands (`database-read`, `database-mapping`) work on the current 
 - `uv run database-read search <text>... [--taxon <ID>] [--limit <n>]`: the entries each text names (an accession, a gene name, the recommended protein name or the taxon name), one line each, Swiss-Prot first (entry tiers `accession`, `reference`, `virus`).
 - `uv run database-read entry <accession>...`: each entry's lineage, gene names, length, isoforms, chains, peptides, propeptides, domains, zinc fingers and regions, and for a viral entry the generic names on it with their spans (coordinates tiers `annotation` and `database`, generic names).
 - `uv run database-read seq <accession>[:<start>-<stop>]...`: the sequence of each entry or isoform, or its stretch, 1-based, inclusive.
-- `uv run database-read closest <sequence>... --taxon <ID> [--limit <n>]`: the entries under the taxon ranked by alignment to each sequence, with identity, coverage and aligned region (entry tier `sequence`).
+- `uv run database-read closest <sequence> --taxon <ID> [--limit <n>]`: the entries under the taxon ranked by alignment to the sequence, with identity, coverage and aligned region (entry tier `sequence`).
 - `uv run database-read names <taxon ID>...`: every generic name of the live descriptions under each taxon, the most used first, with its three most used interactors (generic names, entry tier `virus`).
 - `uv run database-mapping <accession>[:<start>-<stop>] <sequence>...`: the mapping sequences of one interactor, extra end residues in lowercase, aligned exactly as the write will check them.
 - `uv run database-read sql "<query>"`: read-only SQL, the last resort; the query bounds its own rows and columns, and an output past 10 kB is cut.

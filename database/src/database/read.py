@@ -6,15 +6,16 @@ uv run database-read entry <accession>...          an entry: lineage, isoforms, 
                                                   regions, generic names
 uv run database-read search <text>... [--taxon <ID>]
                                                   entries by accession, gene or protein name
-uv run database-read closest <sequence>... --taxon <ID>
-                                                  the entries of a taxon closest to sequences
+uv run database-read closest <sequence> --taxon <ID>
+                                                  the entries of a taxon closest to a sequence
 uv run database-read seq <accession>[:<start>-<stop>]...
                                                   sequences and subsequences
 uv run database-read names <taxon ID>...           generic names used under each taxon
 uv run database-read sql <query>                   free read-only SQL
 
-Each takes many inputs. `entry` prints a block per entry; the others print tab-separated lines
-under a `#` header, each starting with the input it answers, the best first. `--limit <n>`
+Each takes many inputs, except `closest`, one sequence, and `sql`, one query. `entry` prints a
+block per entry; the others print tab-separated lines under a `#` header, each starting with the
+input it answers when there are many, the best first. `--limit <n>`
 bounds the lines per input (20), except in `names`, never cut; a list that is cut ends with how
 many there are. `sql` prints at most `SQL_BYTES` of output: a query bounds its own rows and
 columns. An accession is taken as publications write it (`written_accession`,
@@ -74,16 +75,19 @@ class Page:
     def cut[T](self, items: list[T]) -> list[T]:
         return items[: self.limit]
 
-    def lines(self, label: str, lines: list[str], total: int | None = None) -> list[str]:
-        """An input's lines, each after its label, cut to the page; `lines` may already be the
-        page, of `total` lines."""
+    def listed(self, lines: list[str], total: int | None = None) -> list[str]:
+        """A list's lines, cut to the page; `lines` may already be the page, of `total` lines."""
         total = len(lines) if total is None else total
         if not total:
-            return [f"{label}\t(none)"]
-        shown = [f"{label}\t{line}" for line in self.cut(lines)]
+            return ["(none)"]
+        shown = self.cut(lines)
         if len(shown) < total:
-            shown.append(f"{label}\t… {len(shown)} of {total} shown, cut by --limit {self.limit}")
+            shown.append(f"… {len(shown)} of {total} shown, cut by --limit {self.limit}")
         return shown
+
+    def lines(self, label: str, lines: list[str], total: int | None = None) -> list[str]:
+        """An input's lines, each after its label, cut to the page."""
+        return [f"{label}\t{line}" for line in self.listed(lines, total)]
 
 
 DEFAULT = Page()
@@ -497,22 +501,6 @@ def spaced(text: str) -> str | None:
     return None
 
 
-def _queries(texts: list[str]) -> tuple[dict[str, str], dict[str, str]]:
-    """The sequences to search, by their label, and the inputs that are none, with why."""
-    queries: dict[str, str] = {}
-    unread: dict[str, str] = {}
-    for text in texts:
-        if why := spaced(text):
-            unread[label_of(text)] = why
-        elif any(c.isdigit() for c in text):  # an accession, never a sequence
-            unread[label_of(text)] = "an accession: closest takes sequences"
-        elif AMINO_ACIDS.fullmatch(text.upper()):
-            queries[label_of(text)] = text.upper()
-        else:
-            unread[label_of(text)] = "not an amino acid sequence"
-    return queries, unread
-
-
 def _hit(alignment: Any, accession: str, isoform: str) -> str:
     """Identity, coverage of the query and region on the isoform of a full alignment: identity
     is identical residues over the aligned columns, gaps included (`M` in pyopal's alignment)."""
@@ -529,12 +517,18 @@ def _hit(alignment: Any, accession: str, isoform: str) -> str:
     )
 
 
-def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) -> str:
-    """The current entries of the taxon closest to each sequence, as `search` shows them, with
+def closest(cur: Any, sequence: str, taxon: int, page: Page = DEFAULT) -> str:
+    """The current entries of the taxon closest to the sequence, as `search` shows them, with
     the identity, the coverage and the region aligned: every isoform is aligned
     (Smith-Waterman), each entry ranked by the score of its best isoform, then Swiss-Prot
-    first."""
-    queries, unread = _queries(sequences)
+    first. An input that is not a sequence gets why, alone."""
+    if why := spaced(sequence):
+        return why
+    if any(c.isdigit() for c in sequence):  # an accession, never a sequence
+        return "an accession: closest takes a sequence"
+    if not AMINO_ACIDS.fullmatch(sequence.upper()):
+        return "not an amino acid sequence"
+    query = sequence.upper().translate(UNSCORED)
     cur.execute(
         """
         SELECT p.accession, v.reviewed, p.name, p.description, p.ncbi_taxon_id, v.names,
@@ -554,36 +548,31 @@ def closest(cur: Any, sequences: list[str], taxon: int, page: Page = DEFAULT) ->
         entries.append(row[:7])
     targets = pyopal.Database([s for _, _, s in isoforms], alphabet=SEARCH.alphabet)
     names = taxon_names(cur, {e[4] for e in entries})
-    lines = [f"#sequence\t{DESCRIBED}\tidentity\tcoverage\tregion"]
-    for label, query in queries.items():
-        query = query.translate(UNSCORED)
-        best: dict[int, tuple[int, int]] = {}  # entry index → score, isoform index
-        scores = SEARCH.align(query, targets, mode="score", algorithm="sw")
-        for index, ((owner, isoform, _), result) in enumerate(zip(isoforms, scores, strict=True)):
-            canonical = isoform == entries[owner][0]
-            # the best score, the canonical isoform among equals (isoforms are in name order)
-            if (
-                owner not in best
-                or result.score > best[owner][0]
-                or (result.score == best[owner][0] and canonical)
-            ):
-                best[owner] = (result.score, index)
-        ranked = sorted(best, key=lambda e: (-best[e][0], not entries[e][1], entries[e][0]))
-        shown = page.cut(ranked)
-        aligned = SEARCH.align(
-            query,
-            pyopal.Database([isoforms[best[e][1]][2] for e in shown], alphabet=SEARCH.alphabet),
-            mode="full",
-            algorithm="sw",
-        )
-        rows = [
-            f"{_described(entries[e], names)}"
-            f"\t{_hit(alignment, entries[e][0], isoforms[best[e][1]][1])}"
-            for e, alignment in zip(shown, aligned, strict=True)
-        ]
-        lines += page.lines(label, rows, len(ranked))
-    lines += [f"{label}\t{why}" for label, why in unread.items()]
-    return "\n".join(lines)
+    best: dict[int, tuple[int, int]] = {}  # entry index → score, isoform index
+    scores = SEARCH.align(query, targets, mode="score", algorithm="sw")
+    for index, ((owner, isoform, _), result) in enumerate(zip(isoforms, scores, strict=True)):
+        canonical = isoform == entries[owner][0]
+        # the best score, the canonical isoform among equals (isoforms are in name order)
+        if (
+            owner not in best
+            or result.score > best[owner][0]
+            or (result.score == best[owner][0] and canonical)
+        ):
+            best[owner] = (result.score, index)
+    ranked = sorted(best, key=lambda e: (-best[e][0], not entries[e][1], entries[e][0]))
+    shown = page.cut(ranked)
+    aligned = SEARCH.align(
+        query,
+        pyopal.Database([isoforms[best[e][1]][2] for e in shown], alphabet=SEARCH.alphabet),
+        mode="full",
+        algorithm="sw",
+    )
+    rows = [
+        f"{_described(entries[e], names)}"
+        f"\t{_hit(alignment, entries[e][0], isoforms[best[e][1]][1])}"
+        for e, alignment in zip(shown, aligned, strict=True)
+    ]
+    return "\n".join([f"#{DESCRIBED}\tidentity\tcoverage\tregion", *page.listed(rows, len(ranked))])
 
 
 def location(cur: Any, text: str) -> tuple[str, str, int | None, int | None]:
@@ -737,8 +726,9 @@ def main() -> None:
     s = commands.add_parser("search", parents=[limit], help="entries by accession or name")
     s.add_argument("texts", nargs="+")
     s.add_argument("--taxon", type=int, help="NCBI taxon ID: only the entries under it")
-    c = commands.add_parser("closest", parents=[limit], help="entries closest to sequences")
-    c.add_argument("sequences", nargs="+", help="amino acid sequences")
+    c = commands.add_parser("closest", parents=[limit], help="entries closest to a sequence")
+    c.add_argument("sequence", help="an amino acid sequence")
+    c.add_argument("more", nargs="*", help=argparse.SUPPRESS)  # not searched, warned after
     c.add_argument("--taxon", type=int, required=True, help="NCBI taxon ID: its whole subtree")
     q = commands.add_parser("seq", help="sequences, or subsequences between coordinates")
     q.add_argument("locations", nargs="+", help="<accession>[:<start>-<stop>]")
@@ -766,4 +756,10 @@ def main() -> None:
             elif args.command == "search":
                 print(search(cur, args.texts, args.taxon, page))
             else:
-                print(closest(cur, args.sequences, args.taxon, page))
+                print(closest(cur, args.sequence, args.taxon, page))
+                if args.more:
+                    print(
+                        f"warning: {len(args.more)} more sequence"
+                        f"{'s' if len(args.more) > 1 else ''} not searched: "
+                        "closest searches the first only"
+                    )

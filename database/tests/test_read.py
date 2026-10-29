@@ -139,37 +139,43 @@ def test_closest(conn):
     """The entries of the taxon subtree by the score of their best isoform, Swiss-Prot first
     among equals, as `search` shows them; every entry counted; an accession refused."""
     query = sequence_of(conn.cursor(), "P0C6X7:1-20")
-    lines = closest(conn.cursor(), [query, "MESLVLGVNE"], 694009, Page(3)).splitlines()
-    assert lines[:5] == [
-        "#sequence\taccession\tdb\tgene\tprotein\ttaxon\tlength\tidentity\tcoverage\tregion",
-        f"MESLVLGVNEKTHVQLSLPV\tP0C6U8\tSP\t1a\tReplicase polyprotein 1a\t{SARS}\t4382"
-        "\t100.0 %\t100.0 %\t1-20",
-        "MESLVLGVNEKTHVQLSLPV\tP0C6X7\tSP\trep"
-        f"\tReplicase polyprotein 1ab\t{SARS}\t7073\t100.0 %\t100.0 %\t1-20",
-        "MESLVLGVNEKTHVQLSLPV\tP0C6W6\tSP\trep\tReplicase polyprotein 1ab"
-        "\t349344 Bat SARS CoV Rp3/2004\t7071\t95.0 %\t100.0 %\t1-20",
-        "MESLVLGVNEKTHVQLSLPV\t… 3 of 18 shown, cut by --limit 3",
+    lines = closest(conn.cursor(), query, 694009, Page(3)).splitlines()
+    assert lines == [
+        "#accession\tdb\tgene\tprotein\ttaxon\tlength\tidentity\tcoverage\tregion",
+        f"P0C6U8\tSP\t1a\tReplicase polyprotein 1a\t{SARS}\t4382\t100.0 %\t100.0 %\t1-20",
+        f"P0C6X7\tSP\trep\tReplicase polyprotein 1ab\t{SARS}\t7073\t100.0 %\t100.0 %\t1-20",
+        "P0C6W6\tSP\trep\tReplicase polyprotein 1ab\t349344 Bat SARS CoV Rp3/2004\t7071"
+        "\t95.0 %\t100.0 %\t1-20",
+        "… 3 of 18 shown, cut by --limit 3",
     ]
-    unread = closest(conn.cursor(), ["X1", "MESLVLGVNE", "NS-protease"], 694009).splitlines()
-    assert unread[-2:] == [
-        "X1\tan accession: closest takes sequences",
-        "NS-protease\tnot an amino acid sequence",
-    ]
-    spaced = closest(conn.cursor(), ["MESLVLGVNE\n", "MESLVLGVNE KTHVQLSLPV"], 694009)
-    assert spaced.splitlines()[1:] == [
-        "MESLVLGVNE\tleading or trailing whitespace around the argument",
-        "MESLVLGVNE KTHVQLSLP…(21 characters)\t2 parts separated by whitespace: one sequence "
-        "per argument",
-    ]
+    assert closest(conn.cursor(), "X1", 694009) == "an accession: closest takes a sequence"
+    assert closest(conn.cursor(), "NS-protease", 694009) == "not an amino acid sequence"
+    assert (
+        closest(conn.cursor(), "MESLVLGVNE\n", 694009)
+        == "leading or trailing whitespace around the argument"
+    )
+    assert (
+        closest(conn.cursor(), "MESLVLGVNE KTHVQLSLPV", 694009)
+        == "2 parts separated by whitespace: one sequence per argument"
+    )
+
+
+def test_closest_searches_the_first_sequence(dbname):
+    """More sequences: the first one's list, then a warning that the others are not searched."""
+    first = _command("closest", "MESLVLGVNE", "--taxon", "694009", "--limit", "1")
+    more = _command("closest", "MESLVLGVNE", "WWWWW", "X1", "--taxon", "694009", "--limit", "1")
+    assert more.stdout == (
+        first.stdout + "warning: 2 more sequences not searched: closest searches the first only\n"
+    )
 
 
 def test_closest_identity_counts_the_gaps(conn):
     """A residue deleted from the query: one gap column among the aligned columns."""
     query = sequence_of(conn.cursor(), "P0C6X7:1-41")
     gapped = query[:20] + query[21:]  # 40 residues, 41 columns
-    line = closest(conn.cursor(), [gapped], 694009, Page(1)).splitlines()[1]
+    line = closest(conn.cursor(), gapped, 694009, Page(1)).splitlines()[1]
     fields = line.split("\t")
-    assert [fields[1], *fields[-3:]] == ["P0C6U8", "97.6 %", "100.0 %", "1-41"]
+    assert [fields[0], *fields[-3:]] == ["P0C6U8", "97.6 %", "100.0 %", "1-41"]
 
 
 def test_seq(conn):
