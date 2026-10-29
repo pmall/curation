@@ -2,6 +2,27 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "curation",
+    "database",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "curation", editable = "curation" },
+    { name = "database", editable = "database" },
+    { name = "lxml-stubs", specifier = ">=0.5.1" },
+    { name = "mdformat", specifier = ">=1.0.0" },
+    { name = "mdformat-frontmatter", specifier = ">=2.1.2" },
+    { name = "mdformat-gfm", specifier = ">=1.0.0" },
+    { name = "pyright", specifier = ">=1.1.414" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.16.10" },
+    { name = "types-openpyxl", specifier = ">=3.1.5.20260827" },
+    { name = "xlwt", specifier = ">=1.3.0" },
+]
+
 [[package]]
 name = "archspec"
 version = "0.2.6"
@@ -227,16 +248,13 @@ wheels = [
 [[package]]
 name = "curation"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "curation" }
 dependencies = [
-    { name = "biopython" },
     { name = "charset-normalizer" },
     { name = "lxml" },
     { name = "olefile" },
     { name = "openpyxl" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "pymupdf" },
-    { name = "pyopal" },
     { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "trafilatura" },
@@ -246,9 +264,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "lxml-stubs" },
-    { name = "mdformat" },
-    { name = "mdformat-frontmatter" },
-    { name = "mdformat-gfm" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "ruff" },
@@ -258,14 +273,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "biopython", specifier = ">=1.88" },
     { name = "charset-normalizer", specifier = ">=3.5.2" },
     { name = "lxml", specifier = ">=6.1.3" },
     { name = "olefile", specifier = ">=0.47" },
     { name = "openpyxl", specifier = ">=3.1.5" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pymupdf", specifier = ">=1.28.2" },
-    { name = "pyopal", specifier = ">=0.7.3" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "trafilatura", specifier = ">=2.3.1" },
@@ -275,14 +287,52 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "lxml-stubs", specifier = ">=0.5.1" },
-    { name = "mdformat", specifier = ">=1.0.0" },
-    { name = "mdformat-frontmatter", specifier = ">=2.1.2" },
-    { name = "mdformat-gfm", specifier = ">=1.0.0" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.16.10" },
     { name = "types-openpyxl", specifier = ">=3.1.5.20260827" },
     { name = "xlwt", specifier = ">=1.3.0" },
+]
+
+[[package]]
+name = "database"
+version = "0.1.0"
+source = { editable = "database" }
+dependencies = [
+    { name = "biopython" },
+    { name = "lxml" },
+    { name = "openpyxl" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pyopal" },
+    { name = "python-dotenv" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "lxml-stubs" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "types-openpyxl" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "biopython", specifier = ">=1.88" },
+    { name = "lxml", specifier = ">=6.1.3" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
+    { name = "pyopal", specifier = ">=0.7.3" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "lxml-stubs", specifier = ">=0.5.1" },
+    { name = "pyright", specifier = ">=1.1.414" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.16.10" },
+    { name = "types-openpyxl", specifier = ">=3.1.5.20260827" },
 ]
 
 [[package]]

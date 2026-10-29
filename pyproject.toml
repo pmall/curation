@@ -1,50 +1,18 @@
-[project]
-name = "curation"
-version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = [
-    "biopython>=1.88",
-    "charset-normalizer>=3.5.2",
-    "lxml>=6.1.3",
-    "olefile>=0.47",
-    "openpyxl>=3.1.5",
-    "psycopg[binary]>=3.3.6",
-    "pymupdf>=1.28.2",
-    "pyopal>=0.7.3",
-    "python-docx>=1.2.0",
-    "python-dotenv>=1.2.4",
-    "trafilatura>=2.3.1",
-    "xlrd>=2.0.2",
-]
+# The workspace of Drakkar: database, the Drakkar database and everything around it, and
+# curation, a client of the Drakkar database that curates it.
+# Each member is a package of its own; the root only runs their tools together.
 
-[project.scripts]
-drakkar-taxonomy = "drakkar.taxonomy:main"
-drakkar-uniprot = "drakkar.uniprot:main"
-drakkar-check = "drakkar.check:main"
-drakkar-add = "drakkar.files:add_main"
-drakkar-revise = "drakkar.files:revise_main"
-drakkar-publications = "drakkar.files:publications_main"
-drakkar-diff = "drakkar.files:diff_main"
-drakkar-notes = "drakkar.files:notes_main"
-drakkar-batch = "drakkar.files:batch_main"
-drakkar-read = "drakkar.read:main"
-drakkar-mapping = "drakkar.mapping:main"
-drakkar-fetch = "drakkar.fetch:main"
-drakkar-download = "drakkar.fetch:download_main"
-drakkar-parse = "drakkar.parse:main"
-drakkar-genbank = "drakkar.genbank:main"
-drakkar-generic = "drakkar.generic:main"
-drakkar-export = "drakkar.export:main"
+[tool.uv.workspace]
+members = ["database", "curation"]
 
-[build-system]
-requires = ["uv_build>=0.12,<0.13"]
-build-backend = "uv_build"
-
-[tool.uv.build-backend]
-module-name = "drakkar"
+[tool.uv.sources]
+database = { workspace = true }
+curation = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "database",
+    "curation",
     "lxml-stubs>=0.5.1",
     "mdformat>=1.0.0",
     "mdformat-frontmatter>=2.1.2",
@@ -64,7 +32,8 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.pyright]
 typeCheckingMode = "strict"
-include = ["src"]
+include = ["database/src", "curation/src"]
+extraPaths = ["database/src", "curation/src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["database/tests", "curation/tests"]

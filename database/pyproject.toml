@@ -1,0 +1,55 @@
+[project]
+name = "database"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "biopython>=1.88",
+    "lxml>=6.1.3",
+    "openpyxl>=3.1.5",
+    "psycopg[binary]>=3.3.6",
+    "pyopal>=0.7.3",
+    "python-dotenv>=1.2.4",
+]
+
+[project.scripts]
+database-taxonomy = "database.taxonomy:main"
+database-uniprot = "database.uniprot:main"
+database-check = "database.check:main"
+database-add = "database.files:add_main"
+database-revise = "database.files:revise_main"
+database-publications = "database.files:publications_main"
+database-diff = "database.files:diff_main"
+database-batch = "database.files:batch_main"
+database-read = "database.read:main"
+database-mapping = "database.mapping:main"
+database-generic = "database.generic:main"
+database-export = "database.export:main"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "database"
+
+[dependency-groups]
+dev = [
+    "lxml-stubs>=0.5.1",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+    "types-openpyxl>=3.1.5.20260827",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+include = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

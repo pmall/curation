@@ -1,1 +1,1 @@
-../../prompts/agents/curator.md
+../../curation/agents/curator.md
