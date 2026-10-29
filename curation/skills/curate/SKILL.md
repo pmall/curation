@@ -10,6 +10,8 @@ You run a curation batch, of one publication or many. A `curator` agent curates 
 
 1. **Work directory**: the prompt's; otherwise `_data/sessions/run<run>/batch<n>/` when the publications are of one run (its name, not its `id`), `_data/sessions/batch<n>/` when they are of several; one directory per publication, `<dir>/<pmid>/`.
 
+   Record the batch's author first, as the model and the effort may change during the session: `mkdir -p <dir> && echo "<model> (effort $CLAUDE_EFFORT, $AI_AGENT)" > <dir>/author.txt`, with your model ID as your system prompt gives it, `$CLAUDE_EFFORT` your effort and `$AI_AGENT` the Claude Code running you; the curators run on the same model and effort (`claude-opus-5-5 (effort high, claude-code_2-1-312_agent)`).
+
 2. **Full texts**: a publication directory with its `manifest.json` is ready (files the user provided). Fetch the others: `mkdir -p <dir>/<pmid> && uv run curation-fetch <dir>/<pmid> <pmid> > <dir>/<pmid>/fetch.txt`. The report's first line says where the article comes from, or why there is none; the manifest is written only when the article could be had and converted. Read the reports, never the full texts.
 
    - `Full text: not downloaded` (free, but no copy could be downloaded): fetch once more, as the failure may pass. Still none: leave the publication out of the batch; a later batch fetches it again.
@@ -23,4 +25,4 @@ You run a curation batch, of one publication or many. A `curator` agent curates 
 
 6. **Reply**: what each batch file holds, in descriptions and publications; the refused rows and errors; the publications without the article or with a relevant file missing, with why; from the notes, the `best-effort` values and the supplementary files downloaded or not; from the agents' replies, the tool errors.
 
-7. **Commit**, after the go: `uv run database-batch <dir> --author "<model> (effort $CLAUDE_EFFORT, $AI_AGENT)" --commit` writes the new descriptions, the publication states and notes, each note after its date and its author: your model ID, as your system prompt gives it, `$CLAUDE_EFFORT`, your effort, and `$AI_AGENT`, the Claude Code running you; the curators run on the same model and effort (`[2026-10-29, claude-opus-5-5 (effort high, claude-code_2-1-312_agent)] CURATED …`).
+7. **Commit**, after the go: `uv run database-batch <dir> --author "$(cat <dir>/author.txt)" --commit` writes the new descriptions, the publication states and notes, each note after its date and the author recorded at the start (`[2026-10-29, claude-opus-5-5 (effort high, claude-code_2-1-312_agent)] CURATED …`).
