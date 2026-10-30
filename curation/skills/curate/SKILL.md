@@ -11,9 +11,9 @@ You run a curation batch: publications, each curated by a `curator` agent from i
 1. **Parameters**, from the prompt, otherwise by default:
 
    - `<workdir>`: the curation's root directory.
-   - `<run>`: the oldest run with publications `selected` with no AI pass.
+   - `<run>`: the oldest run with publications `selected` with no AI pass and no live description.
    - `<batch>`: the batch directory, `<workdir>/run<run>/batch<n>/`, `<n>` the next batch number in `<workdir>/run<run>/`.
-   - The publications: 20 at most of the run's publications `selected` with no AI pass and listed in no `pmids.txt` of the run's batches.
+   - The publications: 20 at most of the run's publications `selected` with no AI pass, with no live description and listed in no `pmids.txt` of the run's batches.
    - The author: your model ID as your system prompt gives it, `$CLAUDE_EFFORT` your effort and `$AI_AGENT` the Claude Code running you, as in `claude-opus-5-5 (effort high, claude-code_2-1-312_agent)`; the curators run on the same model and effort.
 
    Write them at once, as the model and the effort may change during the session and other sessions select their publications outside this batch: `mkdir -p <batch> && echo "<model> (effort $CLAUDE_EFFORT, $AI_AGENT)" > <batch>/author.txt`, then the publications in `<batch>/pmids.txt`, one per line. `pmids.txt` is the batch, never changed.
